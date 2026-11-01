@@ -16,17 +16,18 @@ The root workspace owns tool versions and commands. Individual packages can expo
 
 The root `package.json` must provide these commands:
 
-| Command                 | Purpose                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------ |
-| `npm run check`         | Check formatting, lint rules, package boundaries, and TypeScript types.        |
-| `npm run test:domain`   | Run domain tests without a network or database.                                |
-| `npm run test:contract` | Run API contract tests against the service and Firestore emulator.             |
-| `npm run test:storage`  | Run transaction, index, rules, export, restore, and recovery tests.            |
-| `npm run test:security` | Run authentication, revocation, limits, moderation, and data-exposure tests.   |
-| `npm run test:browser`  | Run Playwright against a packaged browser and API.                             |
-| `npm run test:agents`   | Run agent clients through the public API only.                                 |
-| `npm run test:packaged` | Build, install, start, and test the release artifact in a temporary directory. |
-| `npm test`              | Run `check` and every test command required for a pull request.                |
+| Command                           | Purpose                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `npm run check`                   | Check format and types, then run tests that do not require an emulator.        |
+| `npm run test:domain`             | Run domain tests without a network or database.                                |
+| `npm run test:api`                | Run API and workspace contract tests.                                          |
+| `npm run test:persistence`        | Run persistence tests that do not require an emulator.                         |
+| `npm run test:firestore:emulator` | Run Firestore support, persistence, API, rules, and index tests locally.        |
+| `npm run test:firestore:recovery` | Run the local export, empty restart, import, and recovery scenario.             |
+| `npm run test:security`           | Run authentication, revocation, limits, moderation, and data-exposure tests.   |
+| `npm run test:browser`            | Run browser contract and presentation tests.                                   |
+| `npm run test:packaged`           | Build, install, start, and test the release artifact in a temporary directory. |
+| `npm test`                        | Run all tests that do not require an emulator.                                 |
 
 A command must return a nonzero status when a required check fails. CI calls these commands instead of duplicating their steps in workflow files.
 

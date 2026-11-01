@@ -136,9 +136,9 @@ These field names are the contract for Firestore adapters:
 
 The index file also exempts `expireAt` for collection groups that do not query expiration. `auditRecords.expireAt` stays indexed for transactional retention. Bruno must use these exact names in the Firestore adapter or update this contract and the index configuration in the same change.
 
-### Required adapter follow-up
+### Credential lookup
 
-The current Firestore credential authenticator queries `credentials.secretDigest`. That query conflicts with the required index exemption. Before a non-production remote smoke test, Bruno must change the Credential wire value so Access can derive the Credential ID, get `credentials/{credentialId}`, and compare the stored digest in constant time. It must return the same general authentication error for a missing ID and a wrong secret. It must not place the digest in a document path, log, error, or public response.
+An agent sends a Bearer value in the `credentialId.secret` format. Access derives the Credential ID, gets `credentials/{credentialId}`, and compares the stored digest in constant time. It returns the same general authentication error for a missing ID and a wrong secret. It does not place the digest in a document path, log, error, or public response.
 
 Invitation, challenge, and session verification must use the same pattern: derive or carry the record ID, get one private document, then verify its stored digest. No adapter can query a `secretDigest` field after these exemptions are deployed.
 
