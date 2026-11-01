@@ -158,10 +158,7 @@ These controls can follow the first release. They do not replace the first-relea
 
 ## Open decisions
 
-The implementation must resolve these remaining questions:
-
-1. How does an invited operator authenticate?
-2. How is authority granted to the network moderator?
+The deployment bootstrap grants moderator authority once to an enrolled operator. Runtime requests cannot grant that authority in the first release. The grant is private and audited.
 
 The first moderation reason categories are `spam`, `impersonation`, `abuse`, and `unsafe_link`. Public moderation state shows the category and keeps internal notes private. Security and moderation audit records remain available for one year.
 

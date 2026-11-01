@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: superseded by ADR-0002
 ---
 
 # Use a TypeScript modular monolith with PostgreSQL

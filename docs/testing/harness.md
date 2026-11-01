@@ -6,7 +6,7 @@ This harness turns the [verification strategy](strategy.md) into repeatable comm
 
 - Use Vitest for domain, contract, storage, security, and agent-client tests.
 - Use Playwright for browser tests.
-- Use Testcontainers to start PostgreSQL for tests that cross a storage boundary.
+- Use the Firebase Emulator Suite for tests that cross a Firestore storage boundary.
 - Use a fixed clock and deterministic identifier source in domain tests.
 - Use synthetic credentials. Never copy a production secret or record into a fixture.
 
@@ -16,17 +16,17 @@ The root workspace owns tool versions and commands. Individual packages can expo
 
 The root `package.json` must provide these commands:
 
-| Command | Purpose |
-| --- | --- |
-| `npm run check` | Check formatting, lint rules, package boundaries, and TypeScript types. |
-| `npm run test:domain` | Run domain tests without a network or database. |
-| `npm run test:contract` | Run API contract tests against the service and PostgreSQL. |
-| `npm run test:storage` | Run restart, migration, export, restore, and recovery tests. |
-| `npm run test:security` | Run authentication, revocation, limits, moderation, and data-exposure tests. |
-| `npm run test:browser` | Run Playwright against a packaged browser and API. |
-| `npm run test:agents` | Run agent clients through the public API only. |
+| Command                 | Purpose                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------ |
+| `npm run check`         | Check formatting, lint rules, package boundaries, and TypeScript types.        |
+| `npm run test:domain`   | Run domain tests without a network or database.                                |
+| `npm run test:contract` | Run API contract tests against the service and Firestore emulator.             |
+| `npm run test:storage`  | Run transaction, index, rules, export, restore, and recovery tests.            |
+| `npm run test:security` | Run authentication, revocation, limits, moderation, and data-exposure tests.   |
+| `npm run test:browser`  | Run Playwright against a packaged browser and API.                             |
+| `npm run test:agents`   | Run agent clients through the public API only.                                 |
 | `npm run test:packaged` | Build, install, start, and test the release artifact in a temporary directory. |
-| `npm test` | Run `check` and every test command required for a pull request. |
+| `npm test`              | Run `check` and every test command required for a pull request.                |
 
 A command must return a nonzero status when a required check fails. CI calls these commands instead of duplicating their steps in workflow files.
 
@@ -50,7 +50,7 @@ Cross-module behavior belongs in contract or storage tests. A domain test must n
 
 ### API contract
 
-Contract tests start the real HTTP application on an operating-system-selected port. They use the same request path as an external agent client. They must not call application services or query PostgreSQL to verify a response.
+Contract tests start the real HTTP application on an operating-system-selected port. They use the same request path as an external agent client. They must not call application services or query Firestore to verify a response.
 
 Each write test follows this sequence:
 
@@ -64,7 +64,7 @@ Store shared request and response examples as data fixtures. Browser and agent-c
 
 ### Storage and recovery
 
-Storage tests use the production PostgreSQL adapter and real migrations. They can inspect stored records only when the test is specifically about persistence, migration, constraints, or recovery.
+Storage tests use the production Firestore adapter with the Firebase Emulator Suite. They load the committed Security Rules and composite index definition. They can inspect stored documents only when the test is specifically about persistence, reservations, transactions, indexes, rules, or recovery.
 
 Inject failures at these boundaries:
 
@@ -133,17 +133,19 @@ The minimum scenario contains:
 
 Fixture names state the behavior they support. Tests can extend a fixture, but they cannot change shared fixture state.
 
-## PostgreSQL isolation
+## Firestore emulator isolation
 
-Start one PostgreSQL container for a test command. Create one database or schema per parallel worker with a generated name. Apply migrations before the worker starts.
+Start one Firestore emulator for a test command. Give each parallel worker a generated Firebase project ID. Load the committed Security Rules and index definition before the worker starts.
 
-- Domain tests do not use PostgreSQL.
-- Contract and security tests reset their worker schema between tests.
-- Storage tests own a schema for the full test so they can restart processes against retained records.
-- Browser and agent-client suites use separate schemas and service processes.
-- Packaged tests use a new container and a new data volume.
+- Domain tests do not use Firestore.
+- Contract and security tests clear their worker project between tests.
+- Storage tests own a project ID for the full test so they can restart processes against retained records.
+- Browser and agent-client suites use separate project IDs and service processes.
+- Packaged tests use a new emulator data directory.
 
-Do not use transaction rollback as the only isolation method for HTTP tests. The application can use more than one database connection, so rollback in the test process cannot contain every write.
+Do not use a transaction rollback as the only isolation method for HTTP tests. The application can use more than one Firestore client, so one test transaction cannot contain every write.
+
+Storage tests must contend on the same reservation document to verify uniqueness. They must force at least one transaction retry and prove that the retry creates one domain record, one audit record, and one idempotency result. Security tests run once with the Admin SDK adapter and once through the public client rules surface where the contract permits client reads.
 
 ## Packaged end-to-end test
 
@@ -151,25 +153,25 @@ Do not use transaction rollback as the only isolation method for HTTP tests. The
 
 1. Build the release artifact.
 2. Install it in a new temporary directory.
-3. Start PostgreSQL with an empty volume.
-4. Run production migrations.
+3. Start the Firestore emulator with an empty data directory.
+4. Load the production Security Rules and composite index definition.
 5. Start the API and browser on selected free ports.
 6. Run the two-agent sequence and one read-only browser smoke test.
 7. Stop all processes and remove temporary files and volumes.
 
-The test fails when the artifact contains source-only dependencies, requires repository files, skips a migration, exposes a write control in the browser, or leaves a process running.
+The test fails when the artifact contains source-only dependencies, requires undeclared repository files, skips Firestore rules or indexes, exposes a write control in the browser, or leaves a process running.
 
 ## Continuous integration gates
 
-| Gate | Commands | Verification strategy evidence |
-| --- | --- | --- |
-| Pull request | `npm run check`, `test:domain`, `test:contract`, `test:security` | Domain, contract, security, and rejected-write behavior. |
-| Browser change | Pull request gate plus `test:browser` | Read-only inspection, responsive behavior, accessibility, and shared records. |
-| Storage change | Pull request gate plus `test:storage` | Restart, constraints, interruption, recovery, export, and restore. |
-| Release candidate | All commands plus `test:agents` and `test:packaged` | Complete two-agent sequence against a packaged build. |
-| Scheduled | Full release-candidate gate with current supported runtimes | Dependency drift, browser drift, container images, and production migrations. |
+| Gate              | Commands                                                         | Verification strategy evidence                                                              |
+| ----------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Pull request      | `npm run check`, `test:domain`, `test:contract`, `test:security` | Domain, contract, security, and rejected-write behavior.                                    |
+| Browser change    | Pull request gate plus `test:browser`                            | Read-only inspection, responsive behavior, accessibility, and shared records.               |
+| Storage change    | Pull request gate plus `test:storage`                            | Restart, constraints, interruption, recovery, export, and restore.                          |
+| Release candidate | All commands plus `test:agents` and `test:packaged`              | Complete two-agent sequence against a packaged build.                                       |
+| Scheduled         | Full release-candidate gate with current supported runtimes      | Dependency drift, browser drift, emulator versions, Security Rules, and production indexes. |
 
-CI stores test reports, browser traces for failed tests, and packaged test logs. It must not store credentials or database dumps that contain secrets.
+CI stores test reports, browser traces for failed tests, and packaged test logs. It must not store credentials or Firestore exports that contain secrets.
 
 ## Completion criteria
 
@@ -179,6 +181,6 @@ The harness is complete when:
 - Each module has at least one domain test through its public interface.
 - Every API command has a success and rejection contract test.
 - Browser and agent clients consume the same contract fixtures.
-- PostgreSQL suites can run in parallel without shared records.
-- The packaged two-agent sequence passes from an empty database.
+- Firestore suites can run in parallel without shared documents.
+- The packaged two-agent sequence passes from an empty emulator project.
 - Each release gate maps to evidence required by the verification strategy.

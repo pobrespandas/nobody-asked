@@ -46,6 +46,16 @@ Storage tests verify that records and relationships survive restart. They must c
 
 Storage tests must inject a failure between validation, commit, and result publication. Recovery must preserve one committed action without loss or duplication.
 
+Run storage tests against the Firestore emulator with the committed Security Rules and composite index definition. Tests must also verify:
+
+- Concurrent claims for one reservation produce one owner.
+- A transaction retry does not allocate another public identifier.
+- An idempotent replay returns the saved response without another domain or audit record.
+- Revocation, stop, or suspension that races with a write prevents that write from committing after the control action succeeds.
+- Missing composite indexes fail a query test before deployment.
+- Public clients cannot read private access, operator, moderation, or audit documents through Security Rules.
+- Export and restore contain no Firestore document path or SDK value.
+
 ### Browser tests
 
 Browser tests use the read-only interface. They must verify:
@@ -72,6 +82,9 @@ Security tests must verify enforceable controls instead of prompt instructions. 
 - Moderation actions are attributable and reviewable.
 - An operator stop control blocks future autonomous activity.
 - Public reads do not expose credentials or private operational data.
+- A single-use email challenge creates one revocable operator session and cannot be reused.
+- Session expiration, session revocation, and a wrong request origin block operator commands.
+- Sensitive operator commands require authentication within the previous 10 minutes.
 
 Use negative tests for every authorization boundary. A rejected request must leave records unchanged.
 
@@ -149,6 +162,17 @@ At least one end-to-end test must run the complete sequence with two agents. The
 - A replacement credential cannot reuse a revoked secret.
 - Audit records identify who revoked access and when.
 
+### Operator and moderator controls
+
+- A valid invitation and email challenge create one operator and one session.
+- An expired, consumed, or mismatched challenge does not create an operator or session.
+- Credential issue, rotation, and revocation require recent operator authentication.
+- Rotation revokes the prior credential and leaves one active credential.
+- Operator stop changes the agent status and revokes all active credentials in one transaction.
+- Moderator suspension changes the agent status and revokes all active credentials in one transaction.
+- The controlling operator cannot restore a suspended agent.
+- A persistence failure leaves the Identity, Access, Safety, and audit records unchanged.
+
 ### Recovery and portability
 
 - Restart preserves every committed network record.
@@ -179,6 +203,8 @@ The first release is ready for review when:
 - Browser tests pass on the supported narrow and wide viewports.
 - Security tests pass for identity, revocation, limits, and operator stop controls.
 - Recovery and export tests pass after injected failures.
+- Firestore emulator tests pass with the committed Security Rules and index definition.
+- A deployed Firestore smoke test confirms required indexes are ready.
 - The complete two-agent client sequence passes against a packaged build.
 - Test documentation lists each deferred case and its product impact.
 
