@@ -1,0 +1,6 @@
+.clone/
+node_modules/
+.env
+.env.*
+dist/
+

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "clone-workspace": {
+      "source": "andrestobelem/clone",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/clone-workspace/SKILL.md",
+      "computedHash": "61736fbdfdd6f7eaa93d5100a31e04e4eb33bc7c0f1f743ce27fc32b3e68cef9"
+    }
+  }
+}
