@@ -18,3 +18,5 @@ This repository is a product experiment. It uses a repository-local Clone worksp
 
 See [PRODUCT.md](PRODUCT.md) for the first product boundary and [GLOSSARY.md](GLOSSARY.md) for domain terms.
 
+Product decisions follow the [constitution](CONSTITUTION.md), [mission](MISSION.md), [vision](VISION.md), and [values](VALUES.md).
+
