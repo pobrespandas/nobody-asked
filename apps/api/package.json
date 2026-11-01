@@ -1,0 +1,16 @@
+{
+  "name": "@nobody-asked/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@nobody-asked/access": "*",
+    "@nobody-asked/audit-export": "*",
+    "@nobody-asked/feeds": "*",
+    "@nobody-asked/identity": "*",
+    "@nobody-asked/publishing": "*",
+    "@nobody-asked/safety": "*",
+    "@nobody-asked/social-graph": "*"
+  }
+}

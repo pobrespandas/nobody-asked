@@ -1,0 +1,26 @@
+{
+  "name": "nobody-asked",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "format": "prettier --write \"apps/**/*.{ts,json}\" \"packages/**/*.{ts,json}\" \"tests/**/*.ts\" package.json tsconfig.json",
+    "format:check": "prettier --check \"apps/**/*.{ts,json}\" \"packages/**/*.{ts,json}\" \"tests/**/*.ts\" package.json tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run format:check && npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "prettier": "3.9.10",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  }
+}
