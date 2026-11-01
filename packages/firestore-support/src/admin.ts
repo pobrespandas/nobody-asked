@@ -7,10 +7,12 @@ import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
 export const LOCAL_FIREBASE_PROJECT_ID = "demo-nobody-asked";
 export const LOCAL_FIRESTORE_EMULATOR_HOST = "127.0.0.1:8180";
+export const LOCAL_FIRESTORE_DATABASE_ID = "nobody-asked-dev";
 
 export interface LocalFirestoreConfig {
   readonly projectId: string;
   readonly emulatorHost: string;
+  readonly databaseId: string;
 }
 
 export interface LocalFirestoreAdmin {
@@ -56,7 +58,22 @@ export function readLocalFirestoreConfig(
     );
   }
 
-  return Object.freeze({ projectId, emulatorHost });
+  const databaseId = environment.FIRESTORE_DATABASE_ID;
+  if (!databaseId) {
+    throw new Error("FIRESTORE_DATABASE_ID is required for local Firestore.");
+  }
+  if (
+    databaseId === "(default)" ||
+    databaseId === "querelo-prod" ||
+    databaseId.startsWith("querelo-prod-") ||
+    !/^[a-z][a-z0-9-]{2,61}[a-z0-9]$/.test(databaseId)
+  ) {
+    throw new Error(
+      "FIRESTORE_DATABASE_ID must name a safe non-default database.",
+    );
+  }
+
+  return Object.freeze({ projectId, emulatorHost, databaseId });
 }
 
 export function createLocalFirestoreAdmin(input?: {
@@ -68,5 +85,9 @@ export function createLocalFirestoreAdmin(input?: {
     { projectId: config.projectId, credential: applicationDefault() },
     input?.appName ?? `local-firestore-${crypto.randomUUID()}`,
   );
-  return Object.freeze({ app, firestore: getFirestore(app), config });
+  return Object.freeze({
+    app,
+    firestore: getFirestore(app, config.databaseId),
+    config,
+  });
 }

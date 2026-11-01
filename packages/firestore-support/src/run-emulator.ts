@@ -6,6 +6,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
+import { LOCAL_FIRESTORE_DATABASE_ID } from "./admin.js";
+
 const allowedEnvironmentNames = [
   "CI",
   "ComSpec",
@@ -94,6 +96,7 @@ export async function runFirestoreEmulator(
 
   const environment = buildSanitizedEnvironment(source, {
     GOOGLE_APPLICATION_CREDENTIALS: credentialPath,
+    FIRESTORE_DATABASE_ID: LOCAL_FIRESTORE_DATABASE_ID,
   });
   const firebase = join(repositoryRoot, "node_modules/.bin/firebase");
   const args = [

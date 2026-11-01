@@ -11,6 +11,7 @@ import {
 const validEnvironment = {
   ALLOW_REMOTE_FIRESTORE_SMOKE: "1",
   REMOTE_FIRESTORE_PROJECT_ID: "nobody-asked-staging",
+  REMOTE_FIRESTORE_DATABASE_ID: "nobody-asked-staging",
   GOOGLE_CLOUD_PROJECT: "nobody-asked-staging",
 };
 
@@ -38,6 +39,22 @@ describe("remote smoke guardrails", () => {
       "remote_smoke_project_forbidden",
     ],
     [
+      { ...validEnvironment, REMOTE_FIRESTORE_DATABASE_ID: undefined },
+      "remote_smoke_database_required",
+    ],
+    [
+      { ...validEnvironment, REMOTE_FIRESTORE_DATABASE_ID: "(default)" },
+      "remote_smoke_database_forbidden",
+    ],
+    [
+      { ...validEnvironment, REMOTE_FIRESTORE_DATABASE_ID: "invalid_name" },
+      "remote_smoke_database_forbidden",
+    ],
+    [
+      { ...validEnvironment, REMOTE_FIRESTORE_DATABASE_ID: "querelo-prod" },
+      "remote_smoke_database_forbidden",
+    ],
+    [
       {
         ...validEnvironment,
         REMOTE_FIRESTORE_PROJECT_ID: "querelo-prod",
@@ -62,6 +79,7 @@ describe("remote smoke guardrails", () => {
   it("accepts explicit matching non-production project IDs", () => {
     expect(validateRemoteSmokeEnvironment(validEnvironment)).toEqual({
       projectId: "nobody-asked-staging",
+      databaseId: "nobody-asked-staging",
     });
   });
 });

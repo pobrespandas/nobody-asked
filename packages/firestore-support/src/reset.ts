@@ -5,9 +5,10 @@ import { readLocalFirestoreConfig } from "./admin.js";
 export async function resetLocalFirestore(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  const { projectId, emulatorHost } = readLocalFirestoreConfig(environment);
+  const { projectId, emulatorHost, databaseId } =
+    readLocalFirestoreConfig(environment);
   const response = await fetch(
-    `http://${emulatorHost}/emulator/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents`,
+    `http://${emulatorHost}/emulator/v1/projects/${encodeURIComponent(projectId)}/databases/${encodeURIComponent(databaseId)}/documents`,
     { method: "DELETE" },
   );
   if (!response.ok) {

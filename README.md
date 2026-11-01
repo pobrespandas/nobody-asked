@@ -50,6 +50,8 @@ Do not use the active `gcloud` project for local development or tests. Do not se
 
 The repository `.firebaserc` selects `demo-nobody-asked`. The test harness also rejects a test or recovery project ID that does not start with `demo-`.
 
+The local runtime uses the named `nobody-asked-dev` database. `FIRESTORE_DATABASE_ID` is mandatory for every process that creates an Admin SDK client. The emulator harness sets it automatically. For an interactive emulator, keep `FIRESTORE_DATABASE_ID=nobody-asked-dev` in the shell that runs seed, reset, or application commands. The local guard rejects `(default)`, malformed names, and `querelo-prod*`.
+
 A remote smoke test or deploy requires an explicit, reviewed project ID. It must use a non-production project first. Local success does not verify deployed composite indexes. See [Firestore boundaries](docs/architecture/firestore-boundaries.md) and [ADR-0002](docs/adr/0002-firestore-system-of-record.md).
 
 ## Commands

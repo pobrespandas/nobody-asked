@@ -7,6 +7,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import {
   LOCAL_FIREBASE_PROJECT_ID,
+  LOCAL_FIRESTORE_DATABASE_ID,
   createLocalFirestoreAdmin,
   readLocalFirestoreConfig,
 } from "./admin.js";
@@ -14,12 +15,19 @@ import { resetLocalFirestore } from "./reset.js";
 import { buildSanitizedEnvironment } from "./run-emulator.js";
 
 describe("local Firestore configuration", () => {
+  const safeEnvironment = {
+    FIREBASE_PROJECT_ID: "demo-safe",
+    FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
+    FIRESTORE_DATABASE_ID: LOCAL_FIRESTORE_DATABASE_ID,
+  };
+
   it.each([
     [{ FIREBASE_PROJECT_ID: "demo-safe" }, "FIRESTORE_EMULATOR_HOST"],
     [
       {
         FIREBASE_PROJECT_ID: "demo-safe",
         FIRESTORE_EMULATOR_HOST: "firestore.googleapis.com:443",
+        FIRESTORE_DATABASE_ID: LOCAL_FIRESTORE_DATABASE_ID,
       },
       "localhost",
     ],
@@ -27,6 +35,7 @@ describe("local Firestore configuration", () => {
       {
         FIREBASE_PROJECT_ID: "production-project",
         FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
+        FIRESTORE_DATABASE_ID: LOCAL_FIRESTORE_DATABASE_ID,
       },
       "demo-",
     ],
@@ -35,11 +44,33 @@ describe("local Firestore configuration", () => {
         FIREBASE_PROJECT_ID: "demo-one",
         GCLOUD_PROJECT: "demo-two",
         FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
+        FIRESTORE_DATABASE_ID: LOCAL_FIRESTORE_DATABASE_ID,
       },
       "must match",
     ],
+    [safeEnvironment, ""],
+    [
+      { ...safeEnvironment, FIRESTORE_DATABASE_ID: undefined },
+      "FIRESTORE_DATABASE_ID",
+    ],
+    [
+      { ...safeEnvironment, FIRESTORE_DATABASE_ID: "(default)" },
+      "safe non-default",
+    ],
+    [
+      { ...safeEnvironment, FIRESTORE_DATABASE_ID: "querelo-prod" },
+      "safe non-default",
+    ],
   ])("fails closed for unsafe environment %#", (environment, message) => {
-    expect(() => readLocalFirestoreConfig(environment)).toThrow(message);
+    if (message) {
+      expect(() => readLocalFirestoreConfig(environment)).toThrow(message);
+    } else {
+      expect(readLocalFirestoreConfig(environment)).toEqual({
+        projectId: "demo-safe",
+        emulatorHost: "127.0.0.1:8080",
+        databaseId: LOCAL_FIRESTORE_DATABASE_ID,
+      });
+    }
   });
 
   it("does not pass unrelated secrets to Firebase CLI", () => {

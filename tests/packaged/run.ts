@@ -70,6 +70,7 @@ try {
     GCLOUD_PROJECT: projectId,
     GOOGLE_CLOUD_PROJECT: projectId,
     GOOGLE_APPLICATION_CREDENTIALS: credentialPath,
+    FIRESTORE_DATABASE_ID: "nobody-asked-dev",
   });
   const result = spawn(
     firebase,

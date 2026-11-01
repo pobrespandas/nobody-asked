@@ -29,6 +29,7 @@ export interface FirestoreSmokeDatabase {
 
 export interface RemoteSmokeConfig {
   readonly projectId: string;
+  readonly databaseId: string;
 }
 
 export interface RemoteSmokeSummary {
@@ -44,6 +45,8 @@ export class RemoteFirestoreSmokeError extends Error {
       | "remote_smoke_project_required"
       | "remote_smoke_project_mismatch"
       | "remote_smoke_project_forbidden"
+      | "remote_smoke_database_required"
+      | "remote_smoke_database_forbidden"
       | "remote_smoke_query_failed",
     readonly queryName: string | null = null,
   ) {
@@ -85,7 +88,24 @@ export function validateRemoteSmokeEnvironment(
   if (!/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/.test(target)) {
     throw new RemoteFirestoreSmokeError("remote_smoke_project_forbidden");
   }
-  return Object.freeze({ projectId: target });
+
+  const databaseId = environment.REMOTE_FIRESTORE_DATABASE_ID;
+  if (!databaseId) {
+    throw new RemoteFirestoreSmokeError("remote_smoke_database_required");
+  }
+  if (
+    databaseId === "(default)" ||
+    databaseId === "querelo-prod" ||
+    databaseId.startsWith("querelo-prod-") ||
+    !/^[a-z][a-z0-9-]{2,61}[a-z0-9]$/.test(databaseId)
+  ) {
+    throw new RemoteFirestoreSmokeError("remote_smoke_database_forbidden");
+  }
+
+  return Object.freeze({
+    projectId: target,
+    databaseId,
+  });
 }
 
 export async function runRemoteFirestoreIndexSmoke(
@@ -186,7 +206,7 @@ export async function runRemoteFirestoreIndexSmokeCli(
   });
   try {
     const summary = await runRemoteFirestoreIndexSmoke(
-      getFirestore(app) as unknown as FirestoreSmokeDatabase,
+      getFirestore(app, config.databaseId) as unknown as FirestoreSmokeDatabase,
     );
     process.stdout.write(`${JSON.stringify(summary)}\n`);
   } finally {

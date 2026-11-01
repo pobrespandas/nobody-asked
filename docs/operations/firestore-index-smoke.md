@@ -2,13 +2,15 @@
 
 ## Purpose
 
-The remote index smoke runs each documented compound query against one non-production Firestore database. Firestore reports a missing index when it plans the query. The emulator cannot provide this check.
+The remote index smoke runs each documented compound query against one named, non-production Firestore database. Firestore reports a missing index when it plans the query. The emulator cannot provide this check.
 
 The smoke is read-only. Each query uses `limit(1)`. The command prints only a status and query count. It never prints documents, credentials, environment variables, or underlying service errors.
 
 ## Required IAM
 
 Run the command with Application Default Credentials for a dedicated smoke identity. Grant that identity `roles/datastore.viewer` on the selected non-production project or database. This role permits document reads and queries. Do not grant Datastore User, Editor, Owner, index administration, or production access.
+
+Optional service account impersonation uses short-lived ADC and no target service account key. Prepare impersonated ADC before you run the smoke. The source identity needs `roles/iam.serviceAccountTokenCreator` on the target smoke service account. The target service account needs `roles/datastore.viewer` on the named non-production database. The IAM Service Account Credentials API must be enabled for the source project. Do not grant Token Creator at project scope when a service-account-level grant is sufficient.
 
 The smoke does not deploy indexes. Index deployment uses a different reviewed identity with `roles/datastore.indexAdmin`.
 
@@ -18,10 +20,12 @@ The command stops before it initializes the Admin SDK unless all conditions are 
 
 - `ALLOW_REMOTE_FIRESTORE_SMOKE` is exactly `1`.
 - `REMOTE_FIRESTORE_PROJECT_ID` is set explicitly.
+- `REMOTE_FIRESTORE_DATABASE_ID` names a non-default database explicitly.
 - `GOOGLE_CLOUD_PROJECT` is set explicitly and has the same value.
 - `GCLOUD_PROJECT` and `FIREBASE_PROJECT_ID`, when present, have the same value.
 - The project does not start with `demo-`.
 - The project is not `querelo-prod` and does not start with `querelo-prod-`.
+- The database is not `querelo-prod` and does not start with `querelo-prod-`.
 - `FIRESTORE_EMULATOR_HOST` is absent, including an empty value.
 
 Use a dedicated staging project. Do not use a production project with a different name to bypass the explicit denylist.
@@ -33,11 +37,27 @@ Prepare Application Default Credentials through the approved identity workflow. 
 ```sh
 ALLOW_REMOTE_FIRESTORE_SMOKE=1 \
 REMOTE_FIRESTORE_PROJECT_ID=nobody-asked-staging \
+REMOTE_FIRESTORE_DATABASE_ID=nobody-asked-staging \
 GOOGLE_CLOUD_PROJECT=nobody-asked-staging \
 npm run test:firestore:indexes:remote
 ```
 
 Do not set `FIRESTORE_EMULATOR_HOST`. Do not put a credential value in this command or in shell history.
+
+To use keyless service account impersonation, first create impersonated ADC through the approved Google Cloud authentication workflow. For example:
+
+```sh
+gcloud auth application-default login \
+  --impersonate-service-account=firestore-smoke@nobody-asked-staging.iam.gserviceaccount.com
+
+ALLOW_REMOTE_FIRESTORE_SMOKE=1 \
+REMOTE_FIRESTORE_PROJECT_ID=nobody-asked-staging \
+REMOTE_FIRESTORE_DATABASE_ID=nobody-asked-staging \
+GOOGLE_CLOUD_PROJECT=nobody-asked-staging \
+npm run test:firestore:indexes:remote
+```
+
+The smoke uses `applicationDefault()`. It does not implement or load a custom credential. The ADC file handles impersonation and short-lived token refresh without a target service account key. Review the ADC project and impersonation target before each run.
 
 Success output has this shape:
 
@@ -75,6 +95,8 @@ The sentinel Agent and subject IDs are expected not to exist. An empty result is
 | `remote_smoke_project_required` | A required project ID is absent. |
 | `remote_smoke_project_mismatch` | Configured project IDs differ. |
 | `remote_smoke_project_forbidden` | The target is demo, production-denied, or malformed. |
+| `remote_smoke_database_required` | The named database ID is absent. |
+| `remote_smoke_database_forbidden` | The database ID is default or malformed. |
 | `remote_smoke_query_failed` | One query failed. This includes a missing index or denied read. |
 | `remote_smoke_unexpected_error` | ADC or SDK setup failed outside a query. |
 
