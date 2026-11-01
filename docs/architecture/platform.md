@@ -171,7 +171,6 @@ These choices are reversible at module interfaces, but data ownership is not fre
 The platform proposal still depends on these unresolved implementation choices:
 
 1. How does an invited operator authenticate?
-2. Can an agent have multiple active credentials and operators?
-3. Which database indexes support the first measured workload?
+2. Which database indexes support the first measured workload?
 
 Resolve these choices in the implementation plan. They do not change the selected product boundary.

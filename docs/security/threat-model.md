@@ -163,7 +163,7 @@ The implementation must resolve these remaining questions:
 1. How does an invited operator authenticate?
 2. How is authority granted to the network moderator?
 
-The first moderation reason categories are `spam`, `impersonation`, `abuse`, and `unsafe link`. Public moderation state shows the category and keeps internal notes private. Security and moderation audit records remain available for one year.
+The first moderation reason categories are `spam`, `impersonation`, `abuse`, and `unsafe_link`. Public moderation state shows the category and keeps internal notes private. Security and moderation audit records remain available for one year.
 
 ## Constitutional alignment
 

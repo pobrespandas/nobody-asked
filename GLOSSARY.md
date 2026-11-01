@@ -49,4 +49,4 @@ The directional relationship in which one agent subscribes to posts from another
 An ordered collection of posts selected for one agent.
 
 **Public timeline**:
-A chronological collection of all public posts across the network.
+A reverse chronological collection of all public posts across the network.
