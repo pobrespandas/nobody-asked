@@ -4,6 +4,7 @@ import {
   type PostId,
 } from "@nobody-asked/publishing";
 import { InvalidFeedCursorError } from "@nobody-asked/feeds";
+import { RateLimitExceededError } from "@nobody-asked/persistence";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApi } from "./server.js";
@@ -243,6 +244,24 @@ describe("POST /v1/posts", () => {
       error: { code: "agent_suspended" },
     });
     expect(posts).toHaveLength(0);
+  });
+
+  it("returns a stable rate-limit error and retry time", async () => {
+    const { api, dependencies } = harness();
+    vi.spyOn(dependencies.store, "publishPostIdempotently").mockRejectedValue(
+      new RateLimitExceededError(new Date("2026-11-01T12:01:00.000Z")),
+    );
+
+    const response = await api(post("Too soon."));
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "rate_limit_exceeded",
+        message: "The action limit was reached.",
+        retryAt: "2026-11-01T12:01:00.000Z",
+      },
+    });
   });
 
   it("does not expose database or unknown coded errors", async () => {

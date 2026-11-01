@@ -40,6 +40,7 @@ import {
   AgentWriteBlockedError,
   CredentialWriteBlockedError,
   IdempotencyRequestConflictError,
+  RateLimitExceededError,
 } from "./contracts.js";
 
 const collections = {
@@ -51,7 +52,25 @@ const collections = {
   follows: "follows",
   audits: "auditRecords",
   idempotency: "idempotencyRecords",
+  rateLimits: "rateLimitBuckets",
 } as const;
+
+export const FIRST_RELEASE_COMMAND_RATE_LIMITS = Object.freeze({
+  "post.publish": Object.freeze({ limit: 10, windowMs: 60_000 }),
+  "reply.publish": Object.freeze({ limit: 20, windowMs: 60_000 }),
+  "repost.publish": Object.freeze({ limit: 10, windowMs: 60_000 }),
+  "acknowledgement.create": Object.freeze({ limit: 60, windowMs: 60_000 }),
+  "follow.change": Object.freeze({ limit: 30, windowMs: 60_000 }),
+  "report.create": Object.freeze({ limit: 10, windowMs: 3_600_000 }),
+  "personal_feed.read": Object.freeze({ limit: 120, windowMs: 60_000 }),
+});
+
+export const MAXIMUM_PUBLISH_RATE_LIMIT = 60;
+
+export interface PublishRateLimitPolicy {
+  readonly limit: number;
+  readonly windowMs: number;
+}
 
 export interface FirestoreTransactionalSafetyPolicy {
   /**
@@ -396,8 +415,12 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     firestore: Firestore,
     private readonly digestSecret: (secret: string) => string | Promise<string>,
     private readonly safety: FirestoreTransactionalSafetyPolicy,
+    private readonly publishRateLimit: PublishRateLimitPolicy = FIRST_RELEASE_COMMAND_RATE_LIMITS[
+      "post.publish"
+    ],
   ) {
     super(firestore);
+    assertPublishRateLimit(publishRateLimit);
   }
 
   async publishPostIdempotently(
@@ -487,6 +510,17 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       );
       const count = countPostCharacters(input.text);
       if (count > POST_TEXT_LIMIT) throw new PostTextTooLongError(count);
+      const rateLimit = await readRateLimitBucket(
+        this.firestore,
+        transaction,
+        input.authenticatedAgentId,
+        input.credentialId,
+        "post.publish",
+        input.occurredAt,
+        this.publishRateLimit,
+      );
+      if (rateLimit.count >= this.publishRateLimit.limit)
+        throw new RateLimitExceededError(rateLimit.resetAt);
 
       const post: Post = Object.freeze({
         id: postRef.id as PostId,
@@ -528,6 +562,15 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       transaction.update(credentialRef, {
         lastUsedAt: Timestamp.fromDate(input.occurredAt),
       });
+      transaction.set(rateLimit.ref, {
+        agentId: input.authenticatedAgentId,
+        credentialId: input.credentialId,
+        command: "post.publish",
+        windowStartedAt: Timestamp.fromDate(rateLimit.windowStartedAt),
+        count: rateLimit.count + 1,
+        resetAt: Timestamp.fromDate(rateLimit.resetAt),
+        expireAt: Timestamp.fromDate(rateLimit.expireAt),
+      });
       return Object.freeze({ kind: "created", post, response });
     });
   }
@@ -537,6 +580,7 @@ export function createFirestoreApiAdapters(input: {
   readonly firestore: Firestore;
   readonly digestCredentialSecret: (secret: string) => string | Promise<string>;
   readonly safetyPolicy: FirestoreTransactionalSafetyPolicy;
+  readonly publishRateLimit?: PublishRateLimitPolicy;
 }) {
   return Object.freeze({
     authenticator: new FirestoreCredentialAuthenticator(
@@ -547,6 +591,7 @@ export function createFirestoreApiAdapters(input: {
       input.firestore,
       input.digestCredentialSecret,
       input.safetyPolicy,
+      input.publishRateLimit,
     ),
     identity: new FirestoreIdentityRepository(input.firestore),
     access: new FirestoreAccessRepository(input.firestore),
@@ -724,5 +769,51 @@ function serializeAudit(id: string, audit: AuditRecordInput) {
 
 export const FIRESTORE_PUBLISH_OPERATION_BUDGET = Object.freeze({
   readsBeforeSafety: 4,
-  writes: 4,
+  readsAfterSafety: 1,
+  writes: 5,
 });
+
+function assertPublishRateLimit(policy: PublishRateLimitPolicy): void {
+  if (
+    !Number.isSafeInteger(policy.limit) ||
+    policy.limit < 1 ||
+    policy.limit > MAXIMUM_PUBLISH_RATE_LIMIT ||
+    policy.windowMs !== 60_000
+  ) {
+    throw new Error("The publish rate-limit policy is invalid.");
+  }
+}
+
+async function readRateLimitBucket(
+  firestore: Firestore,
+  transaction: Transaction,
+  agentId: string,
+  credentialId: string,
+  command: "post.publish",
+  at: Date,
+  policy: PublishRateLimitPolicy,
+) {
+  const windowStartedAt = new Date(
+    Math.floor(at.getTime() / policy.windowMs) * policy.windowMs,
+  );
+  const resetAt = new Date(windowStartedAt.getTime() + policy.windowMs);
+  const expireAt = new Date(resetAt.getTime() + 86_400_000);
+  const id = hash(
+    JSON.stringify([
+      agentId,
+      credentialId,
+      command,
+      windowStartedAt.toISOString(),
+    ]),
+  );
+  const ref = firestore.collection(collections.rateLimits).doc(id);
+  const snapshot = await transaction.get(ref);
+  const data = snapshot.data();
+  return Object.freeze({
+    ref,
+    windowStartedAt,
+    resetAt,
+    expireAt,
+    count: snapshot.exists ? Number(data?.count ?? 0) : 0,
+  });
+}

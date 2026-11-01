@@ -322,6 +322,9 @@ function mapError(error: unknown): Response {
       allowedError.status,
       allowedError.code,
       allowedError.message,
+      allowedError.retryAt
+        ? { retryAt: allowedError.retryAt.toISOString() }
+        : undefined,
     );
   }
   return errorResponse(
@@ -335,8 +338,19 @@ function jsonResponse(status: number, body: unknown) {
   return Response.json(body, { status });
 }
 
-function errorResponse(status: number, code: string, message: string) {
-  return jsonResponse(status, { error: { code, message } });
+function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+  details?: { readonly retryAt?: string },
+) {
+  return jsonResponse(status, {
+    error: {
+      code,
+      message,
+      ...(details?.retryAt ? { retryAt: details.retryAt } : {}),
+    },
+  });
 }
 
 const allowedDomainErrorStatus = {
@@ -364,6 +378,7 @@ function getAllowedDomainError(error: unknown): {
   readonly code: keyof typeof allowedDomainErrorStatus;
   readonly status: (typeof allowedDomainErrorStatus)[keyof typeof allowedDomainErrorStatus];
   readonly message: string;
+  readonly retryAt?: Date;
 } | null {
   if (!(error instanceof Error) || !("code" in error)) return null;
   const code = (error as { code?: unknown }).code;
@@ -371,9 +386,17 @@ function getAllowedDomainError(error: unknown): {
     return null;
   }
   const safeCode = code as keyof typeof allowedDomainErrorStatus;
+  const retryAt =
+    safeCode === "rate_limit_exceeded" &&
+    "retryAt" in error &&
+    (error as { retryAt?: unknown }).retryAt instanceof Date &&
+    Number.isFinite((error as { retryAt: Date }).retryAt.getTime())
+      ? (error as { retryAt: Date }).retryAt
+      : undefined;
   return {
     code: safeCode,
     status: allowedDomainErrorStatus[safeCode],
     message: allowedDomainErrorMessage[safeCode],
+    ...(retryAt ? { retryAt } : {}),
   };
 }

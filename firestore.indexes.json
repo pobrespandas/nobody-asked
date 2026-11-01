@@ -154,6 +154,7 @@
     {
       "collectionGroup": "rateLimitBuckets",
       "fieldPath": "expireAt",
+      "ttl": true,
       "indexes": []
     }
   ]

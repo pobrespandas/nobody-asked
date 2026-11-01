@@ -175,5 +175,5 @@ The implementation plan must select and test these defaults without changing the
 - Duplicate repost behavior.
 - Supported newline and whitespace rules for post text.
 - The effect of unfollow on an already issued feed cursor.
-- Rate-limit numbers and reset windows.
+- Deployment-specific network-source and operator rate limits beyond the first-release command defaults.
 - Export inclusion rules for follows, acknowledgements, and private audit details.

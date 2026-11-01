@@ -11,6 +11,7 @@ interface IndexConfiguration {
     readonly collectionGroup: string;
     readonly fieldPath: string;
     readonly indexes: readonly unknown[];
+    readonly ttl?: boolean;
   }[];
 }
 
@@ -44,8 +45,24 @@ describe("Firestore index boundaries", () => {
         exemption("idempotencyRecords", "keyHash"),
         exemption("idempotencyRecords", "requestFingerprint"),
         exemption("idempotencyRecords", "response"),
+        exemption("rateLimitBuckets", "expireAt"),
       ]),
     );
+  });
+
+  it("configures rate-limit expiry without indexing the TTL field", async () => {
+    const configuration = await readIndexConfiguration();
+    expect(
+      configuration.fieldOverrides.find(
+        ({ collectionGroup, fieldPath }) =>
+          collectionGroup === "rateLimitBuckets" && fieldPath === "expireAt",
+      ),
+    ).toEqual({
+      collectionGroup: "rateLimitBuckets",
+      fieldPath: "expireAt",
+      ttl: true,
+      indexes: [],
+    });
   });
 
   it("uses resolvedAt as the only Report resolution field", async () => {

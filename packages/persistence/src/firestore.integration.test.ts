@@ -278,8 +278,114 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       }
       expect(FIRESTORE_PUBLISH_OPERATION_BUDGET).toEqual({
         readsBeforeSafety: 4,
-        writes: 4,
+        readsAfterSafety: 1,
+        writes: 5,
       });
+    });
+
+    it("enforces the publish bucket under contention without counting replays or blocked writes", async () => {
+      const limited = createFirestoreApiAdapters({
+        firestore: local.firestore,
+        digestCredentialSecret: (secret) => `digest:${secret}`,
+        safetyPolicy: { async authorizeAgentWrite() {} },
+        publishRateLimit: { limit: 2, windowMs: 60_000 },
+      });
+      await limited.identity.createAgentProfile(profile("agent-a", "agent-a"));
+      await limited.access.issueCredential({
+        id: "cred-a",
+        agentId: "agent-a",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+        actorOperatorId: "operator-a",
+        correlationId: "issue-a",
+      });
+      const inputs = ["one", "two", "three"].map((key) =>
+        publishInput("agent-a", "cred-a", key),
+      );
+      const attempts = await Promise.allSettled(
+        inputs.map((input) => limited.store.publishPostIdempotently(input)),
+      );
+      expect(
+        attempts.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(2);
+      const rejected = attempts.find((result) => result.status === "rejected");
+      expect(rejected).toMatchObject({
+        reason: {
+          code: "rate_limit_exceeded",
+          retryAt: new Date("2026-11-01T12:01:00.000Z"),
+        },
+      });
+      const acceptedIndex = attempts.findIndex(
+        (result) => result.status === "fulfilled",
+      );
+      await expect(
+        limited.store.publishPostIdempotently(inputs[acceptedIndex]!),
+      ).resolves.toMatchObject({ kind: "replay" });
+      let buckets = await local.firestore.collection("rateLimitBuckets").get();
+      expect(buckets.size).toBe(1);
+      expect(buckets.docs[0]?.data()).toMatchObject({
+        agentId: "agent-a",
+        credentialId: "cred-a",
+        command: "post.publish",
+        count: 2,
+      });
+      expect(buckets.docs[0]?.data().resetAt.toDate()).toEqual(
+        new Date("2026-11-01T12:01:00.000Z"),
+      );
+      expect(buckets.docs[0]?.data().expireAt.toDate()).toEqual(
+        new Date("2026-11-02T12:01:00.000Z"),
+      );
+
+      await expect(
+        limited.store.publishPostIdempotently({
+          ...publishInput("agent-a", "cred-a", "next-window"),
+          occurredAt: new Date("2026-11-01T12:01:00.000Z"),
+        }),
+      ).resolves.toMatchObject({ kind: "created" });
+      await limited.access.revokeCredential("agent-a", "cred-a", at, {
+        actorOperatorId: "operator-a",
+        correlationId: "revoke-a",
+      });
+      await expect(
+        limited.store.publishPostIdempotently({
+          ...publishInput("agent-a", "cred-a", "revoked"),
+          occurredAt: new Date("2026-11-01T12:01:01.000Z"),
+        }),
+      ).rejects.toMatchObject({ code: "invalid_credential" });
+      buckets = await local.firestore.collection("rateLimitBuckets").get();
+      expect(buckets.size).toBe(2);
+      expect(
+        buckets.docs.reduce(
+          (total, doc) => total + Number(doc.data().count),
+          0,
+        ),
+      ).toBe(3);
+
+      await limited.identity.createAgentProfile(
+        profile("agent-stopped", "agent-stopped"),
+      );
+      await limited.access.issueCredential({
+        id: "cred-stopped",
+        agentId: "agent-stopped",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+        actorOperatorId: "operator-a",
+        correlationId: "issue-stopped",
+      });
+      await local.firestore
+        .collection("agentAccess")
+        .doc("agent-stopped")
+        .set({ stopped: true }, { merge: true });
+      await expect(
+        limited.store.publishPostIdempotently(
+          publishInput("agent-stopped", "cred-stopped", "stopped"),
+        ),
+      ).rejects.toMatchObject({ code: "invalid_credential" });
+      expect(
+        (await local.firestore.collection("rateLimitBuckets").get()).size,
+      ).toBe(2);
     });
 
     it("leaves no writes when Safety rejects and hides restricted content", async () => {

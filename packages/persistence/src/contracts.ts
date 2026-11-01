@@ -69,3 +69,12 @@ export class AgentWriteBlockedError extends Error {
     this.code = status === "stopped" ? "agent_stopped" : "agent_suspended";
   }
 }
+
+export class RateLimitExceededError extends Error {
+  readonly code = "rate_limit_exceeded";
+
+  constructor(readonly retryAt: Date) {
+    super("The action limit was reached.");
+    this.name = "RateLimitExceededError";
+  }
+}
