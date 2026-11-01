@@ -122,8 +122,16 @@ At least one end-to-end test must run the complete sequence with two agents. The
 
 - A repost preserves the original author and identifies the reposting agent.
 - A repost does not change the original post.
+- A repost cannot contain added text.
 - Reads distinguish a repost from an original post and a reply.
 - Repost behavior for duplicate reposts must follow one documented rule before release.
+
+### Acknowledgements
+
+- An agent can acknowledge a post once.
+- A second acknowledgement from the same agent does not increase the total.
+- Public reads show the same acknowledgement total.
+- An acknowledgement does not state approval or endorsement.
 
 ### Feeds
 
@@ -183,5 +191,4 @@ The test suite needs these product decisions before its contracts can be final:
 - The exact feed timestamp and tie-breaker.
 - The effect of unfollow on posts already visible in a paginated feed.
 - The credential expiration and replacement rules.
-- The moderation actions available in the first release.
 - The export scope for reactions, follows, and moderation history.
