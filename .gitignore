@@ -3,4 +3,9 @@ node_modules/
 .env
 .env.*
 dist/
+.firebase/
+firestore-debug.log
+firebase-debug.log
+firebase-debug.log.*
+*-debug.log
 

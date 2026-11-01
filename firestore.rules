@@ -1,0 +1,10 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Browser and mobile clients use the HTTP API. They never access Firestore.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

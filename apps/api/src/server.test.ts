@@ -1,0 +1,318 @@
+import {
+  publishPost,
+  type AgentId,
+  type PostId,
+} from "@nobody-asked/publishing";
+import { InvalidFeedCursorError } from "@nobody-asked/feeds";
+import { describe, expect, it, vi } from "vitest";
+
+import { createApi } from "./server.js";
+import type {
+  ApiDependencies,
+  ApiStore,
+  ApiTransaction,
+  IdempotencyRecord,
+  PublicPost,
+} from "./types.js";
+
+const at = new Date("2026-11-01T12:00:00.000Z");
+const agentId = "agent-1" as AgentId;
+
+function harness() {
+  const posts: PublicPost[] = [];
+  const records = new Map<string, IdempotencyRecord>();
+  const calls: string[] = [];
+  let sequence = 0;
+  const safety = vi.fn(async () => calls.push("safety"));
+  const transaction: ApiTransaction = {
+    findIdempotencyRecord: async (actor, route, key) =>
+      records.get(`${actor}:${route}:${key}`) ?? null,
+    insertPost: async (post) => {
+      calls.push("write");
+      posts.push({
+        ...post,
+        authorHandle: "observer",
+        authorDisplayName: "Observer",
+        acknowledgementTotal: 0,
+      });
+    },
+    appendAudit: async () => {
+      calls.push("audit");
+    },
+    saveIdempotencyRecord: async (record) => {
+      calls.push("idempotency");
+      records.set(`${record.agentId}:${record.route}:${record.key}`, record);
+    },
+  };
+  const store: ApiStore = {
+    listVisiblePublicPosts: async () => posts,
+    listPublicTimelinePage: async ({ limit, cursor }) => {
+      const page = readTestPage(posts, limit, cursor);
+      return page;
+    },
+    findPublicAgentByHandle: async (handle) =>
+      handle === "observer"
+        ? {
+            id: agentId,
+            handle,
+            displayName: "Observer",
+            description: null,
+            status: "active",
+            createdAt: at,
+            updatedAt: at,
+          }
+        : null,
+    findVisiblePublicPostById: async (id) =>
+      posts.find((post) => post.id === id) ?? null,
+    listVisibleConversation: async (rootId) =>
+      posts.filter((post) => post.conversationRootId === rootId),
+    listVisiblePublicPostsByAgent: async (id) =>
+      posts.filter((post) => post.authorId === id),
+    listFollowing: async () => [],
+    listFollowers: async () => [],
+    publishPostIdempotently: async (input) => {
+      const existing = await transaction.findIdempotencyRecord(
+        input.authenticatedAgentId,
+        "POST /v1/posts",
+        input.idempotencyKey,
+      );
+      if (existing) {
+        if (existing.requestFingerprint !== input.requestFingerprint) {
+          throw Object.assign(new Error("conflict"), {
+            code: "idempotency_conflict",
+          });
+        }
+        return { kind: "replay", response: existing.response };
+      }
+      await safety();
+      const post = publishPost(
+        {
+          nextPostId: () => `post-${++sequence}` as PostId,
+          now: () => input.occurredAt,
+        },
+        { authorId: input.authenticatedAgentId, text: input.text },
+      );
+      const response = {
+        status: 201,
+        body: {
+          data: {
+            ...post,
+            publishedAt: post.publishedAt.toISOString(),
+          },
+        },
+      };
+      await transaction.insertPost(post);
+      await transaction.appendAudit({
+        actorAgentId: input.authenticatedAgentId,
+        action: "post.published",
+        subjectPostId: post.id,
+        occurredAt: input.occurredAt,
+        correlationId: input.correlationId,
+      });
+      await transaction.saveIdempotencyRecord({
+        agentId: input.authenticatedAgentId,
+        route: "POST /v1/posts",
+        key: input.idempotencyKey,
+        requestFingerprint: input.requestFingerprint,
+        response,
+      });
+      return { kind: "created", post, response };
+    },
+  };
+  const dependencies: ApiDependencies = {
+    authenticator: {
+      authenticate: vi.fn(async (secret) =>
+        secret === "valid-secret"
+          ? { agentId, credentialId: "credential-1" }
+          : null,
+      ),
+    },
+    store,
+    nextCorrelationId: () => "correlation-1",
+    now: () => new Date(at),
+  };
+  return { api: createApi(dependencies), calls, dependencies, posts, safety };
+}
+
+function readTestPage(
+  posts: readonly PublicPost[],
+  limit: number,
+  cursor?: string | null,
+) {
+  const offset = cursor ? Number(cursor) : 0;
+  if (!Number.isSafeInteger(offset)) {
+    throw new InvalidFeedCursorError();
+  }
+  const items = [...posts].reverse().slice(offset, offset + limit);
+  return {
+    items,
+    nextCursor:
+      offset + items.length < posts.length ? String(offset + limit) : null,
+  };
+}
+
+function post(text: string, key = "request-1", extra: object = {}) {
+  return new Request("https://network.test/v1/posts", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer valid-secret",
+      "idempotency-key": key,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ text, ...extra }),
+  });
+}
+
+describe("POST /v1/posts", () => {
+  it("uses credential identity and applies Safety before the atomic write", async () => {
+    const { api, calls, posts } = harness();
+    const response = await api(
+      post("An observation.", "one", { authorId: "agent-2" }),
+    );
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: "post-1", authorId: agentId },
+    });
+    expect(posts).toHaveLength(1);
+    expect(calls).toEqual(["safety", "write", "audit", "idempotency"]);
+  });
+
+  it("replays one response without another write", async () => {
+    const { api, safety, posts } = harness();
+    const first = await api(post("Once."));
+    const second = await api(post("Once."));
+
+    expect(await second.json()).toEqual(await first.json());
+    expect(posts).toHaveLength(1);
+    expect(safety).toHaveBeenCalledOnce();
+  });
+
+  it("locks and checks idempotency before it reserves a public ID", async () => {
+    const { api } = harness();
+    await api(post("Once.", "same"));
+    await api(post("Once.", "same"));
+    const next = await api(post("Next.", "next"));
+
+    await expect(next.json()).resolves.toMatchObject({
+      data: { id: "post-2" },
+    });
+  });
+
+  it("rejects the same key with different input", async () => {
+    const { api } = harness();
+    await api(post("First."));
+    const response = await api(post("Second."));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "idempotency_conflict" },
+    });
+  });
+
+  it("returns stable authentication and domain errors", async () => {
+    const { api } = harness();
+    const noAuth = new Request("https://network.test/v1/posts", {
+      method: "POST",
+      body: JSON.stringify({ text: "No." }),
+    });
+    const unauthorized = await api(noAuth);
+    const tooLong = await api(post("x".repeat(129)));
+
+    expect(unauthorized.status).toBe(401);
+    await expect(unauthorized.json()).resolves.toMatchObject({
+      error: { code: "authentication_required" },
+    });
+    expect(tooLong.status).toBe(422);
+    await expect(tooLong.json()).resolves.toMatchObject({
+      error: { code: "post_text_too_long" },
+    });
+  });
+
+  it("does not write when Safety denies the action", async () => {
+    const { api, safety, posts } = harness();
+    const denial = Object.assign(new Error("The agent is suspended."), {
+      code: "agent_suspended",
+    });
+    safety.mockRejectedValue(denial);
+
+    const response = await api(post("Blocked."));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "agent_suspended" },
+    });
+    expect(posts).toHaveLength(0);
+  });
+
+  it("does not expose database or unknown coded errors", async () => {
+    const { api, safety } = harness();
+    const databaseError = Object.assign(
+      new Error("duplicate key value violates secret_table_constraint"),
+      { code: "23505", detail: "credential_digest=private" },
+    );
+    safety.mockRejectedValue(databaseError);
+
+    const response = await api(post("Hidden failure."));
+    const serialized = JSON.stringify(await response.json());
+
+    expect(response.status).toBe(500);
+    expect(serialized).toBe(
+      JSON.stringify({
+        error: {
+          code: "internal_error",
+          message: "The request could not be completed.",
+        },
+      }),
+    );
+    expect(serialized).not.toMatch(/23505|credential|constraint|private/i);
+  });
+});
+
+describe("public reads", () => {
+  it("returns a public profile without authentication", async () => {
+    const { api } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/agents/observer"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { id: agentId, handle: "observer", status: "active" },
+    });
+  });
+
+  it("paginates visible posts with a stable opaque cursor", async () => {
+    const { api } = harness();
+    await api(post("First.", "one"));
+    await api(post("Second.", "two"));
+
+    const first = await api(
+      new Request("https://network.test/v1/timeline?limit=1"),
+    );
+    const firstBody = (await first.json()) as {
+      data: { id: string }[];
+      page: { nextCursor: string };
+    };
+    const second = await api(
+      new Request(
+        `https://network.test/v1/timeline?limit=1&cursor=${firstBody.page.nextCursor}`,
+      ),
+    );
+    const secondBody = (await second.json()) as { data: { id: string }[] };
+
+    expect(firstBody.data[0]?.id).toBe("post-2");
+    expect(secondBody.data[0]?.id).toBe("post-1");
+  });
+
+  it("rejects an invalid cursor with a stable error", async () => {
+    const { api } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/timeline?cursor=not%20opaque"),
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "invalid_feed_cursor" },
+    });
+  });
+});

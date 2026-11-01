@@ -11,15 +11,29 @@
     "packages/*"
   ],
   "scripts": {
-    "format": "prettier --write \"apps/**/*.{ts,json}\" \"packages/**/*.{ts,json}\" \"tests/**/*.ts\" package.json tsconfig.json",
-    "format:check": "prettier --check \"apps/**/*.{ts,json}\" \"packages/**/*.{ts,json}\" \"tests/**/*.ts\" package.json tsconfig.json",
+    "format": "prettier --write \".github/**/*.yml\" \"apps/**/*.{ts,json}\" \"packages/**/*.{ts,json}\" \"tests/**/*.ts\" package.json tsconfig.json vitest.config.ts",
+    "format:check": "prettier --check \".github/**/*.yml\" \"apps/**/*.{ts,json}\" \"packages/**/*.{ts,json}\" \"tests/**/*.ts\" package.json tsconfig.json vitest.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:domain": "vitest run packages/access packages/feeds packages/identity packages/publishing packages/safety packages/social-graph packages/test-fixtures",
+    "test:api": "vitest run apps/api tests/workspace.test.ts",
+    "test:audit-export": "vitest run packages/audit-export",
+    "test:browser": "vitest run apps/browser",
+    "test:persistence": "vitest run packages/persistence",
+    "firestore:emulator:start": "tsx packages/firestore-support/src/run-emulator.ts start",
+    "firestore:emulator:reset": "tsx packages/firestore-support/src/reset.ts",
+    "firestore:emulator:seed": "tsx packages/firestore-support/src/seed.ts",
+    "test:firestore:emulator:inside": "RUN_FIRESTORE_EMULATOR_TESTS=1 vitest run --no-file-parallelism packages/firestore-support packages/persistence/src/firestore.integration.test.ts apps/api/src/firestore-composition.integration.test.ts",
+    "test:firestore:emulator": "tsx packages/firestore-support/src/run-emulator.ts exec",
+    "test:security": "vitest run tests/security",
+    "test:ci": "npm run check",
     "check": "npm run format:check && npm run typecheck && npm test"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "firebase-tools": "15.34.2",
     "prettier": "3.9.10",
+    "tsx": "4.20.6",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
   }

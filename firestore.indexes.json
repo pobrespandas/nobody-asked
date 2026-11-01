@@ -1,0 +1,160 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "publicItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "publishedAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "publicItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "publishedAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "publicItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "conversationRootId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "publishedAt", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "follows",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "followerId", "order": "ASCENDING" },
+        { "fieldPath": "followedAt", "order": "DESCENDING" },
+        { "fieldPath": "followedId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "follows",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "followedId", "order": "ASCENDING" },
+        { "fieldPath": "followedAt", "order": "DESCENDING" },
+        { "fieldPath": "followerId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resolvedAt", "order": "ASCENDING" },
+        { "fieldPath": "reportedAt", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "auditRecords",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "subjectType", "order": "ASCENDING" },
+        { "fieldPath": "subjectId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "auditRecords",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "expireAt", "order": "ASCENDING" },
+        { "fieldPath": "id", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "agentProfiles",
+      "fieldPath": "description",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "operatorInvitations",
+      "fieldPath": "expireAt",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "operatorInvitations",
+      "fieldPath": "secretDigest",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "operatorChallenges",
+      "fieldPath": "expireAt",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "operatorChallenges",
+      "fieldPath": "secretDigest",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "operatorSessions",
+      "fieldPath": "expireAt",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "operatorSessions",
+      "fieldPath": "secretDigest",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "credentials",
+      "fieldPath": "secretDigest",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "publicItems",
+      "fieldPath": "text",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "moderationActions",
+      "fieldPath": "internalNote",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "auditRecords",
+      "fieldPath": "details.requestOrigin",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "idempotencyRecords",
+      "fieldPath": "expireAt",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "idempotencyRecords",
+      "fieldPath": "keyHash",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "idempotencyRecords",
+      "fieldPath": "requestFingerprint",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "idempotencyRecords",
+      "fieldPath": "response",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "rateLimitBuckets",
+      "fieldPath": "expireAt",
+      "indexes": []
+    }
+  ]
+}

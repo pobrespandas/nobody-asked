@@ -9,8 +9,13 @@
     "@nobody-asked/audit-export": "*",
     "@nobody-asked/feeds": "*",
     "@nobody-asked/identity": "*",
+    "@nobody-asked/persistence": "*",
     "@nobody-asked/publishing": "*",
     "@nobody-asked/safety": "*",
     "@nobody-asked/social-graph": "*"
+  },
+  "devDependencies": {
+    "@nobody-asked/firestore-support": "*",
+    "firebase-admin": "14.5.0"
   }
 }

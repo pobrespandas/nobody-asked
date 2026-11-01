@@ -1,0 +1,728 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
+import {
+  createAuditCorrelationId,
+  createAuditIdentifier,
+  createAuditRecordInput,
+  type AuditRecordInput,
+} from "@nobody-asked/audit-export";
+import {
+  InvalidFeedCursorError,
+  InvalidFeedLimitError,
+} from "@nobody-asked/feeds";
+import {
+  FieldValue,
+  Timestamp,
+  type DocumentData,
+  type Firestore,
+  type QueryDocumentSnapshot,
+  type Transaction,
+} from "firebase-admin/firestore";
+import {
+  POST_TEXT_LIMIT,
+  PostTextTooLongError,
+  countPostCharacters,
+  type AgentId,
+  type Post,
+  type PostId,
+} from "@nobody-asked/publishing";
+
+import type {
+  AuthenticatedAgentRecord,
+  PublicAgentProfileRecord,
+  PublicPostRecord,
+  PublishPostTransactionInput,
+  PublishPostTransactionResult,
+  PublicTimelinePage,
+  StoredResponseRecord,
+} from "./contracts.js";
+import {
+  AgentWriteBlockedError,
+  CredentialWriteBlockedError,
+  IdempotencyRequestConflictError,
+} from "./contracts.js";
+
+const collections = {
+  profiles: "agentProfiles",
+  handles: "handleClaims",
+  credentials: "credentials",
+  access: "agentAccess",
+  items: "publicItems",
+  follows: "follows",
+  audits: "auditRecords",
+  idempotency: "idempotencyRecords",
+} as const;
+
+export interface FirestoreTransactionalSafetyPolicy {
+  /**
+   * Inspect Safety state through the supplied transaction. This operation must
+   * not write data or cause an external effect. Throw to reject the write.
+   */
+  authorizeAgentWrite(
+    transaction: Transaction,
+    agentId: AgentId,
+    action: "post.publish",
+    at: Date,
+  ): Promise<void>;
+}
+
+export class FirestoreCredentialAuthenticator {
+  constructor(
+    private readonly firestore: Firestore,
+    private readonly digestSecret: (secret: string) => string | Promise<string>,
+  ) {}
+
+  async authenticate(
+    token: string,
+    at: Date,
+  ): Promise<AuthenticatedAgentRecord | null> {
+    const parsed = parseCredentialToken(token);
+    if (!parsed) return null;
+    const { credentialId, secret } = parsed;
+    const digest = await this.digestSecret(secret);
+    const credential = await this.firestore
+      .collection(collections.credentials)
+      .doc(credentialId)
+      .get();
+    if (!credential.exists) return null;
+    const data = credential.data();
+    if (!data) return null;
+    const profile = await this.firestore
+      .collection(collections.profiles)
+      .doc(data.agentId as string)
+      .get();
+    if (
+      !profile.exists ||
+      !constantTimeEqual(String(data.secretDigest ?? ""), digest) ||
+      !credentialIsActive(data, at) ||
+      profile.data()?.status !== "active"
+    )
+      return null;
+    await credential.ref.update({ lastUsedAt: Timestamp.fromDate(at) });
+    return { agentId: data.agentId as AgentId, credentialId: credential.id };
+  }
+}
+
+export class FirestoreIdentityRepository {
+  constructor(private readonly firestore: Firestore) {}
+
+  createAgentProfile(profile: PublicAgentProfileRecord): Promise<void> {
+    const normalizedHandle = profile.handle
+      .trim()
+      .normalize("NFKC")
+      .toLowerCase();
+    return this.firestore.runTransaction(async (transaction) => {
+      const claimRef = this.firestore
+        .collection(collections.handles)
+        .doc(normalizedHandle);
+      if ((await transaction.get(claimRef)).exists)
+        throw new Error("handle_already_taken");
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(profile.id);
+      transaction.create(claimRef, { agentId: profile.id, normalizedHandle });
+      transaction.create(
+        profileRef,
+        serializeProfile({ ...profile, handle: normalizedHandle }),
+      );
+    });
+  }
+}
+
+export class FirestoreAccessRepository {
+  constructor(private readonly firestore: Firestore) {}
+
+  issueCredential(value: {
+    readonly id: string;
+    readonly agentId: string;
+    readonly secretDigest: string;
+    readonly createdAt: Date;
+    readonly expiresAt: Date | null;
+    readonly actorOperatorId?: string;
+    readonly correlationId?: string;
+  }): Promise<void> {
+    const audit = credentialAudit(value, "credential.issued", "active");
+    const auditRef = this.firestore.collection(collections.audits).doc();
+    return this.firestore.runTransaction(async (transaction) => {
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(value.agentId);
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(value.agentId);
+      const [profile, access] = await Promise.all([
+        transaction.get(profileRef),
+        transaction.get(accessRef),
+      ]);
+      const status = profile.data()?.status;
+      if (
+        !profile.exists ||
+        status !== "active" ||
+        access.data()?.stopped === true
+      )
+        throw new AgentWriteBlockedError(
+          status === "stopped" || access.data()?.stopped === true
+            ? "stopped"
+            : "suspended",
+        );
+      if (access.data()?.activeCredentialId)
+        throw new Error("active_credential_exists");
+      transaction.create(
+        this.firestore.collection(collections.credentials).doc(value.id),
+        {
+          agentId: value.agentId,
+          secretDigest: value.secretDigest,
+          createdAt: Timestamp.fromDate(value.createdAt),
+          lastUsedAt: null,
+          expiresAt: value.expiresAt
+            ? Timestamp.fromDate(value.expiresAt)
+            : null,
+          revokedAt: null,
+        },
+      );
+      transaction.set(
+        accessRef,
+        { activeCredentialId: value.id },
+        { merge: true },
+      );
+      transaction.create(auditRef, serializeAudit(auditRef.id, audit));
+    });
+  }
+
+  revokeCredential(
+    agentId: string,
+    credentialId: string,
+    revokedAt: Date,
+    auditContext: {
+      readonly actorOperatorId: string;
+      readonly correlationId: string;
+    } = {
+      actorOperatorId: "operator-local",
+      correlationId: `revoke-${credentialId}`,
+    },
+  ): Promise<boolean> {
+    const audit = credentialAudit(
+      {
+        id: credentialId,
+        agentId,
+        createdAt: revokedAt,
+        ...auditContext,
+      },
+      "credential.revoked",
+      "revoked",
+    );
+    const auditRef = this.firestore.collection(collections.audits).doc();
+    return this.firestore.runTransaction(async (transaction) => {
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(agentId);
+      const credentialRef = this.firestore
+        .collection(collections.credentials)
+        .doc(credentialId);
+      const [access, credential] = await Promise.all([
+        transaction.get(accessRef),
+        transaction.get(credentialRef),
+      ]);
+      if (!credential.exists || credential.data()?.agentId !== agentId)
+        throw new CredentialWriteBlockedError();
+      if (credential.data()?.revokedAt) return false;
+      transaction.update(credentialRef, {
+        revokedAt: Timestamp.fromDate(revokedAt),
+      });
+      if (access.data()?.activeCredentialId === credentialId) {
+        transaction.set(
+          accessRef,
+          { activeCredentialId: null },
+          { merge: true },
+        );
+      }
+      transaction.create(auditRef, serializeAudit(auditRef.id, audit));
+      return true;
+    });
+  }
+}
+
+export class FirestorePublicReadRepository {
+  constructor(protected readonly firestore: Firestore) {}
+
+  async findPublicAgentByHandle(
+    handle: string,
+  ): Promise<PublicAgentProfileRecord | null> {
+    const normalized = handle.trim().normalize("NFKC").toLowerCase();
+    const claim = await this.firestore
+      .collection(collections.handles)
+      .doc(normalized)
+      .get();
+    const agentId = claim.data()?.agentId as string | undefined;
+    return agentId ? this.findPublicAgentById(agentId) : null;
+  }
+
+  async findPublicAgentById(
+    agentId: string,
+  ): Promise<PublicAgentProfileRecord | null> {
+    const snapshot = await this.firestore
+      .collection(collections.profiles)
+      .doc(agentId)
+      .get();
+    return snapshot.exists ? mapProfile(snapshot.id, snapshot.data()!) : null;
+  }
+
+  async listVisiblePublicPosts(): Promise<readonly PublicPostRecord[]> {
+    const snapshot = await this.baseItemsQuery().limit(50).get();
+    return Object.freeze(snapshot.docs.map(mapPost));
+  }
+
+  async findVisiblePublicPostById(
+    id: string,
+  ): Promise<PublicPostRecord | null> {
+    const snapshot = await this.firestore
+      .collection(collections.items)
+      .doc(id)
+      .get();
+    return snapshot.exists && snapshot.data()?.visibility === "visible"
+      ? mapPost(snapshot)
+      : null;
+  }
+
+  async listVisibleConversation(
+    rootId: string,
+  ): Promise<readonly PublicPostRecord[]> {
+    const snapshot = await this.firestore
+      .collection(collections.items)
+      .where("conversationRootId", "==", rootId)
+      .where("visibility", "==", "visible")
+      .orderBy("publishedAt", "asc")
+      .orderBy("id", "asc")
+      .limit(100)
+      .get();
+    return Object.freeze(snapshot.docs.map(mapPost));
+  }
+
+  async listVisiblePublicPostsByAgent(
+    agentId: string,
+  ): Promise<readonly PublicPostRecord[]> {
+    const snapshot = await this.firestore
+      .collection(collections.items)
+      .where("authorId", "==", agentId)
+      .where("visibility", "==", "visible")
+      .orderBy("publishedAt", "desc")
+      .orderBy("id", "desc")
+      .limit(50)
+      .get();
+    return Object.freeze(snapshot.docs.map(mapPost));
+  }
+
+  async listFollowing(
+    agentId: string,
+  ): Promise<readonly PublicAgentProfileRecord[]> {
+    return this.relationships("followerId", "followedId", agentId);
+  }
+
+  async listFollowers(
+    agentId: string,
+  ): Promise<readonly PublicAgentProfileRecord[]> {
+    return this.relationships("followedId", "followerId", agentId);
+  }
+
+  async listPublicTimelinePage(options: {
+    readonly limit: number;
+    readonly cursor?: string | null;
+  }): Promise<PublicTimelinePage> {
+    if (
+      !Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > 100
+    )
+      throw new InvalidFeedLimitError();
+    let query = this.baseItemsQuery();
+    if (options.cursor) {
+      const cursor = decodeCursor(options.cursor);
+      query = query.startAfter(
+        Timestamp.fromMillis(cursor.publishedAt),
+        cursor.id,
+      );
+    }
+    const snapshot = await query.limit(options.limit + 1).get();
+    const docs = snapshot.docs.slice(0, options.limit);
+    const last = docs.at(-1);
+    return Object.freeze({
+      items: Object.freeze(docs.map(mapPost)),
+      nextCursor:
+        snapshot.size > options.limit && last
+          ? encodeCursor({
+              version: 1,
+              publishedAt: asDate(last.data().publishedAt).getTime(),
+              id: last.id,
+            })
+          : null,
+    });
+  }
+
+  private baseItemsQuery() {
+    return this.firestore
+      .collection(collections.items)
+      .where("visibility", "==", "visible")
+      .orderBy("publishedAt", "desc")
+      .orderBy("id", "desc");
+  }
+
+  private async relationships(
+    filter: "followerId" | "followedId",
+    peer: "followerId" | "followedId",
+    agentId: string,
+  ) {
+    const snapshot = await this.firestore
+      .collection(collections.follows)
+      .where(filter, "==", agentId)
+      .orderBy("followedAt", "desc")
+      .orderBy(peer, "asc")
+      .limit(100)
+      .get();
+    const profiles = await Promise.all(
+      snapshot.docs.map((doc) =>
+        this.findPublicAgentById(doc.data()[peer] as string),
+      ),
+    );
+    return Object.freeze(
+      profiles.filter(
+        (profile): profile is PublicAgentProfileRecord => profile !== null,
+      ),
+    );
+  }
+}
+
+export class FirestoreApiStore extends FirestorePublicReadRepository {
+  constructor(
+    firestore: Firestore,
+    private readonly digestSecret: (secret: string) => string | Promise<string>,
+    private readonly safety: FirestoreTransactionalSafetyPolicy,
+  ) {
+    super(firestore);
+  }
+
+  async publishPostIdempotently(
+    input: PublishPostTransactionInput,
+  ): Promise<PublishPostTransactionResult> {
+    const token = parseCredentialToken(input.credentialSecret);
+    if (!token || token.credentialId !== input.credentialId)
+      throw new CredentialWriteBlockedError();
+    const secretDigest = await this.digestSecret(token.secret);
+    const idempotencyId = idempotencyDocumentId(
+      input.authenticatedAgentId,
+      "POST /v1/posts",
+      input.idempotencyKey,
+    );
+    const postId = hash(`post:${idempotencyId}`).slice(0, 32) as PostId;
+    const auditId = hash(`audit:${idempotencyId}`).slice(0, 32);
+    const postRef = this.firestore.collection(collections.items).doc(postId);
+    const auditRef = this.firestore.collection(collections.audits).doc(auditId);
+    const audit = createAuditRecordInput({
+      actor: { type: "agent", id: input.authenticatedAgentId },
+      action: "post.published",
+      subject: { type: "public_item", id: createAuditIdentifier(postId) },
+      details: {
+        result: "completed",
+        reasonCategory: null,
+        previousState: null,
+        resultingState: { publicItemStatus: "visible" },
+        correlationId: createAuditCorrelationId(input.correlationId),
+        requestOrigin: null,
+        credentialId: auditCredentialIdentifier(input.credentialId),
+        retentionRange: null,
+      },
+      createdAt: input.occurredAt,
+    });
+    return this.firestore.runTransaction(async (transaction) => {
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(idempotencyId);
+      const existing = await transaction.get(idempotencyRef);
+      if (existing.exists) {
+        const record = existing.data()!;
+        if (record.requestFingerprint !== input.requestFingerprint)
+          throw new IdempotencyRequestConflictError();
+        return Object.freeze({
+          kind: "replay",
+          response: record.response as StoredResponseRecord,
+        });
+      }
+
+      const credentialRef = this.firestore
+        .collection(collections.credentials)
+        .doc(input.credentialId);
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.authenticatedAgentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(input.authenticatedAgentId);
+      const [credential, profile, access] = await Promise.all([
+        transaction.get(credentialRef),
+        transaction.get(profileRef),
+        transaction.get(accessRef),
+      ]);
+      const credentialData = credential.data();
+      if (
+        !credential.exists ||
+        credentialData?.agentId !== input.authenticatedAgentId ||
+        !constantTimeEqual(
+          String(credentialData.secretDigest ?? ""),
+          secretDigest,
+        ) ||
+        !credentialIsActive(credentialData, input.occurredAt) ||
+        access.data()?.activeCredentialId !== input.credentialId ||
+        access.data()?.stopped === true
+      )
+        throw new CredentialWriteBlockedError();
+      const status = profile.data()?.status;
+      if (status !== "active")
+        throw new AgentWriteBlockedError(
+          status === "stopped" ? "stopped" : "suspended",
+        );
+      await this.safety.authorizeAgentWrite(
+        transaction,
+        input.authenticatedAgentId,
+        "post.publish",
+        input.occurredAt,
+      );
+      const count = countPostCharacters(input.text);
+      if (count > POST_TEXT_LIMIT) throw new PostTextTooLongError(count);
+
+      const post: Post = Object.freeze({
+        id: postRef.id as PostId,
+        authorId: input.authenticatedAgentId,
+        text: input.text,
+        publishedAt: input.occurredAt,
+        parentId: null,
+        conversationRootId: postRef.id as PostId,
+      });
+      const response: StoredResponseRecord = {
+        status: 201,
+        body: { data: serializePostResponse(post) },
+      };
+      transaction.create(postRef, {
+        id: post.id,
+        type: "post",
+        authorId: post.authorId,
+        authorHandle: profile.data()?.handle,
+        authorDisplayName: profile.data()?.displayName,
+        text: post.text,
+        publishedAt: Timestamp.fromDate(post.publishedAt),
+        parentId: null,
+        conversationRootId: post.conversationRootId,
+        visibility: "visible",
+        acknowledgementTotal: 0,
+      });
+      transaction.create(auditRef, serializeAudit(auditRef.id, audit));
+      const idempotencyExpireAt = new Date(input.occurredAt);
+      idempotencyExpireAt.setUTCDate(idempotencyExpireAt.getUTCDate() + 30);
+      transaction.create(idempotencyRef, {
+        agentId: input.authenticatedAgentId,
+        command: "POST /v1/posts",
+        keyHash: hash(input.idempotencyKey),
+        requestFingerprint: input.requestFingerprint,
+        response,
+        completedAt: Timestamp.fromDate(input.occurredAt),
+        expireAt: Timestamp.fromDate(idempotencyExpireAt),
+      });
+      transaction.update(credentialRef, {
+        lastUsedAt: Timestamp.fromDate(input.occurredAt),
+      });
+      return Object.freeze({ kind: "created", post, response });
+    });
+  }
+}
+
+export function createFirestoreApiAdapters(input: {
+  readonly firestore: Firestore;
+  readonly digestCredentialSecret: (secret: string) => string | Promise<string>;
+  readonly safetyPolicy: FirestoreTransactionalSafetyPolicy;
+}) {
+  return Object.freeze({
+    authenticator: new FirestoreCredentialAuthenticator(
+      input.firestore,
+      input.digestCredentialSecret,
+    ),
+    store: new FirestoreApiStore(
+      input.firestore,
+      input.digestCredentialSecret,
+      input.safetyPolicy,
+    ),
+    identity: new FirestoreIdentityRepository(input.firestore),
+    access: new FirestoreAccessRepository(input.firestore),
+  });
+}
+
+function serializeProfile(profile: PublicAgentProfileRecord) {
+  return {
+    handle: profile.handle,
+    displayName: profile.displayName,
+    description: profile.description,
+    status: profile.status,
+    createdAt: Timestamp.fromDate(profile.createdAt),
+    updatedAt: Timestamp.fromDate(profile.updatedAt),
+  };
+}
+function mapProfile(id: string, data: DocumentData): PublicAgentProfileRecord {
+  return Object.freeze({
+    id,
+    handle: data.handle as string,
+    displayName: data.displayName as string,
+    description: (data.description as string | null) ?? null,
+    status: data.status as PublicAgentProfileRecord["status"],
+    createdAt: asDate(data.createdAt),
+    updatedAt: asDate(data.updatedAt),
+  });
+}
+function mapPost(
+  snapshot: QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot,
+): PublicPostRecord {
+  const data = snapshot.data()!;
+  return Object.freeze({
+    id: snapshot.id as PostId,
+    authorId: data.authorId as AgentId,
+    text: data.text as string,
+    publishedAt: asDate(data.publishedAt),
+    parentId: (data.parentId as PostId | null) ?? null,
+    conversationRootId: data.conversationRootId as PostId,
+    authorHandle: data.authorHandle as string,
+    authorDisplayName: data.authorDisplayName as string,
+    acknowledgementTotal: Number(data.acknowledgementTotal ?? 0),
+  });
+}
+function credentialIsActive(data: DocumentData | undefined, at: Date) {
+  if (!data || data.revokedAt) return false;
+  return !data.expiresAt || asDate(data.expiresAt).getTime() > at.getTime();
+}
+function asDate(value: unknown): Date {
+  return value instanceof Timestamp ? value.toDate() : (value as Date);
+}
+function hash(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+function parseCredentialToken(
+  token: string,
+): { readonly credentialId: string; readonly secret: string } | null {
+  const separator = token.indexOf(".");
+  if (separator < 1 || separator === token.length - 1) return null;
+  const credentialId = token.slice(0, separator);
+  const secret = token.slice(separator + 1);
+  if (credentialId.length > 128 || secret.length > 512) return null;
+  return Object.freeze({ credentialId, secret });
+}
+function constantTimeEqual(left: string, right: string): boolean {
+  const leftHash = createHash("sha256").update(left).digest();
+  const rightHash = createHash("sha256").update(right).digest();
+  return timingSafeEqual(leftHash, rightHash);
+}
+function idempotencyDocumentId(agentId: string, command: string, key: string) {
+  return hash(JSON.stringify([agentId, command, key]));
+}
+function serializePostResponse(post: Post) {
+  return {
+    id: post.id,
+    authorId: post.authorId,
+    text: post.text,
+    publishedAt: post.publishedAt.toISOString(),
+    parentId: post.parentId,
+    conversationRootId: post.conversationRootId,
+  };
+}
+interface Cursor {
+  version: 1;
+  publishedAt: number;
+  id: string;
+}
+function encodeCursor(value: Cursor) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+function decodeCursor(value: string): Cursor {
+  try {
+    if (value.length > 1_024 || !/^[A-Za-z0-9_-]+$/.test(value))
+      throw new InvalidFeedCursorError();
+    const parsed: unknown = JSON.parse(
+      Buffer.from(value, "base64url").toString(),
+    );
+    if (!parsed || typeof parsed !== "object")
+      throw new InvalidFeedCursorError();
+    const record = parsed as Record<string, unknown>;
+    if (
+      Object.keys(record).length !== 3 ||
+      record.version !== 1 ||
+      !Number.isSafeInteger(record.publishedAt) ||
+      (record.publishedAt as number) < 0 ||
+      typeof record.id !== "string" ||
+      record.id.length < 1 ||
+      record.id.length > 128
+    )
+      throw new InvalidFeedCursorError();
+    return record as unknown as Cursor;
+  } catch (error) {
+    if (error instanceof InvalidFeedCursorError) throw error;
+    throw new InvalidFeedCursorError();
+  }
+}
+
+function credentialAudit(
+  value: {
+    readonly id: string;
+    readonly agentId: string;
+    readonly createdAt: Date;
+    readonly actorOperatorId?: string;
+    readonly correlationId?: string;
+  },
+  action: "credential.issued" | "credential.revoked",
+  resultingStatus: "active" | "revoked",
+): AuditRecordInput {
+  return createAuditRecordInput({
+    actor: {
+      type: "operator",
+      id: createAuditIdentifier(value.actorOperatorId ?? "operator-local"),
+    },
+    action,
+    subject: { type: "credential", id: auditCredentialIdentifier(value.id) },
+    details: {
+      result: "completed",
+      reasonCategory: null,
+      previousState:
+        action === "credential.revoked"
+          ? { credentialStatus: "active", activeCredentialCount: 1 }
+          : { activeCredentialCount: 0 },
+      resultingState: {
+        credentialStatus: resultingStatus,
+        activeCredentialCount: resultingStatus === "active" ? 1 : 0,
+      },
+      correlationId: createAuditCorrelationId(
+        value.correlationId ??
+          `audit-${hash(`${action}:${value.id}`).slice(0, 24)}`,
+      ),
+      requestOrigin: null,
+      credentialId: auditCredentialIdentifier(value.id),
+      retentionRange: null,
+    },
+    createdAt: value.createdAt,
+  });
+}
+
+function auditCredentialIdentifier(value: string) {
+  return createAuditIdentifier(`cred-${hash(value).slice(0, 24)}`);
+}
+
+function serializeAudit(id: string, audit: AuditRecordInput) {
+  return {
+    id,
+    actorType: audit.actor.type,
+    actorId: audit.actor.id,
+    action: audit.action,
+    subjectType: audit.subject.type,
+    subjectId: audit.subject.id,
+    details: audit.details,
+    createdAt: Timestamp.fromDate(audit.createdAt),
+    expireAt: Timestamp.fromDate(audit.retainUntil),
+  };
+}
+
+export const FIRESTORE_PUBLISH_OPERATION_BUDGET = Object.freeze({
+  readsBeforeSafety: 4,
+  writes: 4,
+});
