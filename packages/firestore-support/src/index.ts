@@ -1,4 +1,5 @@
 export * from "./admin.js";
 export * from "./reset.js";
+export * from "./remote-index-smoke.js";
 export * from "./run-emulator.js";
 export * from "./seed.js";
