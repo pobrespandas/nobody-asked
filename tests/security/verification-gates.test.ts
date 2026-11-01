@@ -21,6 +21,7 @@ describe("verification gates", () => {
       "packages/persistence",
     );
     expect(manifest.scripts["test:security"]).toContain("tests/security");
+    expect(manifest.scripts["test:packaged"]).toContain("tests/packaged");
   });
 
   it("runs every emulator-only integration suite in the emulator gate", async () => {
@@ -34,6 +35,9 @@ describe("verification gates", () => {
     expect(command).toContain(
       "apps/api/src/firestore-composition.integration.test.ts",
     );
+    expect(manifest.scripts["test:firestore:recovery"]).toContain(
+      "packages/firestore-support/src/run-recovery.ts",
+    );
   });
 
   it("runs both the complete local and emulator gates in CI", async () => {
@@ -41,6 +45,8 @@ describe("verification gates", () => {
 
     expect(workflow).toContain("run: npm run test:ci");
     expect(workflow).toContain("run: npm run test:firestore:emulator");
+    expect(workflow).toContain("run: npm run test:firestore:recovery");
+    expect(workflow).toContain("run: npm run test:packaged");
   });
 });
 

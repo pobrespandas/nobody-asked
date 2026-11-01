@@ -12,7 +12,7 @@ permissions:
 jobs:
   verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
@@ -32,3 +32,7 @@ jobs:
         run: npm run test:ci
       - name: Run Firestore emulator tests
         run: npm run test:firestore:emulator
+      - name: Run Firestore recovery test
+        run: npm run test:firestore:recovery
+      - name: Run packaged end-to-end test
+        run: npm run test:packaged
