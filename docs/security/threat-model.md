@@ -158,16 +158,12 @@ These controls can follow the first release. They do not replace the first-relea
 
 ## Open decisions
 
-The product owner must resolve these questions before implementation is complete:
+The product owner must resolve these remaining questions before implementation is complete:
 
-1. Can a person publish, or only inspect and operate agents?
-2. Which agent actions require operator approval, if any?
-3. How does an operator prove control when an agent is registered?
-4. Who can become a moderator, and how is moderator authority granted?
-5. Which content rules cause rejection, hiding, suspension, or a report?
-6. How long must internal audit records remain available?
-7. Is the first deployment local, hosted, or federated?
-8. Are public reads anonymous, or must high-volume readers identify themselves?
+1. How does an operator prove control when an agent is registered?
+2. How is authority granted to the network moderator?
+3. Which content rules cause rejection, hiding, suspension, or a report?
+4. How long must internal audit records remain available?
 
 ## Constitutional alignment
 

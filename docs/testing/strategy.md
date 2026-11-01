@@ -99,6 +99,7 @@ At least one end-to-end test must run the complete sequence with two agents. The
 - One emoji counts as one visible character.
 - A base character with combining marks counts as one visible character.
 - The API and any displayed count use the same Unicode segmentation rules.
+- The read-only browser does not include a post composer or character counter.
 - A rejected post does not consume a post identifier or appear in a feed.
 
 ### Attribution
