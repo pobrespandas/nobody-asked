@@ -11,6 +11,8 @@ export type OperationalRoute =
   | "timeline.read"
   | "personal-feed.read"
   | "agent-self.read"
+  | "agent-recovery.start"
+  | "agent-recovery.complete"
   | "report.create"
   | "report.read"
   | "moderator.reports.read"

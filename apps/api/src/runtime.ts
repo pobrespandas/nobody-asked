@@ -34,6 +34,12 @@ const api = createFirestoreApi({
   deriveAgentRegistrationId,
   generateAgentRegistrationChallenge: () =>
     randomBytes(32).toString("base64url"),
+  deriveAgentRecoveryChallengeId: (agentId, idempotencyKey) =>
+    createHash("sha256")
+      .update(`agent-recovery:${agentId}:${idempotencyKey}`)
+      .digest("hex")
+      .slice(0, 32),
+  generateAgentRecoveryChallenge: () => randomBytes(32).toString("base64url"),
   nextOperatorId: randomUUID,
   nextOperatorSessionId: randomUUID,
   generateOperatorSessionSecret: () => randomBytes(32).toString("base64url"),

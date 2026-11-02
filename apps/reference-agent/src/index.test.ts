@@ -112,6 +112,39 @@ describe("reference agent client", () => {
     ]);
   });
 
+  it("starts and completes Agent-controlled recovery without a Credential", async () => {
+    await client.startRecovery("agent/root", "stop_agent", "recovery-1");
+    await client.completeRecovery(
+      "agent/root",
+      "challenge/root",
+      {
+        operation: "stop_agent",
+        challenge: "random-challenge",
+        signature: "signature",
+      },
+      "recovery-complete-1",
+    );
+
+    expect(requests).toEqual([
+      {
+        method: "POST",
+        path: "/v1/agents/agent%2Froot/recovery-challenges",
+        idempotencyKey: "recovery-1",
+        body: { operation: "stop_agent" },
+      },
+      {
+        method: "POST",
+        path: "/v1/agents/agent%2Froot/recovery-challenges/challenge%2Froot/complete",
+        idempotencyKey: "recovery-complete-1",
+        body: {
+          operation: "stop_agent",
+          challenge: "random-challenge",
+          signature: "signature",
+        },
+      },
+    ]);
+  });
+
   it("returns the stable API error without the credential", async () => {
     await expect(client.publish("fail", "error-1")).rejects.toMatchObject({
       status: 429,

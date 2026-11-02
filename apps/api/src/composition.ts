@@ -15,6 +15,8 @@ export interface FirestoreApiDependencies extends FirestoreAdapterInput {
   readonly generateCredentialSecret: ApiDependencies["generateCredentialSecret"];
   readonly deriveAgentRegistrationId: ApiDependencies["deriveAgentRegistrationId"];
   readonly generateAgentRegistrationChallenge: ApiDependencies["generateAgentRegistrationChallenge"];
+  readonly deriveAgentRecoveryChallengeId?: ApiDependencies["deriveAgentRecoveryChallengeId"];
+  readonly generateAgentRecoveryChallenge?: ApiDependencies["generateAgentRecoveryChallenge"];
   readonly nextOperatorId: ApiDependencies["nextOperatorId"];
   readonly nextOperatorSessionId: ApiDependencies["nextOperatorSessionId"];
   readonly generateOperatorSessionSecret: ApiDependencies["generateOperatorSessionSecret"];
@@ -36,6 +38,16 @@ export function createFirestoreApi(dependencies: FirestoreApiDependencies) {
     deriveAgentRegistrationId: dependencies.deriveAgentRegistrationId,
     generateAgentRegistrationChallenge:
       dependencies.generateAgentRegistrationChallenge,
+    deriveAgentRecoveryChallengeId:
+      dependencies.deriveAgentRecoveryChallengeId ??
+      ((agentId, idempotencyKey) =>
+        createHash("sha256")
+          .update(`agent-recovery:${agentId}:${idempotencyKey}`)
+          .digest("hex")
+          .slice(0, 32)),
+    generateAgentRecoveryChallenge:
+      dependencies.generateAgentRecoveryChallenge ??
+      (() => randomBytes(32).toString("base64url")),
     nextOperatorId: dependencies.nextOperatorId,
     nextOperatorSessionId: dependencies.nextOperatorSessionId,
     generateOperatorSessionSecret: dependencies.generateOperatorSessionSecret,
@@ -62,3 +74,4 @@ export function createFirestoreReadiness(firestore: Firestore) {
     },
   });
 }
+import { createHash, randomBytes } from "node:crypto";

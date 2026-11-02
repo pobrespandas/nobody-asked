@@ -209,7 +209,31 @@ function harness() {
       records.set(`${record.agentId}:${record.route}:${record.key}`, record);
     },
   };
+  const startAgentRecovery = vi.fn(
+    async (_input: Parameters<ApiStore["startAgentRecovery"]>[0]) => ({
+      created: true,
+      expiresAt: new Date(at.getTime() + 10 * 60_000),
+    }),
+  );
+  const completeAgentRecovery = vi.fn(
+    (
+      input: Parameters<ApiStore["completeAgentRecovery"]>[0],
+    ): ReturnType<ApiStore["completeAgentRecovery"]> =>
+      Promise.resolve({
+        kind: "created" as const,
+        operation: input.operation,
+        agentId: input.agentId,
+        credentialId: input.credentialId ?? null,
+        status:
+          input.operation === "stop_agent"
+            ? ("stopped" as const)
+            : ("active" as const),
+        completedAt: input.occurredAt,
+      }),
+  );
   const store: ApiStore = {
+    startAgentRecovery,
+    completeAgentRecovery,
     startAgentRegistration,
     completeAgentRegistration,
     createOperatorInvitation: vi.fn(async (input) => ({
@@ -425,6 +449,8 @@ function harness() {
     generateCredentialSecret: () => "generated-secret",
     deriveAgentRegistrationId: () => "registration-1",
     generateAgentRegistrationChallenge: () => "registration-challenge",
+    deriveAgentRecoveryChallengeId: () => "recovery-challenge-1",
+    generateAgentRecoveryChallenge: () => "recovery-secret-1",
     nextOperatorId: () => "operator-2",
     nextOperatorSessionId: () => "session-2",
     generateOperatorSessionSecret: () => "operator-session-secret-2",
@@ -455,6 +481,8 @@ function harness() {
     acknowledgeIdempotently,
     startAgentRegistration,
     completeAgentRegistration,
+    startAgentRecovery,
+    completeAgentRecovery,
     registerOperatorAgent,
     runOperatorCredentialCommand,
     runOperatorAgentControl,
@@ -638,6 +666,99 @@ describe("autonomous Agent registration", () => {
         },
       });
     }
+  });
+});
+
+describe("Agent-controlled recovery", () => {
+  const nextRecoveryPublicKey = {
+    kty: "OKP",
+    crv: "Ed25519",
+    x: "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+  };
+
+  it("requires idempotency and returns the exact signed message", async () => {
+    const { api, startAgentRecovery } = harness();
+    const missingKey = await api(
+      new Request(
+        "https://network.test/v1/agents/agent-new/recovery-challenges",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ operation: "stop_agent" }),
+        },
+      ),
+    );
+    const response = await api(
+      new Request(
+        "https://network.test/v1/agents/agent-new/recovery-challenges",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": "recover-1",
+          },
+          body: JSON.stringify({
+            operation: "replace_recovery_key",
+            recoveryPublicKey: nextRecoveryPublicKey,
+          }),
+        },
+      ),
+    );
+    const body = (await response.json()) as {
+      data: { proof: { message: string } };
+    };
+    const input = startAgentRecovery.mock.calls[0]![0];
+
+    expect(missingKey.status).toBe(400);
+    expect(response.status).toBe(201);
+    expect(input).toMatchObject({
+      agentId: "agent-new",
+      challengeId: "recovery-challenge-1",
+      operation: "replace_recovery_key",
+      idempotencyKey: "recover-1",
+      challenge: "recovery-secret-1",
+    });
+    expect(body.data.proof.message).toBe(
+      `nobody-asked-agent-proof-v1:replace_recovery_key:agent-new:recovery-challenge-1:${input.inputFingerprint}:recovery-secret-1`,
+    );
+  });
+
+  it("returns a replacement Credential once and gives stable replay recovery", async () => {
+    const first = harness();
+    const request = () =>
+      new Request(
+        "https://network.test/v1/agents/agent-new/recovery-challenges/recovery-1/complete",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": "complete-1",
+          },
+          body: JSON.stringify({
+            operation: "replace_credential",
+            challenge: "challenge",
+            signature: "signature",
+          }),
+        },
+      );
+    const created = await first.api(request());
+    first.completeAgentRecovery.mockImplementationOnce(async (input) => ({
+      kind: "replay",
+      operation: input.operation,
+      agentId: input.agentId,
+      credentialId: "credential-new",
+      status: "active",
+      completedAt: input.occurredAt,
+    }));
+    const replay = await first.api(request());
+
+    await expect(created.json()).resolves.toMatchObject({
+      data: { credential: "credential-new.generated-secret" },
+    });
+    expect(replay.status).toBe(409);
+    await expect(replay.json()).resolves.toMatchObject({
+      error: { code: "credential_secret_unavailable" },
+    });
   });
 });
 
@@ -1040,7 +1161,7 @@ describe("operational endpoints and logs", () => {
     expect(capabilityResponse.headers.get("cache-control")).toBe("no-cache");
     expect(capability).toMatchObject({
       apiVersion: "v1",
-      contract: { href: "/v1/openapi.json", version: "1.0.2" },
+      contract: { href: "/v1/openapi.json", version: "1.0.3" },
       integrations: {
         agentSkill: {
           href: "/skills/nobody-asked/SKILL.md",

@@ -2,16 +2,21 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
   AgentProofRejectedError,
+  agentRecoveryInputFingerprint,
   assertInvitationEnrollment,
   assertOperatorAuthentication,
   consumeAgentRegistration,
+  consumeAgentRecovery,
+  createAgentRecoveryChallenge,
   createAgentRegistrationAttempt,
   createOperatorSession,
   OperatorAuthenticationRejectedError,
   OperatorEnrollmentRejectedError,
   UnsafeOperatorSecretDigestError,
   type OperatorSessionRecord,
+  type AgentRecoveryOperation,
   type Ed25519PublicJwk,
+  validateAgentRecoveryKey,
 } from "@nobody-asked/access";
 import {
   createPortableAgentExport,
@@ -87,6 +92,9 @@ import type {
   StartAgentRegistrationInput,
   CompleteAgentRegistrationInput,
   CompleteAgentRegistrationResult,
+  StartAgentRecoveryInput,
+  CompleteAgentRecoveryInput,
+  CompleteAgentRecoveryResult,
   StoredResponseRecord,
   SubmitReportTransactionInput,
   ReviewReportTransactionInput,
@@ -125,6 +133,7 @@ const collections = {
   operatorSessions: "operatorSessions",
   agentRegistrations: "agentRegistrations",
   recoveryKeys: "agentRecoveryKeys",
+  recoveryChallenges: "agentRecoveryChallenges",
   items: "publicItems",
   follows: "follows",
   acknowledgements: "acknowledgements",
@@ -946,6 +955,320 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         credentialId,
       });
       return Object.freeze({ kind: "created" as const, registration });
+    });
+  }
+
+  async startAgentRecovery(
+    input: StartAgentRecoveryInput,
+  ): Promise<Readonly<{ created: boolean; expiresAt: Date }>> {
+    const challenge = createAgentRecoveryChallenge({
+      id: input.challengeId,
+      agentId: input.agentId,
+      operation: input.operation,
+      inputFingerprint: input.inputFingerprint,
+      challenge: input.challenge,
+      createdAt: input.createdAt,
+    });
+    if (
+      input.operation !== "replace_recovery_key" &&
+      agentRecoveryInputFingerprint(input.operation) !== input.inputFingerprint
+    ) {
+      throw new AgentProofRejectedError();
+    }
+    const challengeDigest = await this.digestSecret(input.challenge);
+    if (!challengeDigest || challengeDigest === input.challenge) {
+      throw new AgentProofRejectedError();
+    }
+    return this.firestore.runTransaction(async (transaction) => {
+      const challengeRef = this.firestore
+        .collection(collections.recoveryChallenges)
+        .doc(input.challengeId);
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.agentId);
+      const recoveryKeyRef = this.firestore
+        .collection(collections.recoveryKeys)
+        .doc(input.agentId);
+      const [existing, profile, recoveryKey] = await Promise.all([
+        transaction.get(challengeRef),
+        transaction.get(profileRef),
+        transaction.get(recoveryKeyRef),
+      ]);
+      if (existing.exists) {
+        const data = existing.data()!;
+        if (
+          data.agentId !== input.agentId ||
+          data.operation !== input.operation ||
+          data.inputFingerprint !== input.inputFingerprint ||
+          data.idempotencyKeyHash !== hash(input.idempotencyKey)
+        ) {
+          throw new IdempotencyRequestConflictError();
+        }
+        return Object.freeze({
+          created: false,
+          expiresAt: asDate(data.expiresAt),
+        });
+      }
+      if (!profile.exists) throw new AgentNotFoundError();
+      const status = profile.data()?.status;
+      if (status !== "active") {
+        throw new AgentWriteBlockedError(
+          status === "suspended" ? "suspended" : "stopped",
+        );
+      }
+      if (!recoveryKey.exists || recoveryKey.data()?.revokedAt) {
+        throw new AgentProofRejectedError();
+      }
+      transaction.create(challengeRef, {
+        agentId: input.agentId,
+        operation: input.operation,
+        inputFingerprint: input.inputFingerprint,
+        idempotencyKeyHash: hash(input.idempotencyKey),
+        challengeDigest,
+        createdAt: Timestamp.fromDate(challenge.createdAt),
+        expiresAt: Timestamp.fromDate(challenge.expiresAt),
+        consumedAt: null,
+        completionIdempotencyId: null,
+        recoveryPublicKey: recoveryKey.data()!.publicKey,
+      });
+      return Object.freeze({ created: true, expiresAt: challenge.expiresAt });
+    });
+  }
+
+  async completeAgentRecovery(
+    input: CompleteAgentRecoveryInput,
+  ): Promise<CompleteAgentRecoveryResult> {
+    const challengeDigest = await this.digestSecret(input.challenge);
+    const requestFingerprint = agentRecoveryInputFingerprint(
+      input.operation,
+      input.recoveryPublicKey,
+    );
+    if (requestFingerprint !== input.inputFingerprint) {
+      throw new AgentProofRejectedError();
+    }
+    if (
+      input.operation === "replace_credential" &&
+      (!input.credentialId || !input.credentialSecretDigest)
+    ) {
+      throw new TypeError("Credential replacement data is required.");
+    }
+    const idempotencyId = idempotencyDocumentId(
+      input.agentId,
+      `POST /v1/agents/{agentId}/recovery-challenges/{challengeId}/complete:${input.operation}`,
+      input.idempotencyKey,
+    );
+    return this.firestore.runTransaction(async (transaction) => {
+      const challengeRef = this.firestore
+        .collection(collections.recoveryChallenges)
+        .doc(input.challengeId);
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.agentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(input.agentId);
+      const recoveryKeyRef = this.firestore
+        .collection(collections.recoveryKeys)
+        .doc(input.agentId);
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(idempotencyId);
+      const credentialsQuery = this.firestore
+        .collection(collections.credentials)
+        .where("agentId", "==", input.agentId);
+      const [
+        challengeSnapshot,
+        profile,
+        access,
+        recoveryKey,
+        existing,
+        credentials,
+      ] = await Promise.all([
+        transaction.get(challengeRef),
+        transaction.get(profileRef),
+        transaction.get(accessRef),
+        transaction.get(recoveryKeyRef),
+        transaction.get(idempotencyRef),
+        transaction.get(credentialsQuery),
+      ]);
+      const data = challengeSnapshot.data();
+      if (
+        !challengeSnapshot.exists ||
+        !data ||
+        data.agentId !== input.agentId ||
+        data.operation !== input.operation ||
+        data.inputFingerprint !== input.inputFingerprint ||
+        !challengeDigest ||
+        !constantTimeEqual(
+          String(data.challengeDigest ?? ""),
+          challengeDigest,
+        ) ||
+        !profile.exists ||
+        !recoveryKey.exists ||
+        recoveryKey.data()?.revokedAt
+      ) {
+        throw new AgentProofRejectedError();
+      }
+      const completedAt = optionalDate(data.consumedAt);
+      const proof = createAgentRecoveryChallenge({
+        id: input.challengeId,
+        agentId: input.agentId,
+        operation: input.operation,
+        inputFingerprint: input.inputFingerprint,
+        challenge: input.challenge,
+        createdAt: asDate(data.createdAt),
+      });
+      consumeAgentRecovery({
+        recoveryPublicKey: data.recoveryPublicKey as Ed25519PublicJwk,
+        challenge: {
+          ...proof,
+          expiresAt: asDate(data.expiresAt),
+          consumedAt: null,
+        },
+        signature: input.signature,
+        at: completedAt ?? input.occurredAt,
+      });
+      if (existing.exists) {
+        if (existing.data()?.requestFingerprint !== requestFingerprint) {
+          throw new IdempotencyRequestConflictError();
+        }
+        return mapAgentRecoveryResult(existing.data()!);
+      }
+      if (completedAt) throw new AgentProofRejectedError();
+      const status = profile.data()?.status;
+      if (status !== "active") {
+        throw new AgentWriteBlockedError(
+          status === "suspended" ? "suspended" : "stopped",
+        );
+      }
+      const activeCredentials = credentials.docs.filter((credential) =>
+        credentialIsActive(credential.data(), input.occurredAt),
+      );
+      let credentialId: string | null = null;
+      let resultingStatus: "active" | "stopped" = "active";
+      let audit: AuditRecordInput;
+      if (input.operation === "replace_credential") {
+        credentialId = input.credentialId!;
+        const credentialRef = this.firestore
+          .collection(collections.credentials)
+          .doc(credentialId);
+        if ((await transaction.get(credentialRef)).exists) {
+          throw new ActiveCredentialExistsError();
+        }
+        for (const credential of activeCredentials) {
+          transaction.update(credential.ref, {
+            revokedAt: Timestamp.fromDate(input.occurredAt),
+          });
+        }
+        transaction.create(credentialRef, {
+          agentId: input.agentId,
+          secretDigest: input.credentialSecretDigest,
+          createdAt: Timestamp.fromDate(input.occurredAt),
+          lastUsedAt: null,
+          expiresAt: null,
+          revokedAt: null,
+        });
+        transaction.set(
+          accessRef,
+          { activeCredentialId: credentialId, stopped: false },
+          { merge: true },
+        );
+        audit = agentRecoveryAudit({
+          agentId: input.agentId,
+          action: "credential.rotated",
+          subjectType: "credential",
+          subjectId: auditCredentialIdentifier(credentialId),
+          previousState: { activeCredentialCount: activeCredentials.length },
+          resultingState: {
+            credentialStatus: "active",
+            activeCredentialCount: 1,
+          },
+          occurredAt: input.occurredAt,
+          correlationId: input.correlationId,
+          credentialId,
+        });
+      } else if (input.operation === "replace_recovery_key") {
+        const publicKey = validateAgentRecoveryKey(input.recoveryPublicKey!);
+        transaction.update(recoveryKeyRef, {
+          publicKey,
+          replacedAt: Timestamp.fromDate(input.occurredAt),
+          createdAt: Timestamp.fromDate(input.occurredAt),
+          revokedAt: null,
+        });
+        audit = agentRecoveryAudit({
+          agentId: input.agentId,
+          action: "recovery_key.replaced",
+          subjectType: "recovery_key",
+          subjectId: createAuditIdentifier(input.agentId),
+          previousState: null,
+          resultingState: { agentStatus: "active" },
+          occurredAt: input.occurredAt,
+          correlationId: input.correlationId,
+          credentialId: null,
+        });
+      } else {
+        resultingStatus = "stopped";
+        for (const credential of activeCredentials) {
+          transaction.update(credential.ref, {
+            revokedAt: Timestamp.fromDate(input.occurredAt),
+          });
+        }
+        transaction.update(profileRef, {
+          status: "stopped",
+          updatedAt: Timestamp.fromDate(input.occurredAt),
+        });
+        transaction.set(
+          accessRef,
+          { activeCredentialId: null, stopped: true },
+          { merge: true },
+        );
+        audit = agentRecoveryAudit({
+          agentId: input.agentId,
+          action: "agent.stopped",
+          subjectType: "agent",
+          subjectId: createAuditIdentifier(input.agentId),
+          previousState: {
+            agentStatus: "active",
+            activeCredentialCount: activeCredentials.length,
+          },
+          resultingState: {
+            agentStatus: "stopped",
+            activeCredentialCount: 0,
+          },
+          occurredAt: input.occurredAt,
+          correlationId: input.correlationId,
+          credentialId: null,
+        });
+      }
+      const auditRef = this.firestore
+        .collection(collections.audits)
+        .doc(hash(`audit:agent-recovery:${idempotencyId}`).slice(0, 32));
+      transaction.create(auditRef, serializeAudit(auditRef.id, audit));
+      const expireAt = new Date(input.occurredAt);
+      expireAt.setUTCDate(expireAt.getUTCDate() + 30);
+      transaction.create(idempotencyRef, {
+        actorId: input.agentId,
+        command: `agent-recovery:${input.operation}`,
+        requestFingerprint,
+        operation: input.operation,
+        agentId: input.agentId,
+        credentialId,
+        status: resultingStatus,
+        completedAt: Timestamp.fromDate(input.occurredAt),
+        expireAt: Timestamp.fromDate(expireAt),
+      });
+      transaction.update(challengeRef, {
+        consumedAt: Timestamp.fromDate(input.occurredAt),
+        completionIdempotencyId: idempotencyId,
+      });
+      return Object.freeze({
+        kind: "created" as const,
+        operation: input.operation,
+        agentId: input.agentId,
+        credentialId,
+        status: resultingStatus,
+        completedAt: input.occurredAt,
+      });
     });
   }
 
@@ -3675,6 +3998,51 @@ function agentSecurityAudit(value: {
       retentionRange: null,
     },
     createdAt: value.occurredAt,
+  });
+}
+
+function agentRecoveryAudit(value: {
+  readonly agentId: string;
+  readonly action:
+    "credential.rotated" | "recovery_key.replaced" | "agent.stopped";
+  readonly subjectType: "credential" | "recovery_key" | "agent";
+  readonly subjectId: ReturnType<typeof createAuditIdentifier>;
+  readonly previousState: AuditState | null;
+  readonly resultingState: AuditState;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+  readonly credentialId: string | null;
+}): AuditRecordInput {
+  return createAuditRecordInput({
+    actor: { type: "agent", id: value.agentId as AgentId },
+    action: value.action,
+    subject: { type: value.subjectType, id: value.subjectId },
+    details: {
+      result: "completed",
+      reasonCategory: null,
+      previousState: value.previousState,
+      resultingState: value.resultingState,
+      correlationId: createAuditCorrelationId(value.correlationId),
+      requestOrigin: createInternalRequestOrigin("hosted-api"),
+      credentialId: value.credentialId
+        ? auditCredentialIdentifier(value.credentialId)
+        : null,
+      retentionRange: null,
+    },
+    createdAt: value.occurredAt,
+  });
+}
+
+function mapAgentRecoveryResult(
+  data: FirebaseFirestore.DocumentData,
+): CompleteAgentRecoveryResult {
+  return Object.freeze({
+    kind: "replay" as const,
+    operation: data.operation as AgentRecoveryOperation,
+    agentId: String(data.agentId),
+    credentialId: data.credentialId ? String(data.credentialId) : null,
+    status: data.status as "active" | "stopped",
+    completedAt: asDate(data.completedAt),
   });
 }
 

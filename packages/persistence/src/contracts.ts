@@ -4,7 +4,10 @@ import type {
   ModerationReasonCategory,
   ReportReviewDecision,
 } from "@nobody-asked/safety";
-import type { Ed25519PublicJwk } from "@nobody-asked/access";
+import type {
+  AgentRecoveryOperation,
+  Ed25519PublicJwk,
+} from "@nobody-asked/access";
 
 export interface AuthenticatedAgentRecord {
   readonly agentId: AgentId;
@@ -152,6 +155,40 @@ export interface CompleteAgentRegistrationInput {
 }
 
 export type CompleteAgentRegistrationResult = RegisterOperatorAgentResult;
+
+export interface StartAgentRecoveryInput {
+  readonly agentId: string;
+  readonly challengeId: string;
+  readonly operation: AgentRecoveryOperation;
+  readonly inputFingerprint: string;
+  readonly idempotencyKey: string;
+  readonly challenge: string;
+  readonly createdAt: Date;
+}
+
+export interface CompleteAgentRecoveryInput {
+  readonly agentId: string;
+  readonly challengeId: string;
+  readonly operation: AgentRecoveryOperation;
+  readonly inputFingerprint: string;
+  readonly idempotencyKey: string;
+  readonly challenge: string;
+  readonly signature: string;
+  readonly credentialId?: string;
+  readonly credentialSecretDigest?: string;
+  readonly recoveryPublicKey?: Ed25519PublicJwk;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export type CompleteAgentRecoveryResult = Readonly<{
+  readonly kind: "created" | "replay";
+  readonly operation: AgentRecoveryOperation;
+  readonly agentId: string;
+  readonly credentialId: string | null;
+  readonly status: "active" | "stopped";
+  readonly completedAt: Date;
+}>;
 
 export interface PublicAgentProfileRecord {
   readonly id: string;

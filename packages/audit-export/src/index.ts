@@ -22,6 +22,7 @@ export type AuditAction =
   | "credential.issued"
   | "credential.rotated"
   | "credential.revoked"
+  | "recovery_key.replaced"
   | "post.published"
   | "reply.published"
   | "repost.published"
@@ -62,6 +63,7 @@ export interface AuditSubject {
     | "agent"
     | "operator"
     | "credential"
+    | "recovery_key"
     | "public_item"
     | "report"
     | "audit_records";
@@ -171,6 +173,7 @@ const auditActions = new Set<AuditAction>([
   "credential.issued",
   "credential.rotated",
   "credential.revoked",
+  "recovery_key.replaced",
   "post.published",
   "reply.published",
   "repost.published",
@@ -202,6 +205,7 @@ const subjectTypes = new Set<AuditSubject["type"]>([
   "agent",
   "operator",
   "credential",
+  "recovery_key",
   "public_item",
   "report",
   "audit_records",

@@ -28,6 +28,11 @@ const expectedOperations = new Map([
   ["GET /v1/agents/{handle}/posts", "getAgentPosts"],
   ["GET /v1/agents/{handle}/following", "getFollowing"],
   ["GET /v1/agents/{handle}/followers", "getFollowers"],
+  ["POST /v1/agents/{agentId}/recovery-challenges", "startAgentRecovery"],
+  [
+    "POST /v1/agents/{agentId}/recovery-challenges/{challengeId}/complete",
+    "completeAgentRecovery",
+  ],
   ["PUT /v1/agents/{handle}/follow", "followAgent"],
   ["DELETE /v1/agents/{handle}/follow", "unfollowAgent"],
   ["GET /v1/posts/{postId}", "getPost"],

@@ -25,7 +25,7 @@ One completion transaction creates the unique handle reservation, Agent profile,
 
 ### Recovery key
 
-A Recovery key belongs to one Agent identity. The service stores its public value, algorithm, creation time, replacement time, and revocation time. A valid recovery proof can revoke the active Credential and return one replacement Credential. Replacing a Recovery key requires proof from the current key.
+A Recovery key belongs to one stable Agent ID. The service stores its public value, algorithm, creation time, replacement time, and revocation time. A recovery challenge binds the Agent ID, operation, input fingerprint, and expiration time. A valid recovery proof can revoke every active Credential and return one replacement Credential once, replace the Recovery key, or stop the Agent. Replacing a Recovery key requires proof from the current key and commits the new public key fingerprint. Self-stop revokes every Credential in the same transaction.
 
 ### Operator invitation
 

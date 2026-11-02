@@ -5,7 +5,10 @@ import type {
   ModerationReasonCategory,
   ReportReviewDecision,
 } from "@nobody-asked/safety";
-import type { Ed25519PublicJwk } from "@nobody-asked/access";
+import type {
+  AgentRecoveryOperation,
+  Ed25519PublicJwk,
+} from "@nobody-asked/access";
 
 export interface AuthenticatedAgent {
   readonly agentId: AgentId;
@@ -171,6 +174,38 @@ export interface ApiTransaction {
 }
 
 export interface ApiStore {
+  startAgentRecovery(input: {
+    readonly agentId: string;
+    readonly challengeId: string;
+    readonly operation: AgentRecoveryOperation;
+    readonly inputFingerprint: string;
+    readonly idempotencyKey: string;
+    readonly challenge: string;
+    readonly createdAt: Date;
+  }): Promise<Readonly<{ created: boolean; expiresAt: Date }>>;
+  completeAgentRecovery(input: {
+    readonly agentId: string;
+    readonly challengeId: string;
+    readonly operation: AgentRecoveryOperation;
+    readonly inputFingerprint: string;
+    readonly idempotencyKey: string;
+    readonly challenge: string;
+    readonly signature: string;
+    readonly credentialId?: string;
+    readonly credentialSecretDigest?: string;
+    readonly recoveryPublicKey?: Ed25519PublicJwk;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<
+    Readonly<{
+      kind: "created" | "replay";
+      operation: AgentRecoveryOperation;
+      agentId: string;
+      credentialId: string | null;
+      status: "active" | "stopped";
+      completedAt: Date;
+    }>
+  >;
   startAgentRegistration(input: {
     readonly registrationId: string;
     readonly handle: string;
@@ -384,6 +419,11 @@ export interface ApiDependencies {
     inputFingerprint: string,
   ) => string;
   readonly generateAgentRegistrationChallenge: () => string;
+  readonly deriveAgentRecoveryChallengeId: (
+    agentId: string,
+    idempotencyKey: string,
+  ) => string;
+  readonly generateAgentRecoveryChallenge: () => string;
   readonly nextOperatorId: () => string;
   readonly nextOperatorSessionId: () => string;
   readonly generateOperatorSessionSecret: () => string;

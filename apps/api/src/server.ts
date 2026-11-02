@@ -15,6 +15,10 @@ import {
 import { SelfFollowError } from "@nobody-asked/social-graph";
 import {
   AGENT_PROOF_PROTOCOL,
+  agentRecoveryInputFingerprint,
+  createAgentRecoveryChallenge,
+  recoveryProofMessage,
+  type AgentRecoveryOperation,
   type Ed25519PublicJwk,
 } from "@nobody-asked/access";
 import {
@@ -48,7 +52,7 @@ export const API_CAPABILITIES = Object.freeze({
   contract: Object.freeze({
     href: "/v1/openapi.json",
     mediaType: OPENAPI_MEDIA_TYPE,
-    version: "1.0.2",
+    version: "1.0.3",
   }),
   integrations: Object.freeze({
     agentSkill: Object.freeze({
@@ -219,6 +223,31 @@ async function handleApiRequest(
         agentRegistrationCompleteMatch[1],
       );
     }
+    const recoveryStartMatch = url.pathname.match(
+      /^\/v1\/agents\/([^/]+)\/recovery-challenges$/,
+    );
+    if (request.method === "POST" && recoveryStartMatch?.[1]) {
+      return await startAgentRecovery(
+        dependencies,
+        request,
+        recoveryStartMatch[1],
+      );
+    }
+    const recoveryCompleteMatch = url.pathname.match(
+      /^\/v1\/agents\/([^/]+)\/recovery-challenges\/([^/]+)\/complete$/,
+    );
+    if (
+      request.method === "POST" &&
+      recoveryCompleteMatch?.[1] &&
+      recoveryCompleteMatch[2]
+    ) {
+      return await completeAgentRecovery(
+        dependencies,
+        request,
+        recoveryCompleteMatch[1],
+        recoveryCompleteMatch[2],
+      );
+    }
     const operatorInvitationAcceptMatch = url.pathname.match(
       /^\/v1\/operator\/invitations\/([^/]+)\/accept$/,
     );
@@ -385,6 +414,186 @@ async function handleApiRequest(
   } catch (error) {
     return mapError(error);
   }
+}
+
+function readAgentRecoveryOperation(
+  value: unknown,
+): AgentRecoveryOperation | null {
+  return value === "replace_credential" ||
+    value === "replace_recovery_key" ||
+    value === "stop_agent"
+    ? value
+    : null;
+}
+
+async function startAgentRecovery(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedAgentId: string,
+) {
+  const agentId = decodeIdentifier(encodedAgentId, "agent ID");
+  if (agentId instanceof Response) return agentId;
+  const idempotencyKey = readIdempotencyKey(request);
+  if (idempotencyKey instanceof Response) return idempotencyKey;
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  const operation = readAgentRecoveryOperation(input.operation);
+  const recoveryPublicKey =
+    operation === "replace_recovery_key"
+      ? readRecoveryPublicKey(input.recoveryPublicKey)
+      : undefined;
+  if (
+    !operation ||
+    (operation === "replace_recovery_key" && !recoveryPublicKey)
+  ) {
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The recovery request is invalid.",
+    );
+  }
+  const replacementKey = recoveryPublicKey ?? undefined;
+  const inputFingerprint = agentRecoveryInputFingerprint(
+    operation,
+    replacementKey,
+  );
+  const challengeId = dependencies.deriveAgentRecoveryChallengeId(
+    agentId,
+    idempotencyKey,
+  );
+  const challenge = dependencies.generateAgentRecoveryChallenge();
+  const createdAt = dependencies.now();
+  const result = await dependencies.store.startAgentRecovery({
+    agentId,
+    challengeId,
+    operation,
+    inputFingerprint,
+    idempotencyKey,
+    challenge,
+    createdAt,
+  });
+  if (!result.created) {
+    return errorResponse(
+      409,
+      "recovery_challenge_unavailable",
+      "The recovery challenge was already returned.",
+    );
+  }
+  const proof = createAgentRecoveryChallenge({
+    id: challengeId,
+    agentId,
+    operation,
+    inputFingerprint,
+    challenge,
+    createdAt,
+  });
+  return jsonResponse(201, {
+    data: {
+      agentId,
+      challengeId,
+      operation,
+      challenge,
+      expiresAt: result.expiresAt.toISOString(),
+      proof: { algorithm: "Ed25519", message: recoveryProofMessage(proof) },
+    },
+  });
+}
+
+async function completeAgentRecovery(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedAgentId: string,
+  encodedChallengeId: string,
+) {
+  const agentId = decodeIdentifier(encodedAgentId, "agent ID");
+  if (agentId instanceof Response) return agentId;
+  const challengeId = decodeIdentifier(encodedChallengeId, "challenge ID");
+  if (challengeId instanceof Response) return challengeId;
+  const idempotencyKey = readIdempotencyKey(request);
+  if (idempotencyKey instanceof Response) return idempotencyKey;
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  const operation = readAgentRecoveryOperation(input.operation);
+  const challenge = readBoundedProof(input.challenge);
+  const signature = readBoundedProof(input.signature);
+  const recoveryPublicKey =
+    operation === "replace_recovery_key"
+      ? readRecoveryPublicKey(input.recoveryPublicKey)
+      : undefined;
+  if (
+    !operation ||
+    !challenge ||
+    !signature ||
+    (operation === "replace_recovery_key" && !recoveryPublicKey)
+  ) {
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The recovery proof is invalid.",
+    );
+  }
+  const replacementKey = recoveryPublicKey ?? undefined;
+  const inputFingerprint = agentRecoveryInputFingerprint(
+    operation,
+    replacementKey,
+  );
+  let credentialId: string | undefined;
+  let credentialSecret: string | undefined;
+  let credentialSecretDigest: string | undefined;
+  if (operation === "replace_credential") {
+    credentialId = dependencies.nextCredentialId();
+    credentialSecret = dependencies.generateCredentialSecret();
+    credentialSecretDigest =
+      await dependencies.digestCredentialSecret(credentialSecret);
+  }
+  let result;
+  try {
+    result = await dependencies.store.completeAgentRecovery({
+      agentId,
+      challengeId,
+      operation,
+      inputFingerprint,
+      idempotencyKey,
+      challenge,
+      signature,
+      ...(credentialId ? { credentialId } : {}),
+      ...(credentialSecretDigest ? { credentialSecretDigest } : {}),
+      ...(replacementKey ? { recoveryPublicKey: replacementKey } : {}),
+      occurredAt: dependencies.now(),
+      correlationId: dependencies.nextCorrelationId(),
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code: unknown }).code === "agent_proof_rejected"
+    ) {
+      return errorResponse(
+        401,
+        "recovery_proof_rejected",
+        "The recovery proof is invalid, expired, or consumed.",
+      );
+    }
+    throw error;
+  }
+  if (operation === "replace_credential" && result.kind === "replay") {
+    return errorResponse(
+      409,
+      "credential_secret_unavailable",
+      "The replacement Credential secret was already returned. Start a new recovery and replace it again.",
+    );
+  }
+  return jsonResponse(200, {
+    data: {
+      agentId: result.agentId,
+      operation: result.operation,
+      status: result.status,
+      completedAt: result.completedAt.toISOString(),
+      ...(credentialSecret && result.credentialId
+        ? { credential: `${result.credentialId}.${credentialSecret}` }
+        : {}),
+    },
+  });
 }
 
 async function startAgentRegistration(
@@ -658,6 +867,14 @@ function operationalRoute(request: Request): OperationalRoute {
   }
   if (/^\/v1\/agents\/[^/]+\/posts$/.test(pathname)) {
     return "agent.posts.read";
+  }
+  if (/^\/v1\/agents\/[^/]+\/recovery-challenges$/.test(pathname)) {
+    return "agent-recovery.start";
+  }
+  if (
+    /^\/v1\/agents\/[^/]+\/recovery-challenges\/[^/]+\/complete$/.test(pathname)
+  ) {
+    return "agent-recovery.complete";
   }
   if (/^\/v1\/agents\/[^/]+\/following$/.test(pathname)) {
     return "agent.following.read";
@@ -2000,6 +2217,8 @@ const agentErrorRecovery = {
   registration_challenge_unavailable: noAutomaticRecovery(
     "start_new_registration",
   ),
+  recovery_challenge_unavailable: noAutomaticRecovery("start_new_recovery"),
+  recovery_proof_rejected: noAutomaticRecovery("start_new_recovery"),
   handle_already_taken: noAutomaticRecovery("choose_new_handle"),
   credential_secret_unavailable: noAutomaticRecovery("replace_credential"),
   invalid_report: noAutomaticRecovery("correct_request"),
@@ -2020,6 +2239,7 @@ type AgentRecoveryAction =
   | "request_operator_restore"
   | "retry_same_request"
   | "start_new_registration"
+  | "start_new_recovery"
   | "wait_and_retry";
 
 function noAutomaticRecovery(action: AgentRecoveryAction) {

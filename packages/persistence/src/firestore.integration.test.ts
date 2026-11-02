@@ -95,6 +95,76 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       };
     }
 
+    async function registeredAutonomousAgent() {
+      const secure = autonomousAdapters();
+      const proof = autonomousRegistration("registration-recovery");
+      await secure.store.startAgentRegistration(proof.start);
+      const result = await secure.store.completeAgentRegistration(
+        proof.complete,
+      );
+      return { secure, agentId: result.registration.agentId };
+    }
+
+    function recoveryCompletion(input: {
+      agentId: string;
+      challengeId: string;
+      operation: "replace_credential" | "replace_recovery_key" | "stop_agent";
+      idempotencyKey: string;
+      privateKey: typeof registrationKeys.privateKey;
+      recoveryPublicKey?: Ed25519PublicJwk;
+      credentialId?: string;
+    }) {
+      const challenge = `challenge-${input.challengeId}`;
+      const inputFingerprint = agentRecoveryInputFingerprint(
+        input.operation,
+        input.recoveryPublicKey,
+      );
+      const proof = createAgentRecoveryChallenge({
+        id: input.challengeId,
+        agentId: input.agentId,
+        operation: input.operation,
+        inputFingerprint,
+        challenge,
+        createdAt: at,
+      });
+      const signature = sign(
+        null,
+        Buffer.from(recoveryProofMessage(proof), "utf8"),
+        input.privateKey,
+      ).toString("base64url");
+      return {
+        start: {
+          agentId: input.agentId,
+          challengeId: input.challengeId,
+          operation: input.operation,
+          inputFingerprint,
+          idempotencyKey: input.idempotencyKey,
+          challenge,
+          createdAt: at,
+        },
+        complete: {
+          agentId: input.agentId,
+          challengeId: input.challengeId,
+          operation: input.operation,
+          inputFingerprint,
+          idempotencyKey: input.idempotencyKey,
+          challenge,
+          signature,
+          ...(input.credentialId
+            ? {
+                credentialId: input.credentialId,
+                credentialSecretDigest: `digest-${input.credentialId}`,
+              }
+            : {}),
+          ...(input.recoveryPublicKey
+            ? { recoveryPublicKey: input.recoveryPublicKey }
+            : {}),
+          occurredAt: new Date(at.getTime() + 2_000),
+          correlationId: `correlation-${input.challengeId}`,
+        },
+      };
+    }
+
     it("creates one autonomous Agent identity atomically without raw secrets", async () => {
       const secure = autonomousAdapters();
       const proof = autonomousRegistration("registration-1");
@@ -172,6 +242,134 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
           },
         ]),
       );
+    });
+
+    it("recovers a Credential, replaces the Recovery key, and self-stops atomically", async () => {
+      const { secure, agentId } = await registeredAutonomousAgent();
+      const credential = recoveryCompletion({
+        agentId,
+        challengeId: "recover-credential",
+        operation: "replace_credential",
+        idempotencyKey: "recover-credential-key",
+        privateKey: registrationKeys.privateKey,
+        credentialId: "replacement-credential",
+      });
+      expect(
+        (await secure.store.startAgentRecovery(credential.start)).created,
+      ).toBe(true);
+      expect(
+        (await secure.store.startAgentRecovery(credential.start)).created,
+      ).toBe(false);
+      await expect(
+        secure.store.startAgentRecovery({
+          ...credential.start,
+          operation: "stop_agent",
+          inputFingerprint: agentRecoveryInputFingerprint("stop_agent"),
+        }),
+      ).rejects.toMatchObject({ code: "idempotency_conflict" });
+      const credentialResults = await Promise.all([
+        secure.store.completeAgentRecovery(credential.complete),
+        secure.store.completeAgentRecovery(credential.complete),
+      ]);
+      expect(credentialResults.map((result) => result.kind).sort()).toEqual([
+        "created",
+        "replay",
+      ]);
+      const credentials = await local.firestore
+        .collection("credentials")
+        .where("agentId", "==", agentId)
+        .get();
+      expect(
+        credentials.docs.filter((document) => !document.data().revokedAt),
+      ).toHaveLength(1);
+
+      const nextKeys = generateKeyPairSync("ed25519");
+      const nextPublicKey = nextKeys.publicKey.export({
+        format: "jwk",
+      }) as Ed25519PublicJwk;
+      const replaceKey = recoveryCompletion({
+        agentId,
+        challengeId: "replace-key",
+        operation: "replace_recovery_key",
+        idempotencyKey: "replace-key-idempotency",
+        privateKey: registrationKeys.privateKey,
+        recoveryPublicKey: nextPublicKey,
+      });
+      await secure.store.startAgentRecovery(replaceKey.start);
+      expect(
+        (await secure.store.completeAgentRecovery(replaceKey.complete)).kind,
+      ).toBe("created");
+      expect(
+        (await secure.store.completeAgentRecovery(replaceKey.complete)).kind,
+      ).toBe("replay");
+
+      const stop = recoveryCompletion({
+        agentId,
+        challengeId: "self-stop",
+        operation: "stop_agent",
+        idempotencyKey: "self-stop-idempotency",
+        privateKey: nextKeys.privateKey,
+      });
+      await secure.store.startAgentRecovery(stop.start);
+      const stopped = await secure.store.completeAgentRecovery(stop.complete);
+      expect(stopped.status).toBe("stopped");
+      expect(
+        (
+          await local.firestore.collection("agentProfiles").doc(agentId).get()
+        ).data()?.status,
+      ).toBe("stopped");
+      const afterStop = await local.firestore
+        .collection("credentials")
+        .where("agentId", "==", agentId)
+        .get();
+      expect(
+        afterStop.docs.every((document) => document.data().revokedAt),
+      ).toBe(true);
+      const stored = JSON.stringify(
+        (
+          await local.firestore.collection("agentRecoveryChallenges").get()
+        ).docs.map((document) => document.data()),
+      );
+      expect(stored).not.toContain(credential.start.challenge);
+      expect(stored).not.toContain(credential.complete.signature);
+      expect(stored).not.toContain(
+        String(nextKeys.privateKey.export({ format: "jwk" }).d),
+      );
+    });
+
+    it("rolls back recovery when the proof does not match the committed input", async () => {
+      const { secure, agentId } = await registeredAutonomousAgent();
+      const recovery = recoveryCompletion({
+        agentId,
+        challengeId: "invalid-recovery",
+        operation: "replace_credential",
+        idempotencyKey: "invalid-recovery-key",
+        privateKey: registrationKeys.privateKey,
+        credentialId: "must-not-exist",
+      });
+      await secure.store.startAgentRecovery(recovery.start);
+      await expect(
+        secure.store.completeAgentRecovery({
+          ...recovery.complete,
+          signature: Buffer.alloc(64).toString("base64url"),
+        }),
+      ).rejects.toBeInstanceOf(AgentProofRejectedError);
+      expect(
+        (
+          await local.firestore
+            .collection("credentials")
+            .doc("must-not-exist")
+            .get()
+        ).exists,
+      ).toBe(false);
+      expect(
+        (
+          await local.firestore
+            .collection("agentRecoveryChallenges")
+            .doc("invalid-recovery")
+            .get()
+        ).data()?.consumedAt,
+      ).toBeNull();
     });
 
     it("returns one created result and one stable replay under contention", async () => {
@@ -1460,7 +1658,10 @@ import { createHash, generateKeyPairSync, sign } from "node:crypto";
 
 import {
   AgentProofRejectedError,
+  agentRecoveryInputFingerprint,
+  createAgentRecoveryChallenge,
   createAgentRegistrationAttempt,
+  recoveryProofMessage,
   registrationProofMessage,
   type Ed25519PublicJwk,
 } from "@nobody-asked/access";

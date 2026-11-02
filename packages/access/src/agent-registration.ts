@@ -1,4 +1,4 @@
-import { createPublicKey, verify } from "node:crypto";
+import { createHash, createPublicKey, verify } from "node:crypto";
 
 export const AGENT_PROOF_LIFETIME_MS = 10 * 60 * 1_000;
 export const AGENT_PROOF_PROTOCOL = "nobody-asked-agent-proof-v1";
@@ -26,6 +26,7 @@ export interface AgentRecoveryChallenge {
   readonly id: string;
   readonly agentId: string;
   readonly operation: AgentRecoveryOperation;
+  readonly inputFingerprint: string;
   readonly challenge: string;
   readonly createdAt: Date;
   readonly expiresAt: Date;
@@ -73,12 +74,14 @@ export function createAgentRecoveryChallenge(input: {
   readonly id: string;
   readonly agentId: string;
   readonly operation: AgentRecoveryOperation;
+  readonly inputFingerprint: string;
   readonly challenge: string;
   readonly createdAt: Date;
 }): AgentRecoveryChallenge {
   assertProofComponent(input.id);
   assertProofComponent(input.agentId);
   assertProofComponent(input.challenge);
+  assertProofComponent(input.inputFingerprint);
 
   return Object.freeze({
     ...input,
@@ -86,6 +89,26 @@ export function createAgentRecoveryChallenge(input: {
     expiresAt: new Date(input.createdAt.getTime() + AGENT_PROOF_LIFETIME_MS),
     consumedAt: null,
   });
+}
+
+export function validateAgentRecoveryKey(
+  value: Ed25519PublicJwk,
+): Ed25519PublicJwk {
+  assertEd25519PublicJwk(value);
+  return freezePublicKey(value);
+}
+
+export function agentRecoveryInputFingerprint(
+  operation: AgentRecoveryOperation,
+  recoveryPublicKey?: Ed25519PublicJwk,
+): string {
+  const key =
+    operation === "replace_recovery_key"
+      ? validateAgentRecoveryKey(recoveryPublicKey as Ed25519PublicJwk)
+      : null;
+  return createHash("sha256")
+    .update(JSON.stringify({ operation, recoveryPublicKey: key }))
+    .digest("base64url");
 }
 
 export function consumeAgentRegistration(input: {
@@ -144,6 +167,7 @@ export function recoveryProofMessage(
     challenge.operation,
     challenge.agentId,
     challenge.id,
+    challenge.inputFingerprint,
     challenge.challenge,
   ].join(":");
 }

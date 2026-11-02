@@ -74,6 +74,7 @@ describe("Agent recovery proof", () => {
       id: "recovery-1",
       agentId: "agent-1",
       operation: "replace_credential",
+      inputFingerprint: "fingerprint-1",
       challenge: "challenge-1",
       createdAt: at,
     });
@@ -91,6 +92,15 @@ describe("Agent recovery proof", () => {
       consumeAgentRecovery({
         recoveryPublicKey: publicKey,
         challenge: { ...challenge, operation: "stop_agent" },
+        signature: signature(recoveryProofMessage(challenge)),
+        at,
+      }),
+    ).toThrow(AgentProofRejectedError);
+
+    expect(() =>
+      consumeAgentRecovery({
+        recoveryPublicKey: publicKey,
+        challenge: { ...challenge, inputFingerprint: "different-fingerprint" },
         signature: signature(recoveryProofMessage(challenge)),
         at,
       }),

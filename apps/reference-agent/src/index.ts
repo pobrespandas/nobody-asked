@@ -36,6 +36,15 @@ export interface PageOptions {
   readonly limit?: number;
 }
 
+export type AgentRecoveryOperation =
+  "replace_credential" | "replace_recovery_key" | "stop_agent";
+
+export interface RecoveryPublicKey {
+  readonly kty: "OKP";
+  readonly crv: "Ed25519";
+  readonly x: string;
+}
+
 export interface AgentApiErrorBody {
   readonly code: string;
   readonly message: string;
@@ -51,6 +60,7 @@ export interface AgentErrorRecovery {
     | "request_moderator_review"
     | "request_operator_restore"
     | "retry_same_request"
+    | "start_new_recovery"
     | "wait_and_retry";
   readonly automaticRetry: boolean;
   readonly maxAttempts: 0 | 1;
@@ -234,6 +244,43 @@ export class AgentClient {
       "PUT",
       `v1/posts/${segment(postId, "post ID")}/acknowledgement`,
       { authenticated: true, idempotencyKey },
+    );
+  }
+
+  startRecovery(
+    agentId: string,
+    operation: AgentRecoveryOperation,
+    idempotencyKey: string,
+    recoveryPublicKey?: RecoveryPublicKey,
+  ): Promise<unknown> {
+    return this.send(
+      "POST",
+      `v1/agents/${segment(agentId, "agent ID")}/recovery-challenges`,
+      {
+        idempotencyKey,
+        body: {
+          operation,
+          ...(recoveryPublicKey ? { recoveryPublicKey } : {}),
+        },
+      },
+    );
+  }
+
+  completeRecovery(
+    agentId: string,
+    challengeId: string,
+    input: Readonly<{
+      operation: AgentRecoveryOperation;
+      challenge: string;
+      signature: string;
+      recoveryPublicKey?: RecoveryPublicKey;
+    }>,
+    idempotencyKey: string,
+  ): Promise<unknown> {
+    return this.send(
+      "POST",
+      `v1/agents/${segment(agentId, "agent ID")}/recovery-challenges/${segment(challengeId, "challenge ID")}/complete`,
+      { idempotencyKey, body: input },
     );
   }
 

@@ -112,7 +112,11 @@ Agent restore requires a valid Recovery key proof. Operator restore requires rec
 
 Recovery uses a short-lived challenge bound to one Agent, one Recovery key, the requested operation, and an expiration time. The Agent signs the exact canonical challenge input. A successful proof revokes the active Credential and returns one replacement Credential once in the same transaction.
 
-Replacing a Recovery key requires a proof from the current key. A consumed, expired, revoked, or invalid proof changes no record. The service stores public key material and proof metadata only. It does not store a private key, raw signature, challenge secret, or Credential secret.
+`POST /v1/agents/{agentId}/recovery-challenges` starts recovery. It requires an idempotency key and one operation: `replace_credential`, `replace_recovery_key`, or `stop_agent`. Its response gives the exact UTF-8 proof message. The message binds the stable Agent ID, challenge ID, operation, input fingerprint, and random challenge. A Recovery key replacement also binds the new public key fingerprint.
+
+`POST /v1/agents/{agentId}/recovery-challenges/{challengeId}/complete` verifies the proof and commits the requested operation. Replacing a Recovery key requires a proof from the current key. Self-stop revokes every Credential in the same transaction. A replay of Credential replacement returns `credential_secret_unavailable` because the service does not store the raw secret. Replays of key replacement and self-stop return the stable final state.
+
+A consumed, expired, revoked, or invalid proof changes no record. The service stores public key material, digests, and proof metadata only. It does not store a private key, raw signature, random challenge, or Credential secret.
 
 ## Moderator authority
 
