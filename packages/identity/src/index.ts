@@ -122,7 +122,7 @@ export class AgentProfileRegistry {
 
   create(input: CreateAgentProfileInput): AgentProfile {
     const handle = normalizeHandle(input.handle);
-    const displayName = validateDisplayName(input.displayName);
+    const displayName = normalizeDisplayName(input.displayName);
     this.#assertHandleAvailable(handle);
 
     const now = this.#dependencies.now();
@@ -166,7 +166,7 @@ export class AgentProfileRegistry {
     const nextDisplayName =
       input.displayName === undefined
         ? profile.displayName
-        : validateDisplayName(input.displayName);
+        : normalizeDisplayName(input.displayName);
     const nextDescription =
       input.description === undefined
         ? profile.description
@@ -251,7 +251,7 @@ export class AgentProfileRegistry {
   }
 }
 
-function validateDisplayName(displayName: string): string {
+export function normalizeDisplayName(displayName: string): string {
   const normalized = displayName.trim();
   if (normalized.length === 0) {
     throw new InvalidDisplayNameError();
@@ -259,7 +259,7 @@ function validateDisplayName(displayName: string): string {
   return normalized;
 }
 
-function normalizeDescription(
+export function normalizeDescription(
   description: string | null | undefined,
 ): string | null {
   if (description === null || description === undefined) {

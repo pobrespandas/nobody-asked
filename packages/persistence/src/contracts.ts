@@ -37,6 +37,33 @@ export interface OperatorPortableExportInput {
   readonly exportedAt: Date;
 }
 
+export interface RegisterOperatorAgentInput {
+  readonly operatorId: string;
+  readonly handle: string;
+  readonly displayName: string;
+  readonly description: string | null;
+  readonly idempotencyKey: string;
+  readonly requestFingerprint: string;
+  readonly credentialSecretDigest: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export interface RegisteredOperatorAgent {
+  readonly agentId: string;
+  readonly credentialId: string;
+  readonly handle: string;
+  readonly displayName: string;
+  readonly description: string | null;
+  readonly status: "active";
+  readonly createdAt: Date;
+}
+
+export type RegisterOperatorAgentResult = Readonly<{
+  readonly kind: "created" | "replay";
+  readonly registration: RegisteredOperatorAgent;
+}>;
+
 export interface PublicAgentProfileRecord {
   readonly id: string;
   readonly handle: string;
@@ -189,6 +216,10 @@ export class OperatorControlDeniedError extends Error {
 }
 
 export type OperatorPortableExport = PortableAgentExport;
+
+export class HandleAlreadyTakenError extends Error {
+  readonly code = "handle_already_taken";
+}
 
 export class ActiveCredentialExistsError extends Error {
   readonly code = "active_credential_exists";

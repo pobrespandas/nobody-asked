@@ -13,6 +13,7 @@ export type AuditCorrelationId = string & {
 
 export type AuditAction =
   | "operator.enrolled"
+  | "agent.registered"
   | "moderator.authority_granted"
   | "operator.authenticated"
   | "operator.authentication_failed"
@@ -160,6 +161,7 @@ export const SECURITY_AUDIT_RETENTION_YEARS = 1;
 
 const auditActions = new Set<AuditAction>([
   "operator.enrolled",
+  "agent.registered",
   "moderator.authority_granted",
   "operator.authenticated",
   "operator.authentication_failed",

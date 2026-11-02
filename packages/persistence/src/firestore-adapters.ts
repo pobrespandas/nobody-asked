@@ -59,6 +59,8 @@ import type {
   OperatorCredentialCommandInput,
   OperatorPortableExportInput,
   OperatorPortableExport,
+  RegisterOperatorAgentInput,
+  RegisterOperatorAgentResult,
   StoredResponseRecord,
 } from "./contracts.js";
 import {
@@ -73,6 +75,7 @@ import {
   InvalidOperatorAgentStatusError,
   OperatorControlDeniedError,
   OperatorCredentialNotFoundError,
+  HandleAlreadyTakenError,
 } from "./contracts.js";
 
 const collections = {
@@ -636,6 +639,156 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     input: PublishReplyTransactionInput,
   ): Promise<PublishPostTransactionResult> {
     return this.publishIdempotently(input, input.parentPostId);
+  }
+
+  async registerOperatorAgent(
+    input: RegisterOperatorAgentInput,
+  ): Promise<RegisterOperatorAgentResult> {
+    const idempotencyId = idempotencyDocumentId(
+      input.operatorId,
+      "POST /v1/operator/agents",
+      input.idempotencyKey,
+    );
+    const agentId = hash(`agent:${idempotencyId}`).slice(0, 32);
+    const credentialId = hash(`credential:${idempotencyId}`).slice(0, 32);
+    const registration = Object.freeze({
+      agentId,
+      credentialId,
+      handle: input.handle,
+      displayName: input.displayName,
+      description: input.description,
+      status: "active" as const,
+      createdAt: input.occurredAt,
+    });
+
+    return this.firestore.runTransaction(async (transaction) => {
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(idempotencyId);
+      const operatorRef = this.firestore
+        .collection(collections.operators)
+        .doc(input.operatorId);
+      const handleRef = this.firestore
+        .collection(collections.handles)
+        .doc(input.handle);
+      const [existing, operator, handle] = await Promise.all([
+        transaction.get(idempotencyRef),
+        transaction.get(operatorRef),
+        transaction.get(handleRef),
+      ]);
+      if (existing.exists) {
+        const data = existing.data()!;
+        if (data.requestFingerprint !== input.requestFingerprint) {
+          throw new IdempotencyRequestConflictError();
+        }
+        return Object.freeze({
+          kind: "replay" as const,
+          registration: Object.freeze({
+            agentId: String(data.agentId),
+            credentialId: String(data.credentialId),
+            handle: String(data.handle),
+            displayName: String(data.displayName),
+            description: (data.description as string | null) ?? null,
+            status: "active" as const,
+            createdAt: asDate(data.completedAt),
+          }),
+        });
+      }
+      if (!operator.exists) throw new OperatorControlDeniedError();
+      if (handle.exists) throw new HandleAlreadyTakenError();
+
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(agentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(agentId);
+      const credentialRef = this.firestore
+        .collection(collections.credentials)
+        .doc(credentialId);
+      const registrationAuditRef = this.firestore
+        .collection(collections.audits)
+        .doc(hash(`audit:registration:${idempotencyId}`).slice(0, 32));
+      const credentialAuditRef = this.firestore
+        .collection(collections.audits)
+        .doc(hash(`audit:credential:${idempotencyId}`).slice(0, 32));
+      const profile = {
+        id: agentId,
+        handle: input.handle,
+        displayName: input.displayName,
+        description: input.description,
+        status: "active" as const,
+        createdAt: input.occurredAt,
+        updatedAt: input.occurredAt,
+        controllingOperatorId: input.operatorId,
+      };
+      transaction.create(handleRef, {
+        agentId,
+        normalizedHandle: input.handle,
+      });
+      transaction.create(profileRef, serializeProfile(profile));
+      transaction.create(accessRef, {
+        activeCredentialId: credentialId,
+        stopped: false,
+      });
+      transaction.create(credentialRef, {
+        agentId,
+        secretDigest: input.credentialSecretDigest,
+        createdAt: Timestamp.fromDate(input.occurredAt),
+        lastUsedAt: null,
+        expiresAt: null,
+        revokedAt: null,
+      });
+      const registrationAudit = operatorSecurityAudit({
+        operatorId: input.operatorId,
+        action: "agent.registered",
+        subjectType: "agent",
+        subjectId: createAuditIdentifier(agentId),
+        previousState: null,
+        resultingState: { agentStatus: "active" },
+        occurredAt: input.occurredAt,
+        correlationId: input.correlationId,
+        credentialId: null,
+      });
+      const credentialAudit = operatorSecurityAudit({
+        operatorId: input.operatorId,
+        action: "credential.issued",
+        subjectType: "credential",
+        subjectId: auditCredentialIdentifier(credentialId),
+        previousState: { activeCredentialCount: 0 },
+        resultingState: {
+          credentialStatus: "active",
+          activeCredentialCount: 1,
+        },
+        occurredAt: input.occurredAt,
+        correlationId: input.correlationId,
+        credentialId,
+      });
+      transaction.create(
+        registrationAuditRef,
+        serializeAudit(registrationAuditRef.id, registrationAudit),
+      );
+      transaction.create(
+        credentialAuditRef,
+        serializeAudit(credentialAuditRef.id, credentialAudit),
+      );
+      const expireAt = new Date(input.occurredAt);
+      expireAt.setUTCDate(expireAt.getUTCDate() + 30);
+      transaction.create(idempotencyRef, {
+        actorId: input.operatorId,
+        command: "POST /v1/operator/agents",
+        keyHash: hash(input.idempotencyKey),
+        requestFingerprint: input.requestFingerprint,
+        agentId,
+        credentialId,
+        handle: input.handle,
+        displayName: input.displayName,
+        description: input.description,
+        completedAt: Timestamp.fromDate(input.occurredAt),
+        expireAt: Timestamp.fromDate(expireAt),
+      });
+      return Object.freeze({ kind: "created" as const, registration });
+    });
   }
 
   async runOperatorCredentialCommand(
@@ -2061,6 +2214,7 @@ function credentialAudit(
 function operatorSecurityAudit(value: {
   readonly operatorId: string;
   readonly action:
+    | "agent.registered"
     | "credential.issued"
     | "credential.rotated"
     | "credential.revoked"
@@ -2068,7 +2222,7 @@ function operatorSecurityAudit(value: {
     | "agent.restored";
   readonly subjectType: "credential" | "agent";
   readonly subjectId: ReturnType<typeof createAuditIdentifier>;
-  readonly previousState: AuditState;
+  readonly previousState: AuditState | null;
   readonly resultingState: AuditState;
   readonly occurredAt: Date;
   readonly correlationId: string;

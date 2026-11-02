@@ -42,6 +42,116 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     beforeEach(async () => resetLocalFirestore());
     afterAll(async () => deleteApp(local.app));
 
+    it("registers one controlled agent and first credential idempotently", async () => {
+      await local.firestore
+        .collection("operators")
+        .doc("operator-1")
+        .set({
+          normalizedIdentity: "operator@example.test",
+          createdAt: Timestamp.fromDate(at),
+        });
+      const input = {
+        operatorId: "operator-1",
+        handle: "new_agent",
+        displayName: "New Agent",
+        description: "First agent.",
+        idempotencyKey: "register-1",
+        requestFingerprint: JSON.stringify({
+          handle: "new_agent",
+          displayName: "New Agent",
+          description: "First agent.",
+        }),
+        credentialSecretDigest: "stored-digest",
+        occurredAt: at,
+        correlationId: "registration-1",
+      };
+
+      const created = await adapters.store.registerOperatorAgent(input);
+      const replay = await adapters.store.registerOperatorAgent({
+        ...input,
+        credentialSecretDigest: "digest:unused-replay-secret",
+      });
+
+      expect(created.kind).toBe("created");
+      expect(replay).toEqual({
+        kind: "replay",
+        registration: created.registration,
+      });
+      const profile = await local.firestore
+        .collection("agentProfiles")
+        .doc(created.registration.agentId)
+        .get();
+      expect(profile.data()).toMatchObject({
+        handle: "new_agent",
+        controllingOperatorId: "operator-1",
+        status: "active",
+      });
+      const credential = await local.firestore
+        .collection("credentials")
+        .doc(created.registration.credentialId)
+        .get();
+      expect(credential.data()).toMatchObject({
+        agentId: created.registration.agentId,
+        secretDigest: "stored-digest",
+        revokedAt: null,
+      });
+      const audits = await local.firestore.collection("auditRecords").get();
+      expect(audits.docs.map((doc) => doc.data().action).sort()).toEqual([
+        "agent.registered",
+        "credential.issued",
+      ]);
+      const idempotency = await local.firestore
+        .collection("idempotencyRecords")
+        .get();
+      expect(
+        JSON.stringify(idempotency.docs.map((doc) => doc.data())),
+      ).not.toContain("stored-digest");
+    });
+
+    it("enforces one unique handle under concurrent registration", async () => {
+      await local.firestore
+        .collection("operators")
+        .doc("operator-1")
+        .set({
+          normalizedIdentity: "operator@example.test",
+          createdAt: Timestamp.fromDate(at),
+        });
+      const input = (key: string) => ({
+        operatorId: "operator-1",
+        handle: "contended",
+        displayName: "Contended",
+        description: null,
+        idempotencyKey: key,
+        requestFingerprint: JSON.stringify({
+          handle: "contended",
+          displayName: "Contended",
+          description: null,
+        }),
+        credentialSecretDigest: `digest:${key}`,
+        occurredAt: at,
+        correlationId: key,
+      });
+      const results = await Promise.allSettled([
+        adapters.store.registerOperatorAgent(input("one")),
+        adapters.store.registerOperatorAgent(input("two")),
+      ]);
+
+      expect(
+        results.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(1);
+      const rejected = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      expect(rejected?.reason).toMatchObject({ code: "handle_already_taken" });
+      expect(
+        (await local.firestore.collection("agentProfiles").get()).size,
+      ).toBe(1);
+      expect((await local.firestore.collection("credentials").get()).size).toBe(
+        1,
+      );
+    });
+
     it("changes one follow idempotently with credential, Safety, and audit checks", async () => {
       await adapters.identity.createAgentProfile(profile("agent-a", "agent-a"));
       await adapters.identity.createAgentProfile(profile("agent-b", "agent-b"));
