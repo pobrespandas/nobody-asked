@@ -1,0 +1,12 @@
+{
+  "formatVersion": 1,
+  "projectId": "gen-lang-client-0607406471",
+  "serviceAccount": "nobody-asked-release@gen-lang-client-0607406471.iam.gserviceaccount.com",
+  "projectRoles": ["roles/logging.logWriter"],
+  "bucketRoles": {
+    "gen-lang-client-0607406471_cloudbuild": ["roles/storage.objectViewer"]
+  },
+  "repositoryRoles": {
+    "us-central1/nobody-asked": ["roles/artifactregistry.writer"]
+  }
+}
