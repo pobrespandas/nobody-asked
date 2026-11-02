@@ -13,6 +13,7 @@ export type AuditCorrelationId = string & {
 
 export type AuditAction =
   | "operator.enrolled"
+  | "moderator.authority_granted"
   | "operator.authenticated"
   | "operator.authentication_failed"
   | "operator.session_revoked"
@@ -56,7 +57,12 @@ export type AuditActor =
 
 export interface AuditSubject {
   readonly type:
-    "agent" | "credential" | "public_item" | "report" | "audit_records";
+    | "agent"
+    | "operator"
+    | "credential"
+    | "public_item"
+    | "report"
+    | "audit_records";
   readonly id: AuditIdentifier;
 }
 
@@ -154,6 +160,7 @@ export const SECURITY_AUDIT_RETENTION_YEARS = 1;
 
 const auditActions = new Set<AuditAction>([
   "operator.enrolled",
+  "moderator.authority_granted",
   "operator.authenticated",
   "operator.authentication_failed",
   "operator.session_revoked",
@@ -189,6 +196,7 @@ const actorTypes = new Set<AuditActor["type"]>([
 ]);
 const subjectTypes = new Set<AuditSubject["type"]>([
   "agent",
+  "operator",
   "credential",
   "public_item",
   "report",

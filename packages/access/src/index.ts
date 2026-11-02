@@ -1,5 +1,7 @@
 export const accessModule = "access" as const;
 
+export * from "./first-operator-bootstrap.js";
+
 export type AgentId = string & { readonly __brand: "AgentId" };
 export type CredentialId = string & { readonly __brand: "CredentialId" };
 export type AgentAccessStatus = "active" | "stopped" | "suspended";
