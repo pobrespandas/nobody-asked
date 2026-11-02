@@ -26,9 +26,12 @@ import {
   type Post,
   type PostId,
 } from "@nobody-asked/publishing";
+import { SelfFollowError } from "@nobody-asked/social-graph";
 
 import type {
   AuthenticatedAgentRecord,
+  FollowCommandTransactionInput,
+  FollowCommandTransactionResult,
   PublicAgentProfileRecord,
   PublicPostRecord,
   PublishPostTransactionInput,
@@ -39,6 +42,7 @@ import type {
 } from "./contracts.js";
 import {
   AgentWriteBlockedError,
+  AgentNotFoundError,
   CredentialWriteBlockedError,
   IdempotencyRequestConflictError,
   RateLimitExceededError,
@@ -82,7 +86,8 @@ export interface FirestoreTransactionalSafetyPolicy {
   authorizeAgentWrite(
     transaction: Transaction,
     agentId: AgentId,
-    action: "post.publish" | "reply.publish",
+    action:
+      "post.publish" | "reply.publish" | "follow.create" | "follow.remove",
     at: Date,
   ): Promise<void>;
 }
@@ -439,6 +444,193 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     input: PublishReplyTransactionInput,
   ): Promise<PublishPostTransactionResult> {
     return this.publishIdempotently(input, input.parentPostId);
+  }
+
+  async changeFollowIdempotently(
+    input: FollowCommandTransactionInput,
+  ): Promise<FollowCommandTransactionResult> {
+    if (input.authenticatedAgentId === input.targetAgentId) {
+      throw new SelfFollowError();
+    }
+    const token = parseCredentialToken(input.credentialSecret);
+    if (!token || token.credentialId !== input.credentialId) {
+      throw new CredentialWriteBlockedError();
+    }
+    const secretDigest = await this.digestSecret(token.secret);
+    const route = `${input.operation === "follow" ? "PUT" : "DELETE"} /v1/agents/{handle}/follow`;
+    const requestFingerprint = JSON.stringify({
+      targetAgentId: input.targetAgentId,
+      targetHandle: input.targetHandle,
+    });
+    const idempotencyId = idempotencyDocumentId(
+      input.authenticatedAgentId,
+      route,
+      input.idempotencyKey,
+    );
+    return this.firestore.runTransaction(async (transaction) => {
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(idempotencyId);
+      const existingCommand = await transaction.get(idempotencyRef);
+      if (existingCommand.exists) {
+        if (existingCommand.data()?.requestFingerprint !== requestFingerprint) {
+          throw new IdempotencyRequestConflictError();
+        }
+        return Object.freeze({
+          kind: "replay",
+          response: existingCommand.data()!.response as StoredResponseRecord,
+        });
+      }
+
+      const credentialRef = this.firestore
+        .collection(collections.credentials)
+        .doc(input.credentialId);
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.authenticatedAgentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(input.authenticatedAgentId);
+      const targetRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.targetAgentId);
+      const followId = hash(
+        JSON.stringify([input.authenticatedAgentId, input.targetAgentId]),
+      );
+      const followRef = this.firestore
+        .collection(collections.follows)
+        .doc(followId);
+      const [credential, profile, access, target, existingFollow] =
+        await Promise.all([
+          transaction.get(credentialRef),
+          transaction.get(profileRef),
+          transaction.get(accessRef),
+          transaction.get(targetRef),
+          transaction.get(followRef),
+        ]);
+      const credentialData = credential.data();
+      if (
+        !credential.exists ||
+        credentialData?.agentId !== input.authenticatedAgentId ||
+        !constantTimeEqual(
+          String(credentialData.secretDigest ?? ""),
+          secretDigest,
+        ) ||
+        !credentialIsActive(credentialData, input.occurredAt) ||
+        access.data()?.activeCredentialId !== input.credentialId ||
+        access.data()?.stopped === true
+      ) {
+        throw new CredentialWriteBlockedError();
+      }
+      const status = profile.data()?.status;
+      if (status !== "active") {
+        throw new AgentWriteBlockedError(
+          status === "stopped" ? "stopped" : "suspended",
+        );
+      }
+      if (!target.exists || target.data()?.handle !== input.targetHandle) {
+        throw new AgentNotFoundError();
+      }
+      const action =
+        input.operation === "follow" ? "follow.create" : "follow.remove";
+      await this.safety.authorizeAgentWrite(
+        transaction,
+        input.authenticatedAgentId,
+        action,
+        input.occurredAt,
+      );
+      const policy = FIRST_RELEASE_COMMAND_RATE_LIMITS["follow.change"];
+      const rateLimit = await readRateLimitBucket(
+        this.firestore,
+        transaction,
+        input.authenticatedAgentId,
+        input.credentialId,
+        "follow.change",
+        input.occurredAt,
+        policy,
+      );
+      if (rateLimit.count >= policy.limit) {
+        throw new RateLimitExceededError(rateLimit.resetAt);
+      }
+
+      const shouldExist = input.operation === "follow";
+      const changed = shouldExist
+        ? !existingFollow.exists
+        : existingFollow.exists;
+      const response: StoredResponseRecord = {
+        status: 200,
+        body: {
+          data: {
+            followerId: input.authenticatedAgentId,
+            followedId: input.targetAgentId,
+            following: shouldExist,
+            changed,
+          },
+        },
+      };
+      if (changed) {
+        if (shouldExist) {
+          transaction.create(followRef, {
+            followerId: input.authenticatedAgentId,
+            followedId: input.targetAgentId,
+            followedAt: Timestamp.fromDate(input.occurredAt),
+          });
+        } else {
+          transaction.delete(followRef);
+        }
+        const auditId = hash(`audit:${idempotencyId}`).slice(0, 32);
+        const auditRef = this.firestore
+          .collection(collections.audits)
+          .doc(auditId);
+        const audit = createAuditRecordInput({
+          actor: { type: "agent", id: input.authenticatedAgentId },
+          action: shouldExist ? "follow.created" : "follow.removed",
+          subject: {
+            type: "agent",
+            id: createAuditIdentifier(input.targetAgentId),
+          },
+          details: {
+            result: "completed",
+            reasonCategory: null,
+            previousState: null,
+            resultingState: null,
+            correlationId: createAuditCorrelationId(input.correlationId),
+            requestOrigin: null,
+            credentialId: auditCredentialIdentifier(input.credentialId),
+            retentionRange: null,
+          },
+          createdAt: input.occurredAt,
+        });
+        transaction.create(auditRef, serializeAudit(auditRef.id, audit));
+      }
+      const expireAt = new Date(input.occurredAt);
+      expireAt.setUTCDate(expireAt.getUTCDate() + 30);
+      transaction.create(idempotencyRef, {
+        agentId: input.authenticatedAgentId,
+        command: route,
+        keyHash: hash(input.idempotencyKey),
+        requestFingerprint,
+        response,
+        completedAt: Timestamp.fromDate(input.occurredAt),
+        expireAt: Timestamp.fromDate(expireAt),
+      });
+      transaction.update(credentialRef, {
+        lastUsedAt: Timestamp.fromDate(input.occurredAt),
+      });
+      transaction.set(rateLimit.ref, {
+        agentId: input.authenticatedAgentId,
+        credentialId: input.credentialId,
+        command: "follow.change",
+        windowStartedAt: Timestamp.fromDate(rateLimit.windowStartedAt),
+        count: rateLimit.count + 1,
+        resetAt: Timestamp.fromDate(rateLimit.resetAt),
+        expireAt: Timestamp.fromDate(rateLimit.expireAt),
+      });
+      return Object.freeze({
+        kind: changed ? "changed" : "unchanged",
+        response,
+      });
+    });
   }
 
   private async publishIdempotently(
@@ -835,7 +1027,7 @@ async function readRateLimitBucket(
   transaction: Transaction,
   agentId: string,
   credentialId: string,
-  command: "post.publish" | "reply.publish",
+  command: "post.publish" | "reply.publish" | "follow.change",
   at: Date,
   policy: PublishRateLimitPolicy,
 ) {

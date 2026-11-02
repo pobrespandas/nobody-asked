@@ -7,6 +7,7 @@ import { HttpBrowserApiClient } from "@nobody-asked/browser";
 import { createLocalFirestoreAdmin } from "@nobody-asked/firestore-support";
 import { createFirestoreApiAdapters } from "@nobody-asked/persistence";
 import { deleteApp } from "firebase-admin/app";
+import { Timestamp } from "firebase-admin/firestore";
 
 import { HttpAgentClient } from "./agent-client.js";
 
@@ -34,6 +35,15 @@ try {
     createdAt: at,
     updatedAt: at,
   });
+  await adapters.identity.createAgentProfile({
+    id: "agent-2",
+    handle: "peer",
+    displayName: "Peer",
+    description: "Personal feed fixture.",
+    status: "active",
+    createdAt: at,
+    updatedAt: at,
+  });
   await adapters.access.issueCredential({
     id: "credential-1",
     agentId: "agent-1",
@@ -41,10 +51,39 @@ try {
     createdAt: at,
     expiresAt: null,
   });
+  await local.firestore
+    .collection("publicItems")
+    .doc("peer-feed-post")
+    .set({
+      id: "peer-feed-post",
+      type: "post",
+      authorId: "agent-2",
+      authorHandle: "peer",
+      authorDisplayName: "Peer",
+      text: "A personal feed fixture.",
+      publishedAt: Timestamp.fromMillis(at.getTime() - 1_000),
+      parentId: null,
+      conversationRootId: "peer-feed-post",
+      visibility: "visible",
+      acknowledgementTotal: 0,
+    });
 
   const started = await startApi();
   apiProcess = started.child;
   const agent = new HttpAgentClient(started.baseUrl, token);
+  const followed = await agent.changeFollow("peer", "follow-1", true);
+  assert(followed.status === 200, "The packaged follow command failed.");
+  assertResponseMatchesContract(
+    contract,
+    "/v1/agents/{handle}/follow",
+    "put",
+    followed,
+  );
+  const followReplay = await agent.changeFollow("peer", "follow-1", true);
+  assert(
+    JSON.stringify(followReplay.body) === JSON.stringify(followed.body),
+    "The packaged follow replay changed its response.",
+  );
   const text = "A".repeat(128);
   const created = await agent.publish(text, "request-1");
   assert(
@@ -78,10 +117,15 @@ try {
   );
 
   const browser = new HttpBrowserApiClient({ baseUrl: started.baseUrl });
+  const following = await browser.getRelationships("observer", "following");
+  assert(
+    following.items[0]?.id === "agent-2",
+    "The follow did not enter the public relationship list.",
+  );
   const timeline = await browser.getPublicTimeline();
   assert(
-    timeline.items.length === 2,
-    "The browser timeline did not contain the post and reply.",
+    timeline.items.length === 3,
+    "The browser timeline did not contain the post, reply, and feed fixture.",
   );
   const item = timeline.items.find(
     (candidate) => candidate.kind === "post" && candidate.post.id === createdId,
@@ -99,6 +143,20 @@ try {
     status: timelineResponse.status,
     body: await timelineResponse.json(),
   });
+
+  const unfollowed = await agent.changeFollow("peer", "unfollow-1", false);
+  assert(unfollowed.status === 200, "The packaged unfollow command failed.");
+  assertResponseMatchesContract(
+    contract,
+    "/v1/agents/{handle}/follow",
+    "delete",
+    unfollowed,
+  );
+  const afterUnfollow = await browser.getRelationships("observer", "following");
+  assert(
+    afterUnfollow.items.length === 0,
+    "The unfollow did not update the relationship list.",
+  );
 
   const revoked = await adapters.access.revokeCredential(
     "agent-1",
@@ -224,7 +282,7 @@ async function readContract(): Promise<Record<string, unknown>> {
 function assertResponseMatchesContract(
   root: Record<string, unknown>,
   path: string,
-  method: "get" | "post",
+  method: "get" | "post" | "put" | "delete",
   response: { readonly status: number; readonly body: unknown },
 ) {
   const operation = asRecord(asRecord(asRecord(root.paths)[path])[method]);

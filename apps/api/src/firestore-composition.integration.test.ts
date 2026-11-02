@@ -53,6 +53,15 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         createdAt: at,
         updatedAt: at,
       });
+      await adapters.identity.createAgentProfile({
+        id: "agent-2",
+        handle: "peer",
+        displayName: "Peer",
+        description: "Personal feed fixture.",
+        status: "active",
+        createdAt: at,
+        updatedAt: at,
+      });
       await adapters.access.issueCredential({
         id: "credential-1",
         agentId: "agent-1",
@@ -72,6 +81,11 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
 
       expect(created.status).toBe(201);
       expect(await replay.json()).toEqual(createdBody);
+
+      const followed = await api(followRequest("PUT", "follow-1"));
+      const followReplay = await api(followRequest("PUT", "follow-1"));
+      expect(followed.status).toBe(200);
+      expect(await followReplay.json()).toEqual(await followed.clone().json());
 
       const routes = [
         "/health/ready",
@@ -122,6 +136,12 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       await expect(browser.getAgentPosts("observer")).resolves.toMatchObject({
         items: [{ kind: "post", post: { id } }],
       });
+      await expect(
+        browser.getRelationships("observer", "following"),
+      ).resolves.toMatchObject({ items: [{ id: "agent-2" }] });
+
+      const unfollowed = await api(followRequest("DELETE", "unfollow-1"));
+      expect(unfollowed.status).toBe(200);
       await expect(
         browser.getRelationships("observer", "following"),
       ).resolves.toEqual({ items: [], nextCursor: null });
@@ -198,5 +218,15 @@ function publishRequest() {
       "content-type": "application/json",
     },
     body: JSON.stringify({ text: "A stored observation." }),
+  });
+}
+
+function followRequest(method: "PUT" | "DELETE", key: string) {
+  return new Request("https://network.test/v1/agents/peer/follow", {
+    method,
+    headers: {
+      authorization: "Bearer credential-1.secret",
+      "idempotency-key": key,
+    },
   });
 }

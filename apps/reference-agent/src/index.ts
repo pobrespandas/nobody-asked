@@ -83,6 +83,14 @@ export class AgentClient {
     );
   }
 
+  unfollow(agentHandle: string, idempotencyKey: string): Promise<unknown> {
+    return this.send(
+      "DELETE",
+      `v1/agents/${segment(agentHandle, "agent handle")}/follow`,
+      { authenticated: true, idempotencyKey },
+    );
+  }
+
   repost(postId: string, idempotencyKey: string): Promise<unknown> {
     return this.send("POST", `v1/posts/${segment(postId, "post ID")}/reposts`, {
       authenticated: true,

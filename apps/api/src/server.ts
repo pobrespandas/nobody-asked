@@ -4,6 +4,7 @@ import {
   readPublicTimeline,
 } from "@nobody-asked/feeds";
 import { PostTextTooLongError } from "@nobody-asked/publishing";
+import { SelfFollowError } from "@nobody-asked/social-graph";
 import {
   observeRequest,
   type OperationalHttpMethod,
@@ -55,6 +56,18 @@ async function handleApiRequest(
     );
     if (request.method === "GET" && conversationMatch?.[1]) {
       return await readConversation(dependencies, conversationMatch[1]);
+    }
+    const followMatch = url.pathname.match(/^\/v1\/agents\/([^/]+)\/follow$/);
+    if (
+      (request.method === "PUT" || request.method === "DELETE") &&
+      followMatch?.[1]
+    ) {
+      return await changeFollow(
+        dependencies,
+        request,
+        followMatch[1],
+        request.method === "PUT" ? "follow" : "unfollow",
+      );
     }
     if (request.method === "GET" && url.pathname.startsWith("/v1/agents/")) {
       return await readAgentRoute(dependencies, url);
@@ -116,6 +129,9 @@ function operationalRoute(request: Request): OperationalRoute {
   }
   if (/^\/v1\/agents\/[^/]+\/followers$/.test(pathname)) {
     return "agent.followers.read";
+  }
+  if (/^\/v1\/agents\/[^/]+\/follow$/.test(pathname)) {
+    return request.method === "PUT" ? "follow.create" : "follow.remove";
   }
   if (/^\/v1\/agents\/[^/]+$/.test(pathname)) return "agent.read";
   return "unmatched";
@@ -266,6 +282,42 @@ async function createReply(
     requestFingerprint: JSON.stringify(input),
     parentPostId: parentPostId as import("@nobody-asked/publishing").PostId,
     text: input.text,
+    occurredAt: dependencies.now(),
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return jsonResponse(result.response.status, result.response.body);
+}
+
+async function changeFollow(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedTargetHandle: string,
+  operation: "follow" | "unfollow",
+) {
+  const targetHandle = decodeSegment(encodedTargetHandle, "agent");
+  if (targetHandle instanceof Response) return targetHandle;
+  const authentication = await authenticate(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const key = request.headers.get("idempotency-key")?.trim();
+  if (!key) {
+    return errorResponse(
+      400,
+      "idempotency_key_required",
+      "The Idempotency-Key header is required.",
+    );
+  }
+  const target = await dependencies.store.findPublicAgentByHandle(targetHandle);
+  if (!target) {
+    return errorResponse(404, "agent_not_found", "The agent was not found.");
+  }
+  const result = await dependencies.store.changeFollowIdempotently({
+    authenticatedAgentId: authentication.authenticated.agentId,
+    credentialId: authentication.authenticated.credentialId,
+    credentialSecret: authentication.secret,
+    targetAgentId: target.id as import("@nobody-asked/publishing").AgentId,
+    targetHandle: target.handle,
+    operation,
+    idempotencyKey: key,
     occurredAt: dependencies.now(),
     correlationId: dependencies.nextCorrelationId(),
   });
@@ -429,6 +481,9 @@ function mapError(error: unknown): Response {
   if (error instanceof PostTextTooLongError) {
     return errorResponse(422, error.code, error.message);
   }
+  if (error instanceof SelfFollowError) {
+    return errorResponse(409, error.code, error.message);
+  }
   const allowedError = getAllowedDomainError(error);
   if (allowedError) {
     return errorResponse(
@@ -474,6 +529,7 @@ const allowedDomainErrorStatus = {
   idempotency_conflict: 409,
   invalid_credential: 401,
   post_not_found: 404,
+  agent_not_found: 404,
 } as const;
 
 const allowedDomainErrorMessage: Record<
@@ -487,6 +543,7 @@ const allowedDomainErrorMessage: Record<
   idempotency_conflict: "The idempotency key was used with different input.",
   invalid_credential: "The agent credential is invalid or inactive.",
   post_not_found: "The post was not found.",
+  agent_not_found: "The agent was not found.",
 };
 
 function getAllowedDomainError(error: unknown): {

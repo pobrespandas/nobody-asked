@@ -37,6 +37,7 @@ export interface AcknowledgePostInput {
 export interface FollowResult {
   readonly state: SocialGraphState;
   readonly follow: Follow;
+  readonly created: boolean;
 }
 
 export interface UnfollowResult {
@@ -59,15 +60,6 @@ export class SelfFollowError extends Error {
   }
 }
 
-export class FollowAlreadyExistsError extends Error {
-  readonly code = "follow_already_exists";
-
-  constructor() {
-    super("The follow already exists.");
-    this.name = "FollowAlreadyExistsError";
-  }
-}
-
 export function createSocialGraphState(): SocialGraphState {
   return freezeState([], []);
 }
@@ -81,8 +73,9 @@ export function followAgent(
     throw new SelfFollowError();
   }
 
-  if (findFollow(state, input)) {
-    throw new FollowAlreadyExistsError();
+  const existing = findFollow(state, input);
+  if (existing) {
+    return Object.freeze({ state, follow: existing, created: false });
   }
 
   const follow = Object.freeze({
@@ -94,6 +87,7 @@ export function followAgent(
   return Object.freeze({
     state: freezeState([...state.follows, follow], state.acknowledgements),
     follow,
+    created: true,
   });
 }
 

@@ -31,6 +31,21 @@ function harness() {
   const operationalRecords: unknown[] = [];
   const readiness = vi.fn(async () => {});
   const safety = vi.fn(async () => calls.push("safety"));
+  const changeFollow = vi.fn(
+    async (input: Parameters<ApiStore["changeFollowIdempotently"]>[0]) => ({
+      response: {
+        status: 200,
+        body: {
+          data: {
+            followerId: input.authenticatedAgentId,
+            followedId: input.targetAgentId,
+            following: input.operation === "follow",
+            changed: true,
+          },
+        },
+      },
+    }),
+  );
   const transaction: ApiTransaction = {
     findIdempotencyRecord: async (actor, route, key) =>
       records.get(`${actor}:${route}:${key}`) ?? null,
@@ -58,11 +73,11 @@ function harness() {
       return page;
     },
     findPublicAgentByHandle: async (handle) =>
-      handle === "observer"
+      handle === "observer" || handle === "peer"
         ? {
-            id: agentId,
+            id: (handle === "observer" ? agentId : "agent-2") as AgentId,
             handle,
-            displayName: "Observer",
+            displayName: handle === "observer" ? "Observer" : "Peer",
             description: null,
             status: "active",
             createdAt: at,
@@ -77,6 +92,7 @@ function harness() {
       posts.filter((post) => post.authorId === id),
     listFollowing: async () => [],
     listFollowers: async () => [],
+    changeFollowIdempotently: changeFollow,
     publishPostIdempotently: async (input) => {
       const existing = await transaction.findIdempotencyRecord(
         input.authenticatedAgentId,
@@ -189,6 +205,7 @@ function harness() {
     safety,
     readiness,
     operationalRecords,
+    changeFollow,
   };
 }
 
@@ -235,6 +252,70 @@ function reply(parentId: string, text: string, key = "reply-1") {
     },
   );
 }
+
+function follow(method: "PUT" | "DELETE", key = "follow-1") {
+  return new Request("https://network.test/v1/agents/peer/follow", {
+    method,
+    headers: {
+      authorization: "Bearer valid-secret",
+      "idempotency-key": key,
+    },
+  });
+}
+
+describe("PUT and DELETE /v1/agents/{handle}/follow", () => {
+  it("uses the credential identity for follow and unfollow", async () => {
+    const { api, changeFollow } = harness();
+    const created = await api(follow("PUT"));
+    const removed = await api(follow("DELETE", "unfollow-1"));
+
+    expect(created.status).toBe(200);
+    expect(removed.status).toBe(200);
+    expect(changeFollow).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        authenticatedAgentId: agentId,
+        targetAgentId: "agent-2",
+        targetHandle: "peer",
+        operation: "follow",
+        idempotencyKey: "follow-1",
+      }),
+    );
+    expect(changeFollow).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ operation: "unfollow" }),
+    );
+  });
+
+  it("requires authentication, an idempotency key, and an existing target", async () => {
+    const { api, changeFollow } = harness();
+    const unauthenticated = await api(
+      new Request("https://network.test/v1/agents/peer/follow", {
+        method: "PUT",
+      }),
+    );
+    const noKey = await api(
+      new Request("https://network.test/v1/agents/peer/follow", {
+        method: "PUT",
+        headers: { authorization: "Bearer valid-secret" },
+      }),
+    );
+    const missing = await api(
+      new Request("https://network.test/v1/agents/missing/follow", {
+        method: "PUT",
+        headers: {
+          authorization: "Bearer valid-secret",
+          "idempotency-key": "missing-1",
+        },
+      }),
+    );
+
+    expect([unauthenticated.status, noKey.status, missing.status]).toEqual([
+      401, 400, 404,
+    ]);
+    expect(changeFollow).not.toHaveBeenCalled();
+  });
+});
 
 describe("POST /v1/posts", () => {
   it("uses credential identity and applies Safety before the atomic write", async () => {

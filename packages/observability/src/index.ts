@@ -10,6 +10,8 @@ export type OperationalRoute =
   | "agent.posts.read"
   | "agent.following.read"
   | "agent.followers.read"
+  | "follow.create"
+  | "follow.remove"
   | "post.read"
   | "conversation.read"
   | "post.publish"

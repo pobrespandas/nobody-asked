@@ -72,11 +72,13 @@ describe("reference agent client", () => {
 
   it("follows, reposts, and acknowledges with safe path values", async () => {
     await client.follow("agent name", "follow-1");
+    await client.unfollow("agent name", "unfollow-1");
     await client.repost("post/root", "repost-1");
     await client.acknowledge("post/root", "acknowledge-1");
 
     expect(requests).toEqual([
       command("PUT", "/v1/agents/agent%20name/follow", "follow-1", null),
+      command("DELETE", "/v1/agents/agent%20name/follow", "unfollow-1", null),
       command("POST", "/v1/posts/post%2Froot/reposts", "repost-1", null),
       command(
         "PUT",

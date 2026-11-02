@@ -13,7 +13,8 @@ export interface AgentCredentialAuthenticator {
 export interface SafetyPolicy {
   authorizeAgentWrite(
     agentId: AgentId,
-    action: "post.publish" | "reply.publish",
+    action:
+      "post.publish" | "reply.publish" | "follow.create" | "follow.remove",
     at: Date,
   ): Promise<void>;
 }
@@ -60,6 +61,18 @@ export interface PublishPostTransactionInput {
 
 export interface PublishReplyTransactionInput extends PublishPostTransactionInput {
   readonly parentPostId: PostId;
+}
+
+export interface FollowCommandTransactionInput {
+  readonly authenticatedAgentId: AgentId;
+  readonly credentialId: string;
+  readonly credentialSecret: string;
+  readonly targetAgentId: AgentId;
+  readonly targetHandle: string;
+  readonly operation: "follow" | "unfollow";
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
 }
 
 export type PublishPostTransactionResult =
@@ -110,6 +123,9 @@ export interface ApiStore {
   publishReplyIdempotently(
     input: PublishReplyTransactionInput,
   ): Promise<PublishPostTransactionResult>;
+  changeFollowIdempotently(
+    input: FollowCommandTransactionInput,
+  ): Promise<Readonly<{ response: StoredApiResponse }>>;
 }
 
 export interface ApiDependencies {

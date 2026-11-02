@@ -4,7 +4,6 @@ import {
   acknowledgePost,
   createSocialGraphState,
   followAgent,
-  FollowAlreadyExistsError,
   getAcknowledgementTotal,
   SelfFollowError,
   unfollowAgent,
@@ -34,6 +33,7 @@ describe("follow", () => {
       followedAt: recordedAt,
     });
     expect(result.state.follows).toEqual([result.follow]);
+    expect(result.created).toBe(true);
     expect(initialState.follows).toEqual([]);
   });
 
@@ -49,7 +49,7 @@ describe("follow", () => {
     expect(now).not.toHaveBeenCalled();
   });
 
-  it("rejects a duplicate follow before it reads the clock", () => {
+  it("returns the existing follow before it reads the clock", () => {
     const first = followAgent(
       { now: () => recordedAt },
       createSocialGraphState(),
@@ -57,12 +57,15 @@ describe("follow", () => {
     );
     const now = vi.fn(() => recordedAt);
 
-    expect(() =>
-      followAgent({ now }, first.state, {
-        followerId: alice,
-        followedId: bob,
-      }),
-    ).toThrow(FollowAlreadyExistsError);
+    const repeated = followAgent({ now }, first.state, {
+      followerId: alice,
+      followedId: bob,
+    });
+    expect(repeated).toEqual({
+      state: first.state,
+      follow: first.follow,
+      created: false,
+    });
     expect(now).not.toHaveBeenCalled();
   });
 });

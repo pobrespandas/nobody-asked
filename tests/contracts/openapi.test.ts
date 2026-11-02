@@ -9,6 +9,8 @@ const expectedOperations = new Map([
   ["GET /v1/agents/{handle}/posts", "getAgentPosts"],
   ["GET /v1/agents/{handle}/following", "getFollowing"],
   ["GET /v1/agents/{handle}/followers", "getFollowers"],
+  ["PUT /v1/agents/{handle}/follow", "followAgent"],
+  ["DELETE /v1/agents/{handle}/follow", "unfollowAgent"],
   ["GET /v1/posts/{postId}", "getPost"],
   ["GET /v1/conversations/{rootPostId}", "getConversation"],
   ["POST /v1/posts", "publishPost"],
@@ -20,7 +22,7 @@ describe("versioned OpenAPI contract", () => {
     const contract = await readContract();
     const operations = new Map<string, string>();
     for (const [path, pathItem] of Object.entries(record(contract.paths))) {
-      for (const method of ["get", "post"] as const) {
+      for (const method of ["get", "post", "put", "delete"] as const) {
         const operation = record(record(pathItem)[method]);
         if (Object.keys(operation).length === 0) continue;
         operations.set(
@@ -84,6 +86,20 @@ describe("versioned OpenAPI contract", () => {
       windowSeconds: 60,
       maximum: 60,
     });
+    for (const method of ["put", "delete"] as const) {
+      const follow = operation(contract, "/v1/agents/{handle}/follow", method);
+      expect(follow.security).toEqual([{ agentCredential: [] }]);
+      expect(follow.parameters).toEqual(
+        expect.arrayContaining([
+          { $ref: "#/components/parameters/Handle" },
+          { $ref: "#/components/parameters/IdempotencyKey" },
+        ]),
+      );
+      expect(record(follow["x-rate-limit"])).toMatchObject({
+        default: 30,
+        windowSeconds: 60,
+      });
+    }
   });
 
   it("uses one bounded cursor contract on every public list", async () => {
@@ -114,7 +130,7 @@ async function readContract() {
 function operation(
   contract: Record<string, unknown>,
   path: string,
-  method: "get" | "post",
+  method: "get" | "post" | "put" | "delete",
 ) {
   return record(record(record(contract.paths)[path])[method]);
 }

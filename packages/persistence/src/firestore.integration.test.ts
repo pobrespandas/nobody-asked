@@ -42,6 +42,113 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     beforeEach(async () => resetLocalFirestore());
     afterAll(async () => deleteApp(local.app));
 
+    it("changes one follow idempotently with credential, Safety, and audit checks", async () => {
+      await adapters.identity.createAgentProfile(profile("agent-a", "agent-a"));
+      await adapters.identity.createAgentProfile(profile("agent-b", "agent-b"));
+      await adapters.access.issueCredential({
+        id: "cred-a",
+        agentId: "agent-a",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+      });
+      const input = followInput("follow", "follow-1");
+      const concurrent = await Promise.all([
+        adapters.store.changeFollowIdempotently(input),
+        adapters.store.changeFollowIdempotently(input),
+      ]);
+      const created = concurrent.find((result) => result.kind === "changed")!;
+      const replay = concurrent.find((result) => result.kind === "replay")!;
+      const unchanged = await adapters.store.changeFollowIdempotently({
+        ...input,
+        idempotencyKey: "follow-2",
+      });
+      expect(created.kind).toBe("changed");
+      expect(replay).toEqual({ kind: "replay", response: created.response });
+      expect(unchanged).toMatchObject({
+        kind: "unchanged",
+        response: { body: { data: { following: true, changed: false } } },
+      });
+      expect((await local.firestore.collection("follows").get()).size).toBe(1);
+      await expect(
+        adapters.store.listFollowing("agent-a"),
+      ).resolves.toMatchObject([{ id: "agent-b" }]);
+      await expect(
+        adapters.store.listFollowers("agent-b"),
+      ).resolves.toMatchObject([{ id: "agent-a" }]);
+
+      const removed = await adapters.store.changeFollowIdempotently(
+        followInput("unfollow", "unfollow-1"),
+      );
+      const absent = await adapters.store.changeFollowIdempotently(
+        followInput("unfollow", "unfollow-2"),
+      );
+      expect(removed).toMatchObject({
+        kind: "changed",
+        response: { body: { data: { following: false, changed: true } } },
+      });
+      expect(absent.kind).toBe("unchanged");
+      expect((await local.firestore.collection("follows").get()).empty).toBe(
+        true,
+      );
+      const audits = await local.firestore
+        .collection("auditRecords")
+        .where("action", "in", ["follow.created", "follow.removed"])
+        .get();
+      expect(audits.docs.map((doc) => doc.data())).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            actorId: "agent-a",
+            action: "follow.created",
+            subjectId: "agent-b",
+          }),
+          expect.objectContaining({
+            actorId: "agent-a",
+            action: "follow.removed",
+            subjectId: "agent-b",
+          }),
+        ]),
+      );
+    });
+
+    it("rejects self-follow and blocks invalid targets and Safety failures", async () => {
+      await adapters.identity.createAgentProfile(profile("agent-a", "agent-a"));
+      await adapters.access.issueCredential({
+        id: "cred-a",
+        agentId: "agent-a",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+      });
+      await expect(
+        adapters.store.changeFollowIdempotently({
+          ...followInput("follow", "self-1"),
+          targetAgentId: "agent-a" as never,
+          targetHandle: "agent-a",
+        }),
+      ).rejects.toMatchObject({ code: "self_follow" });
+      await expect(
+        adapters.store.changeFollowIdempotently({
+          ...followInput("follow", "missing-1"),
+          targetAgentId: "missing" as never,
+          targetHandle: "missing",
+        }),
+      ).rejects.toMatchObject({ code: "agent_not_found" });
+      await local.firestore
+        .collection("safetyBlocks")
+        .doc("agent-a")
+        .set({ active: true });
+      await adapters.identity.createAgentProfile(profile("agent-b", "agent-b"));
+      await expect(
+        adapters.store.changeFollowIdempotently(
+          followInput("follow", "blocked-1"),
+        ),
+      ).rejects.toThrow("safety_blocked");
+      expect((await local.firestore.collection("follows").get()).empty).toBe(
+        true,
+      );
+    });
+
     it("publishes nested replies with one stable conversation root", async () => {
       await adapters.identity.createAgentProfile(
         profile("agent-reply", "replyer"),
@@ -648,5 +755,19 @@ function publishInput(agentId: string, credentialId: string, key: string) {
     text: "A deterministic observation.",
     occurredAt: new Date("2026-11-01T12:00:00.000Z"),
     correlationId: `publish-${key}`,
+  };
+}
+
+function followInput(operation: "follow" | "unfollow", key: string) {
+  return {
+    authenticatedAgentId: "agent-a" as never,
+    credentialId: "cred-a",
+    credentialSecret: "cred-a.secret",
+    targetAgentId: "agent-b" as never,
+    targetHandle: "agent-b",
+    operation,
+    idempotencyKey: key,
+    occurredAt: new Date("2026-11-01T12:00:00.000Z"),
+    correlationId: `${operation}-${key}`,
   };
 }

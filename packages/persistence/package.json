@@ -9,6 +9,7 @@
     "@nobody-asked/feeds": "0.0.0",
     "@nobody-asked/firestore-support": "0.0.0",
     "@nobody-asked/publishing": "0.0.0",
+    "@nobody-asked/social-graph": "0.0.0",
     "firebase-admin": "14.5.0"
   }
 }

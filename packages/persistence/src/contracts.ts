@@ -41,6 +41,23 @@ export interface PublishReplyTransactionInput extends PublishPostTransactionInpu
   readonly parentPostId: Post["id"];
 }
 
+export interface FollowCommandTransactionInput {
+  readonly authenticatedAgentId: AgentId;
+  readonly credentialId: string;
+  readonly credentialSecret: string;
+  readonly targetAgentId: AgentId;
+  readonly targetHandle: string;
+  readonly operation: "follow" | "unfollow";
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export type FollowCommandTransactionResult = Readonly<{
+  kind: "changed" | "unchanged" | "replay";
+  response: StoredResponseRecord;
+}>;
+
 export type PublishPostTransactionResult =
   | Readonly<{
       kind: "created";
@@ -87,4 +104,8 @@ export class RateLimitExceededError extends Error {
 
 export class ParentPostNotFoundError extends Error {
   readonly code = "post_not_found";
+}
+
+export class AgentNotFoundError extends Error {
+  readonly code = "agent_not_found";
 }
