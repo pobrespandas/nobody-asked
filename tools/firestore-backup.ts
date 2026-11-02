@@ -81,7 +81,41 @@ export function buildBackupPlan(config: FirestoreBackupConfig) {
       "backups",
       "list",
       `--project=${config.projectId}`,
-      `--filter=database:projects/${config.projectId}/databases/${config.databaseId}`,
+      `--location=${config.location}`,
+      "--format=json",
+    ],
+  } as const;
+}
+
+export function buildRecoveryPlan(
+  config: FirestoreBackupConfig,
+  backupName: string,
+  recoveryDatabaseId: string,
+) {
+  assertSafeRecoveryTarget(config, recoveryDatabaseId);
+  const prefix = `projects/${config.projectId}/locations/${config.location}/backups/`;
+  if (!backupName.startsWith(prefix) || backupName.length <= prefix.length) {
+    throw new Error(
+      "Backup name must identify the approved project and location.",
+    );
+  }
+  return {
+    restore: [
+      "gcloud",
+      "firestore",
+      "databases",
+      "restore",
+      `--project=${config.projectId}`,
+      `--source-backup=${backupName}`,
+      `--destination-database=${recoveryDatabaseId}`,
+    ],
+    verifyTarget: [
+      "gcloud",
+      "firestore",
+      "databases",
+      "describe",
+      `--project=${config.projectId}`,
+      `--database=${recoveryDatabaseId}`,
       "--format=json",
     ],
   } as const;

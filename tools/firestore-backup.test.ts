@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertSafeRecoveryTarget,
   buildBackupPlan,
+  buildRecoveryPlan,
   parseFirestoreBackupConfig,
 } from "./firestore-backup.js";
 
@@ -28,7 +29,29 @@ describe("Firestore managed backup plan", () => {
     );
     expect(plan.createSchedule).toContain("--database=nobody-asked-dev");
     expect(plan.createSchedule).toContain("--retention=7d");
+    expect(plan.listBackups).toContain("--location=us-central1");
     expect(JSON.stringify(plan)).not.toContain("delete");
+  });
+
+  it("builds restore commands only for the approved source boundary", () => {
+    const config = parseFirestoreBackupConfig(approved);
+    const plan = buildRecoveryPlan(
+      config,
+      "projects/gen-lang-client-0607406471/locations/us-central1/backups/backup-1",
+      "nobody-asked-recovery-20261102",
+    );
+    expect(plan.restore).toContain(
+      "--destination-database=nobody-asked-recovery-20261102",
+    );
+    expect(plan.restore).toContain("--project=gen-lang-client-0607406471");
+    expect(JSON.stringify(plan)).not.toContain("nobody-asked-dev");
+    expect(() =>
+      buildRecoveryPlan(
+        config,
+        "projects/another/locations/us-central1/backups/backup-1",
+        "nobody-asked-recovery-20261102",
+      ),
+    ).toThrow("approved project and location");
   });
 
   it("rejects another project, database, location, or excessive retention", () => {
