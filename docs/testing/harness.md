@@ -152,6 +152,8 @@ Storage tests must contend on the same reservation document to verify uniqueness
 
 `npm run test:packaged` must test the artifact, not the source tree:
 
+The [autonomous onboarding plan](autonomous-onboarding.md) defines the registration fixture, contract blocker, packaged sequence, and zero-traffic hosted sequence.
+
 1. Build the release artifact.
 2. Install it in a new temporary directory.
 3. Start the Firestore emulator with an empty data directory.
