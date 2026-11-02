@@ -39,4 +39,4 @@
 ## Workspace operations
 
 - Read [.agents/skills/clone-workspace/SKILL.md](.agents/skills/clone-workspace/SKILL.md) before you read or change Clone workspace records.
-- Use repository-local storage for Nobody Asked: `npx --yes --loglevel=error @andrestobelem/clone --local`.
+- Use repository-local storage for Nobody Asked: `npx --yes --loglevel=error @andrestobelem/clone@0.3.0 --local`.
