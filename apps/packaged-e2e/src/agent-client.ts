@@ -3,6 +3,7 @@ type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 interface DiscoveredOperation {
   readonly method: HttpMethod;
   readonly path: string;
+  readonly requiresCredential: boolean;
 }
 
 export class HttpAgentClient {
@@ -11,7 +12,7 @@ export class HttpAgentClient {
 
   private constructor(
     private readonly baseUrl: URL,
-    private readonly credential: string,
+    private credential: string | null,
     readonly discovery: Record<string, unknown>,
     readonly contract: Record<string, unknown>,
     operations: ReadonlyMap<string, DiscoveredOperation>,
@@ -19,7 +20,7 @@ export class HttpAgentClient {
     this.#operations = operations;
   }
 
-  static async discover(baseUrl: URL, credential: string) {
+  static async discover(baseUrl: URL, credential: string | null = null) {
     const discoveryResponse = await fetch(new URL("v1", baseUrl));
     assert(
       discoveryResponse.status === 200,
@@ -43,6 +44,43 @@ export class HttpAgentClient {
       discovery,
       contract,
       discoverAgentOperations(contract),
+    );
+  }
+
+  useCredential(credential: string): void {
+    this.credential = credential;
+  }
+
+  async startRegistration(
+    profile: {
+      readonly handle: string;
+      readonly displayName: string;
+      readonly description: string | null;
+    },
+    recoveryPublicKey: {
+      readonly kty: "OKP";
+      readonly crv: "Ed25519";
+      readonly x: string;
+    },
+    key: string,
+  ) {
+    return this.#send(
+      "startAgentRegistration",
+      {},
+      { ...profile, recoveryPublicKey },
+      key,
+    );
+  }
+
+  async completeRegistration(
+    registrationId: string,
+    challenge: string,
+    signature: string,
+  ) {
+    return this.#send(
+      "completeAgentRegistration",
+      { registrationId },
+      { challenge, signature },
     );
   }
 
@@ -103,9 +141,15 @@ export class HttpAgentClient {
     return this.#send("getOwnReport", { reportId });
   }
 
-  assertEveryDiscoveredCapabilityWasExercised(): void {
+  assertEveryDiscoveredCapabilityWasExercised(
+    ...otherClients: readonly HttpAgentClient[]
+  ): void {
+    const exercised = new Set(this.#exercised);
+    for (const client of otherClients) {
+      for (const operationId of client.#exercised) exercised.add(operationId);
+    }
     const missing = [...this.#operations.keys()].filter(
-      (operationId) => !this.#exercised.has(operationId),
+      (operationId) => !exercised.has(operationId),
     );
     assert(
       missing.length === 0,
@@ -139,7 +183,9 @@ export class HttpAgentClient {
     const response = await fetch(url, {
       method: operation.method,
       headers: {
-        authorization: `Bearer ${this.credential}`,
+        ...(operation.requiresCredential
+          ? { authorization: `Bearer ${requiredCredential(this.credential)}` }
+          : {}),
         ...(body === undefined ? {} : { "content-type": "application/json" }),
         ...(idempotencyKey === undefined
           ? {}
@@ -177,11 +223,30 @@ function discoverAgentOperations(
       operations.set(operation.operationId, {
         method: method.toUpperCase() as HttpMethod,
         path,
+        requiresCredential: operationRequiresAgentCredential(operation),
       });
     }
   }
   assert(operations.size > 0, "OpenAPI published no Agent capabilities.");
   return operations;
+}
+
+function operationRequiresAgentCredential(
+  operation: Record<string, unknown>,
+): boolean {
+  if (!Array.isArray(operation.security)) return false;
+  return operation.security.some((requirement) => {
+    const value = asRecord(requirement);
+    return "agentCredential" in value;
+  });
+}
+
+function requiredCredential(credential: string | null): string {
+  assert(
+    credential !== null,
+    "The discovered operation requires a Credential.",
+  );
+  return credential;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

@@ -10,6 +10,7 @@ import { deleteApp } from "firebase-admin/app";
 import { Timestamp } from "firebase-admin/firestore";
 
 import { HttpAgentClient } from "./agent-client.js";
+import { createAutonomousAgentFixture } from "./autonomous-agent-fixture.js";
 
 const at = new Date("2026-11-01T12:00:00.000Z");
 const secret = "packaged-secret";
@@ -172,6 +173,100 @@ try {
   apiProcess = started.child;
   const agent = await HttpAgentClient.discover(started.baseUrl, token);
   const contract = agent.contract;
+  const autonomousFixture = createAutonomousAgentFixture();
+  const autonomousAgent = await HttpAgentClient.discover(started.baseUrl);
+  const registrationStart = await autonomousAgent.startRegistration(
+    autonomousFixture.profile,
+    autonomousFixture.recovery.publicKey,
+    "autonomous-registration-1",
+  );
+  assert(
+    registrationStart.status === 201,
+    "Autonomous Agent registration did not start.",
+  );
+  assertOperationResponseMatchesContract(
+    contract,
+    "startAgentRegistration",
+    registrationStart,
+  );
+  const registrationStartData = asRecord(asRecord(registrationStart.body).data);
+  const registrationProof = asRecord(registrationStartData.proof);
+  assert(
+    registrationProof.algorithm === "Ed25519" &&
+      typeof registrationProof.message === "string" &&
+      typeof registrationStartData.registrationId === "string" &&
+      typeof registrationStartData.challenge === "string",
+    "Registration did not return a usable Ed25519 proof.",
+  );
+  const completedRegistration = await autonomousAgent.completeRegistration(
+    registrationStartData.registrationId,
+    registrationStartData.challenge,
+    autonomousFixture.recovery.signMessage(registrationProof.message),
+  );
+  assert(
+    completedRegistration.status === 201,
+    `Autonomous Agent registration did not complete: ${completedRegistration.status} ${JSON.stringify(completedRegistration.body)}.`,
+  );
+  assertOperationResponseMatchesContract(
+    contract,
+    "completeAgentRegistration",
+    completedRegistration,
+  );
+  const completedRegistrationData = asRecord(
+    asRecord(completedRegistration.body).data,
+  );
+  assert(
+    completedRegistrationData.credentialReturned === true &&
+      typeof completedRegistrationData.credential === "string" &&
+      completedRegistrationData.handle === autonomousFixture.profile.handle,
+    "Registration did not return the first Credential once.",
+  );
+  const autonomousCredential = completedRegistrationData.credential;
+  autonomousAgent.useCredential(autonomousCredential);
+  const autonomousIdentity = await autonomousAgent.identify();
+  assert(
+    autonomousIdentity.status === 200 &&
+      asRecord(asRecord(asRecord(autonomousIdentity.body).data).agent)
+        .handle === autonomousFixture.profile.handle,
+    "The new Credential did not resolve the autonomous Agent.",
+  );
+  const autonomousPublicProfile = await new HttpBrowserApiClient({
+    baseUrl: started.baseUrl,
+  }).getAgent(autonomousFixture.profile.handle);
+  assert(
+    autonomousPublicProfile.id === completedRegistrationData.agentId &&
+      autonomousPublicProfile.displayName ===
+        autonomousFixture.profile.displayName,
+    "The autonomous registration was not visible through a public read.",
+  );
+  const completionReplay = await autonomousAgent.completeRegistration(
+    registrationStartData.registrationId,
+    registrationStartData.challenge,
+    autonomousFixture.recovery.signMessage(registrationProof.message),
+  );
+  const completionReplayBody = asRecord(completionReplay.body);
+  const completionReplayData = asRecord(completionReplayBody.data);
+  assert(
+    completionReplay.status === 409 &&
+      asRecord(completionReplayBody.error).code ===
+        "credential_secret_unavailable" &&
+      completionReplayData.credentialReturned === false &&
+      !("credential" in completionReplayData) &&
+      completionReplayData.agentId === completedRegistrationData.agentId &&
+      !JSON.stringify(completionReplay.body).includes(autonomousCredential),
+    "Registration completion replay exposed or replaced the Credential.",
+  );
+  const startReplay = await autonomousAgent.startRegistration(
+    autonomousFixture.profile,
+    autonomousFixture.recovery.publicKey,
+    "autonomous-registration-1",
+  );
+  assert(
+    startReplay.status === 409 &&
+      asRecord(asRecord(startReplay.body).error).code ===
+        "registration_challenge_unavailable",
+    "Registration start replay returned the one-time challenge.",
+  );
   const discoveryResponse = await fetch(new URL("v1", started.baseUrl));
   const discoveryBody = (await discoveryResponse.json()) as unknown;
   assert(discoveryResponse.status === 200, "API discovery was not available.");
@@ -716,7 +811,7 @@ try {
     "Revocation changed post attribution.",
   );
   assert(retained.text === text, "Revocation changed prior public history.");
-  agent.assertEveryDiscoveredCapabilityWasExercised();
+  agent.assertEveryDiscoveredCapabilityWasExercised(autonomousAgent);
 } finally {
   if (apiProcess) await stopChild(apiProcess);
   await deleteApp(local.app);

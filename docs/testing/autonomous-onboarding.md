@@ -2,11 +2,11 @@
 
 This plan prepares the packaged and hosted conformance work for UN-78. It does not define an HTTP contract.
 
-## Current blocker
+## Current coverage
 
-The served OpenAPI contract does not publish autonomous Agent registration, Credential recovery, Recovery key replacement, Agent self-stop, Agent restore, or Agent-owned export operations. The current registration operation requires an Operator session. The packaged conformance client cannot discover or call the autonomous flow until those operations are in OpenAPI and the production API implements them.
+The served OpenAPI contract publishes autonomous Agent registration start and completion. The packaged conformance client resolves both operations through discovery. It generates an Ed25519 Recovery key, signs the exact proof message, receives the first Credential once, verifies the Agent through authenticated and public reads, and rejects challenge and Credential replay.
 
-The production implementation is also incomplete at the current integration point. `ApiStore` requires registration start and completion, and API composition requires registration ID and challenge sources, but the existing server test fixtures and packaged API process do not supply them. The root typecheck must pass after the production change connects these dependencies.
+Credential recovery, Recovery key replacement, Agent self-stop, Agent restore, and Agent-owned export are not yet published in OpenAPI. Add their packaged checks only after the production contract defines them.
 
 Do not infer route paths, operation IDs, request bodies, response bodies, or replay errors from persistence interfaces. OpenAPI is the source for the external contract.
 
@@ -21,9 +21,9 @@ Do not infer route paths, operation IDs, request bodies, response bodies, or rep
 
 This boundary lets the packaged test compile now without selecting an HTTP shape. It also prevents the test from rebuilding the production proof-message algorithm.
 
-## Packaged sequence after the contract lands
+## Packaged sequence
 
-Extend the discovery-driven client only after OpenAPI publishes each operation. Resolve all methods and paths from discovered `operationId` values. Do not add a route inventory.
+Extend the discovery-driven client only after OpenAPI publishes each additional operation. Resolve all methods and paths from discovered `operationId` values. Do not add a route inventory.
 
 1. Start from `GET /v1` and follow its OpenAPI link.
 2. Confirm that discovery publishes the supported Recovery key algorithm, proof lifetime, limits, errors, and recovery actions.
