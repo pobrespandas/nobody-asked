@@ -17,14 +17,46 @@ const complete = {
     automaticShutdown: false,
   },
   usage: {
-    firestoreReadsPerHour: 1000,
-    firestoreWritesPerHour: 100,
-    cloudRunRequestCountPerHour: 1000,
-    cloudRunMaxInstances: 3,
-    hostingBytesPerHour: 1_000_000,
-    logBytesPerHour: 1_000_000,
-    egressBytesPerHour: 1_000_000,
+    firestoreReadsPerHour: 5_000,
+    firestoreWritesPerHour: 1_000,
+    cloudRunRequestCountPerHour: 10_000,
+    cloudRunMaxInstances: 2,
+    hostingBytesPerHour: 500_000_000,
+    logBytesPerHour: 100_000_000,
+    egressBytesPerHour: 500_000_000,
     logRetentionDays: 30,
+  },
+  alerts: {
+    notificationChannel:
+      "projects/gen-lang-client-0607406471/notificationChannels/1",
+    windowSeconds: 3_600,
+    perSeriesAligner: "ALIGN_SUM",
+    crossSeriesReducer: "REDUCE_SUM",
+    targets: {
+      firestoreDatabaseId: "nobody-asked-dev",
+      firestoreLocation: "us-central1",
+      cloudRunService: "nobody-asked-api",
+      cloudRunLocation: "us-central1",
+      hostingSite: "nobodyasked-pobrespandas-prod",
+      logProject: "gen-lang-client-0607406471",
+      egressScope: "cloud-run-service",
+    },
+    policies: Object.fromEntries(
+      Object.entries({
+        firestoreReads: "firestore.googleapis.com/document/read_ops_count",
+        firestoreWrites: "firestore.googleapis.com/document/write_ops_count",
+        cloudRunRequests: "run.googleapis.com/request_count",
+        hostingBytes: "firebasehosting.googleapis.com/network/sent_bytes_count",
+        logBytes: "logging.googleapis.com/billing/bytes_ingested",
+        egressBytes: "run.googleapis.com/container/network/sent_bytes_count",
+      }).map(([name, metricType], index) => [
+        name,
+        {
+          resourceName: `projects/gen-lang-client-0607406471/alertPolicies/${index + 1}`,
+          metricType,
+        },
+      ]),
+    ),
   },
 };
 
@@ -98,5 +130,28 @@ describe("cost control decisions", () => {
         budget: { ...complete.budget, automaticShutdown: true },
       }),
     ).toMatchObject({ ready: false, missing: ["budget.automaticShutdown"] });
+  });
+
+  it("rejects a changed threshold or an unverified metric", () => {
+    const result = validateCostControls({
+      ...complete,
+      usage: { ...complete.usage, cloudRunMaxInstances: 20 },
+      alerts: {
+        ...complete.alerts,
+        policies: {
+          ...complete.alerts.policies,
+          egressBytes: {
+            resourceName: "projects/gen-lang-client-0607406471/alertPolicies/6",
+            metricType: "networking.googleapis.com/egress_bytes_count",
+          },
+        },
+      },
+    });
+    expect(result.missing).toEqual(
+      expect.arrayContaining([
+        "usage.cloudRunMaxInstances",
+        "alerts.policies.egressBytes.metricType",
+      ]),
+    );
   });
 });

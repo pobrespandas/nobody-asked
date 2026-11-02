@@ -12,13 +12,54 @@
     "automaticShutdown": false
   },
   "usage": {
-    "firestoreReadsPerHour": null,
-    "firestoreWritesPerHour": null,
-    "cloudRunRequestCountPerHour": null,
-    "cloudRunMaxInstances": null,
-    "hostingBytesPerHour": null,
-    "logBytesPerHour": null,
-    "egressBytesPerHour": null,
+    "firestoreReadsPerHour": 5000,
+    "firestoreWritesPerHour": 1000,
+    "cloudRunRequestCountPerHour": 10000,
+    "cloudRunMaxInstances": 2,
+    "hostingBytesPerHour": 500000000,
+    "logBytesPerHour": 100000000,
+    "egressBytesPerHour": 500000000,
     "logRetentionDays": 30
+  },
+  "alerts": {
+    "notificationChannel": "projects/gen-lang-client-0607406471/notificationChannels/1508763003618954322",
+    "windowSeconds": 3600,
+    "perSeriesAligner": "ALIGN_SUM",
+    "crossSeriesReducer": "REDUCE_SUM",
+    "targets": {
+      "firestoreDatabaseId": "nobody-asked-dev",
+      "firestoreLocation": "us-central1",
+      "cloudRunService": "nobody-asked-api",
+      "cloudRunLocation": "us-central1",
+      "hostingSite": "nobodyasked-pobrespandas-prod",
+      "logProject": "gen-lang-client-0607406471",
+      "egressScope": "cloud-run-service"
+    },
+    "policies": {
+      "firestoreReads": {
+        "resourceName": "projects/gen-lang-client-0607406471/alertPolicies/4916302908982707238",
+        "metricType": "firestore.googleapis.com/document/read_ops_count"
+      },
+      "firestoreWrites": {
+        "resourceName": "projects/gen-lang-client-0607406471/alertPolicies/4766119967295252686",
+        "metricType": "firestore.googleapis.com/document/write_ops_count"
+      },
+      "cloudRunRequests": {
+        "resourceName": "projects/gen-lang-client-0607406471/alertPolicies/1440781591262637132",
+        "metricType": "run.googleapis.com/request_count"
+      },
+      "hostingBytes": {
+        "resourceName": "projects/gen-lang-client-0607406471/alertPolicies/8976115789455895084",
+        "metricType": "firebasehosting.googleapis.com/network/sent_bytes_count"
+      },
+      "logBytes": {
+        "resourceName": "projects/gen-lang-client-0607406471/alertPolicies/10442644089654689159",
+        "metricType": "logging.googleapis.com/billing/bytes_ingested"
+      },
+      "egressBytes": {
+        "resourceName": "projects/gen-lang-client-0607406471/alertPolicies/5110408576204733930",
+        "metricType": "run.googleapis.com/container/network/sent_bytes_count"
+      }
+    }
   }
 }

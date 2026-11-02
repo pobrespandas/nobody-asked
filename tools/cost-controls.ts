@@ -20,6 +20,9 @@ export function validateCostControls(input: unknown): CostControlDecision {
   const value = input as Record<string, unknown>;
   const budget = value.budget as Record<string, unknown> | undefined;
   const usage = value.usage as Record<string, unknown> | undefined;
+  const alerts = value.alerts as Record<string, unknown> | undefined;
+  const targets = alerts?.targets as Record<string, unknown> | undefined;
+  const policies = alerts?.policies as Record<string, unknown> | undefined;
   const missing: string[] = [];
 
   if (value.formatVersion !== 1) missing.push("formatVersion");
@@ -52,19 +55,63 @@ export function validateCostControls(input: unknown): CostControlDecision {
   const budgetReady = missing.length === 0;
   const usageMissing: string[] = [];
 
-  for (const name of [
-    "firestoreReadsPerHour",
-    "firestoreWritesPerHour",
-    "cloudRunRequestCountPerHour",
-    "cloudRunMaxInstances",
-    "hostingBytesPerHour",
-    "logBytesPerHour",
-    "egressBytesPerHour",
-  ]) {
-    if (!positiveNumber(usage?.[name])) usageMissing.push(`usage.${name}`);
+  const expectedUsage = {
+    firestoreReadsPerHour: 5_000,
+    firestoreWritesPerHour: 1_000,
+    cloudRunRequestCountPerHour: 10_000,
+    cloudRunMaxInstances: 2,
+    hostingBytesPerHour: 500_000_000,
+    logBytesPerHour: 100_000_000,
+    egressBytesPerHour: 500_000_000,
+  } as const;
+  for (const [name, expected] of Object.entries(expectedUsage)) {
+    if (usage?.[name] !== expected) usageMissing.push(`usage.${name}`);
   }
   if (usage?.logRetentionDays !== 30)
     usageMissing.push("usage.logRetentionDays");
+  if (alerts?.notificationChannel !== budget?.notificationChannel)
+    usageMissing.push("alerts.notificationChannel");
+  if (alerts?.windowSeconds !== 3_600)
+    usageMissing.push("alerts.windowSeconds");
+  if (alerts?.perSeriesAligner !== "ALIGN_SUM")
+    usageMissing.push("alerts.perSeriesAligner");
+  if (alerts?.crossSeriesReducer !== "REDUCE_SUM")
+    usageMissing.push("alerts.crossSeriesReducer");
+
+  const expectedTargets = {
+    firestoreDatabaseId: "nobody-asked-dev",
+    firestoreLocation: "us-central1",
+    cloudRunService: "nobody-asked-api",
+    cloudRunLocation: "us-central1",
+    hostingSite: "nobodyasked-pobrespandas-prod",
+    logProject: "gen-lang-client-0607406471",
+    egressScope: "cloud-run-service",
+  } as const;
+  for (const [name, expected] of Object.entries(expectedTargets)) {
+    if (targets?.[name] !== expected)
+      usageMissing.push(`alerts.targets.${name}`);
+  }
+
+  const expectedMetrics = {
+    firestoreReads: "firestore.googleapis.com/document/read_ops_count",
+    firestoreWrites: "firestore.googleapis.com/document/write_ops_count",
+    cloudRunRequests: "run.googleapis.com/request_count",
+    hostingBytes: "firebasehosting.googleapis.com/network/sent_bytes_count",
+    logBytes: "logging.googleapis.com/billing/bytes_ingested",
+    egressBytes: "run.googleapis.com/container/network/sent_bytes_count",
+  } as const;
+  for (const [name, metricType] of Object.entries(expectedMetrics)) {
+    const policy = policies?.[name] as Record<string, unknown> | undefined;
+    if (
+      !matches(
+        policy?.resourceName,
+        /^projects\/gen-lang-client-0607406471\/alertPolicies\/[0-9]+$/,
+      )
+    )
+      usageMissing.push(`alerts.policies.${name}.resourceName`);
+    if (policy?.metricType !== metricType)
+      usageMissing.push(`alerts.policies.${name}.metricType`);
+  }
   missing.push(...usageMissing);
 
   return Object.freeze({
