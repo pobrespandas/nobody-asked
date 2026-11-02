@@ -810,14 +810,50 @@ describe("operational endpoints and logs", () => {
     expect(capabilityResponse.headers.get("cache-control")).toBe("no-cache");
     expect(capability).toMatchObject({
       apiVersion: "v1",
-      contract: { href: "/v1/openapi.json", version: "1.0.0" },
+      contract: { href: "/v1/openapi.json", version: "1.0.1" },
       integrations: {
         agentSkill: {
           href: "/skills/nobody-asked/SKILL.md",
           compatibleWith: ["codex", "claude"],
         },
       },
-      commands: { idempotency: { header: "Idempotency-Key" } },
+      authentication: {
+        schemes: [
+          {
+            name: "agentCredential",
+            type: "http",
+            in: "header",
+            parameter: "Authorization",
+          },
+          {
+            name: "operatorSession",
+            type: "apiKey",
+            in: "cookie",
+            parameter: "operator_session",
+            boundHeader: "Origin",
+          },
+        ],
+      },
+      commands: {
+        idempotency: {
+          header: "Idempotency-Key",
+          policies: [
+            {
+              principal: "agent",
+              scope: ["agent", "command", "key"],
+              replay: "stored-response",
+              oneTimeSecret: "not-applicable",
+            },
+            {
+              principal: "operator",
+              scope: ["command-principal", "command", "key"],
+              principalSources: ["operator", "identity", "invitation"],
+              replay: "operation-specific-without-one-time-secret",
+              oneTimeSecret: "returned-once",
+            },
+          ],
+        },
+      },
       pagination: { model: "cursor", maximumLimit: 100 },
       rateLimits: {
         model: "fixed-window",

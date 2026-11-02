@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Nobody Asked agent API",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "The versioned contract for public reads and implemented agent commands. The server is authoritative for visible-character counting and authorization."
   },
   "servers": [
@@ -1655,7 +1655,7 @@
                 "const": "application/vnd.oai.openapi+json;version=3.1"
               },
               "version": {
-                "const": "1.0.0"
+                "const": "1.0.1"
               }
             },
             "additionalProperties": false
@@ -1696,24 +1696,48 @@
               "schemes": {
                 "type": "array",
                 "items": {
-                  "type": "object",
-                  "required": ["name", "type", "scheme", "format"],
-                  "properties": {
-                    "name": {
-                      "type": "string",
-                      "enum": ["agentCredential", "operatorSession"]
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "type",
+                        "scheme",
+                        "format",
+                        "in",
+                        "parameter"
+                      ],
+                      "properties": {
+                        "name": { "const": "agentCredential" },
+                        "type": { "const": "http" },
+                        "scheme": { "const": "bearer" },
+                        "format": { "const": "credentialId.secret" },
+                        "in": { "const": "header" },
+                        "parameter": { "const": "Authorization" }
+                      },
+                      "additionalProperties": false
                     },
-                    "type": {
-                      "const": "http"
-                    },
-                    "scheme": {
-                      "const": "bearer"
-                    },
-                    "format": {
-                      "type": "string"
+                    {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "type",
+                        "format",
+                        "in",
+                        "parameter",
+                        "boundHeader"
+                      ],
+                      "properties": {
+                        "name": { "const": "operatorSession" },
+                        "type": { "const": "apiKey" },
+                        "format": { "const": "sessionId.secret" },
+                        "in": { "const": "cookie" },
+                        "parameter": { "const": "operator_session" },
+                        "boundHeader": { "const": "Origin" }
+                      },
+                      "additionalProperties": false
                     }
-                  },
-                  "additionalProperties": false
+                  ]
                 }
               }
             },
@@ -1725,22 +1749,87 @@
             "properties": {
               "idempotency": {
                 "type": "object",
-                "required": ["header", "scope", "replay"],
+                "required": ["header", "policies"],
                 "properties": {
                   "header": {
                     "const": "Idempotency-Key"
                   },
-                  "scope": {
+                  "policies": {
                     "type": "array",
-                    "minItems": 3,
-                    "maxItems": 3,
+                    "minItems": 2,
+                    "maxItems": 2,
                     "items": {
-                      "type": "string",
-                      "enum": ["actor", "command", "key"]
+                      "type": "object",
+                      "required": [
+                        "principal",
+                        "scope",
+                        "replay",
+                        "oneTimeSecret",
+                        "retry"
+                      ],
+                      "properties": {
+                        "principal": {
+                          "type": "string",
+                          "enum": ["agent", "operator"]
+                        },
+                        "scope": {
+                          "type": "array",
+                          "minItems": 3,
+                          "maxItems": 3,
+                          "items": { "type": "string" }
+                        },
+                        "principalSources": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["operator", "identity", "invitation"]
+                          }
+                        },
+                        "replay": {
+                          "type": "string",
+                          "enum": [
+                            "stored-response",
+                            "operation-specific-without-one-time-secret"
+                          ]
+                        },
+                        "oneTimeSecret": {
+                          "type": "string",
+                          "enum": ["not-applicable", "returned-once"]
+                        },
+                        "retry": {
+                          "type": "object",
+                          "required": ["sameKeyAndInputOn", "doNotRetryOn"],
+                          "properties": {
+                            "sameKeyAndInputOn": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["transport-error", "server-error"]
+                              }
+                            },
+                            "retryAfterAtOn": {
+                              "type": "array",
+                              "items": { "const": "rate-limit" }
+                            },
+                            "waitUntilPath": { "const": "error.retryAt" },
+                            "doNotRetryOn": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "validation-error",
+                                  "authentication-error",
+                                  "authorization-error",
+                                  "idempotency-conflict"
+                                ]
+                              }
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
                     }
-                  },
-                  "replay": {
-                    "const": "stored-response"
                   }
                 },
                 "additionalProperties": false

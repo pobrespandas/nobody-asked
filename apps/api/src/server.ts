@@ -43,7 +43,7 @@ export const API_CAPABILITIES = Object.freeze({
   contract: Object.freeze({
     href: "/v1/openapi.json",
     mediaType: OPENAPI_MEDIA_TYPE,
-    version: "1.0.0",
+    version: "1.0.1",
   }),
   integrations: Object.freeze({
     agentSkill: Object.freeze({
@@ -59,20 +59,67 @@ export const API_CAPABILITIES = Object.freeze({
         type: "http",
         scheme: "bearer",
         format: "credentialId.secret",
+        in: "header",
+        parameter: "Authorization",
       }),
       Object.freeze({
         name: "operatorSession",
-        type: "http",
-        scheme: "bearer",
-        format: "operator-session",
+        type: "apiKey",
+        format: "sessionId.secret",
+        in: "cookie",
+        parameter: "operator_session",
+        boundHeader: "Origin",
       }),
     ]),
   }),
   commands: Object.freeze({
     idempotency: Object.freeze({
       header: "Idempotency-Key",
-      scope: Object.freeze(["actor", "command", "key"]),
-      replay: "stored-response",
+      policies: Object.freeze([
+        Object.freeze({
+          principal: "agent",
+          scope: Object.freeze(["agent", "command", "key"]),
+          replay: "stored-response",
+          oneTimeSecret: "not-applicable",
+          retry: Object.freeze({
+            sameKeyAndInputOn: Object.freeze([
+              "transport-error",
+              "server-error",
+            ]),
+            retryAfterAtOn: Object.freeze(["rate-limit"]),
+            waitUntilPath: "error.retryAt",
+            doNotRetryOn: Object.freeze([
+              "validation-error",
+              "authentication-error",
+              "authorization-error",
+              "idempotency-conflict",
+            ]),
+          }),
+        }),
+        Object.freeze({
+          principal: "operator",
+          scope: Object.freeze(["command-principal", "command", "key"]),
+          principalSources: Object.freeze([
+            "operator",
+            "identity",
+            "invitation",
+          ]),
+          replay: "operation-specific-without-one-time-secret",
+          oneTimeSecret: "returned-once",
+          retry: Object.freeze({
+            sameKeyAndInputOn: Object.freeze([
+              "transport-error",
+              "server-error",
+            ]),
+            doNotRetryOn: Object.freeze([
+              "validation-error",
+              "authentication-error",
+              "authorization-error",
+              "idempotency-conflict",
+            ]),
+          }),
+        }),
+      ]),
     }),
     controls: Object.freeze([
       "credential-status",

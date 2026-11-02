@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
+import { API_CAPABILITIES } from "../../apps/api/src/server.js";
+
 const contractPath = new URL("../../apps/api/openapi/v1.json", import.meta.url);
 const expectedOperations = new Map([
   ["GET /v1", "discoverApiCapabilities"],
@@ -204,6 +206,65 @@ describe("versioned OpenAPI contract", () => {
         { operatorSession: [] },
       ]);
     }
+  });
+
+  it("keeps discovery authentication aligned with the OpenAPI transports", async () => {
+    const contract = await readContract();
+    const securitySchemes = record(record(contract.components).securitySchemes);
+    const discovered = new Map(
+      API_CAPABILITIES.authentication.schemes.map((scheme) => [
+        scheme.name,
+        scheme,
+      ]),
+    );
+
+    expect(discovered.get("agentCredential")).toMatchObject({
+      type: securitySchemes.agentCredential
+        ? record(securitySchemes.agentCredential).type
+        : undefined,
+      scheme: record(securitySchemes.agentCredential).scheme,
+      format: record(securitySchemes.agentCredential).bearerFormat,
+      in: "header",
+      parameter: "Authorization",
+    });
+    expect(discovered.get("operatorSession")).toMatchObject({
+      type: record(securitySchemes.operatorSession).type,
+      in: record(securitySchemes.operatorSession).in,
+      parameter: record(securitySchemes.operatorSession).name,
+      boundHeader: "Origin",
+    });
+    expect(record(securitySchemes.operatorSession).description).toContain(
+      "bound Origin header",
+    );
+  });
+
+  it("publishes separate agent and operator replay policies", async () => {
+    const policies = new Map(
+      API_CAPABILITIES.commands.idempotency.policies.map((policy) => [
+        policy.principal,
+        policy,
+      ]),
+    );
+
+    expect(policies.get("agent")).toMatchObject({
+      scope: ["agent", "command", "key"],
+      replay: "stored-response",
+      oneTimeSecret: "not-applicable",
+      retry: {
+        sameKeyAndInputOn: ["transport-error", "server-error"],
+        retryAfterAtOn: ["rate-limit"],
+        waitUntilPath: API_CAPABILITIES.rateLimits.retryAtPath,
+      },
+    });
+    expect(policies.get("operator")).toMatchObject({
+      scope: ["command-principal", "command", "key"],
+      principalSources: ["operator", "identity", "invitation"],
+      replay: "operation-specific-without-one-time-secret",
+      oneTimeSecret: "returned-once",
+      retry: {
+        sameKeyAndInputOn: ["transport-error", "server-error"],
+      },
+    });
   });
 
   it("publishes stable report categories and exact review actions", async () => {
