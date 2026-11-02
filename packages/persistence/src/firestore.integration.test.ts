@@ -149,6 +149,104 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       );
     });
 
+    it("creates one repost with exact source attribution under contention", async () => {
+      await adapters.identity.createAgentProfile(profile("agent-a", "agent-a"));
+      await adapters.identity.createAgentProfile(profile("agent-b", "agent-b"));
+      await adapters.access.issueCredential({
+        id: "cred-a",
+        agentId: "agent-a",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+      });
+      await adapters.access.issueCredential({
+        id: "cred-b",
+        agentId: "agent-b",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+      });
+      const source = await adapters.store.publishPostIdempotently(
+        publishInput("agent-b", "cred-b", "source"),
+      );
+      if (source.kind !== "created") throw new Error("Source was not created.");
+      const input = repostInput(source.post.id, "repost-1");
+      const concurrent = await Promise.all([
+        adapters.store.repostIdempotently(input),
+        adapters.store.repostIdempotently(input),
+      ]);
+      expect(concurrent.map((result) => result.kind).sort()).toEqual([
+        "created",
+        "replay",
+      ]);
+      const created = concurrent.find((result) => result.kind === "created")!;
+      const duplicate = await adapters.store.repostIdempotently({
+        ...input,
+        idempotencyKey: "repost-2",
+      });
+      expect(duplicate).toMatchObject({
+        kind: "existing",
+        response: {
+          status: 200,
+          body: {
+            data: { id: readResponseId(created.response), created: false },
+          },
+        },
+      });
+      const timeline = await adapters.store.listPublicTimelinePage({
+        limit: 10,
+      });
+      const repost = timeline.items.find((item) => "source" in item);
+      expect(repost).toMatchObject({
+        repostingAgentId: "agent-a",
+        sourcePostId: source.post.id,
+        source: { id: source.post.id, authorId: "agent-b" },
+      });
+      expect((await local.firestore.collection("publicItems").get()).size).toBe(
+        2,
+      );
+      const audits = await local.firestore
+        .collection("auditRecords")
+        .where("action", "==", "repost.published")
+        .get();
+      expect(audits.size).toBe(1);
+      expect(audits.docs[0]?.data()).toMatchObject({
+        actorId: "agent-a",
+        subjectId: readResponseId(created.response),
+      });
+
+      await expect(
+        adapters.store.repostIdempotently({
+          ...input,
+          sourcePostId: "other" as never,
+        }),
+      ).rejects.toMatchObject({ code: "idempotency_conflict" });
+
+      await expect(
+        adapters.store.repostIdempotently({
+          ...input,
+          sourcePostId: "missing" as never,
+          idempotencyKey: "missing",
+        }),
+      ).rejects.toMatchObject({ code: "post_not_found" });
+      await local.firestore.collection("safetyBlocks").doc("agent-a").set({});
+      await expect(
+        adapters.store.repostIdempotently({
+          ...input,
+          idempotencyKey: "blocked",
+        }),
+      ).rejects.toThrow("safety_blocked");
+      await local.firestore.collection("safetyBlocks").doc("agent-a").delete();
+
+      await local.firestore
+        .collection("publicItems")
+        .doc(source.post.id)
+        .update({ visibility: "hidden" });
+      await expect(
+        adapters.store.listPublicTimelinePage({ limit: 10 }),
+      ).resolves.toMatchObject({ items: [] });
+    });
+
     it("publishes nested replies with one stable conversation root", async () => {
       await adapters.identity.createAgentProfile(
         profile("agent-reply", "replyer"),
@@ -770,4 +868,20 @@ function followInput(operation: "follow" | "unfollow", key: string) {
     occurredAt: new Date("2026-11-01T12:00:00.000Z"),
     correlationId: `${operation}-${key}`,
   };
+}
+
+function repostInput(sourcePostId: string, key: string) {
+  return {
+    authenticatedAgentId: "agent-a" as never,
+    credentialId: "cred-a",
+    credentialSecret: "cred-a.secret",
+    sourcePostId: sourcePostId as never,
+    idempotencyKey: key,
+    occurredAt: new Date("2026-11-01T12:00:01.000Z"),
+    correlationId: `repost-${key}`,
+  };
+}
+
+function readResponseId(response: { readonly body: unknown }): string {
+  return (response.body as { data: { id: string } }).data.id;
 }

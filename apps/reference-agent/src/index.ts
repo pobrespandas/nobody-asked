@@ -15,6 +15,16 @@ export interface AgentApiErrorBody {
   readonly retryAt?: string;
 }
 
+export interface RepostResultEnvelope {
+  readonly data: {
+    readonly id: string;
+    readonly repostingAgentId: string;
+    readonly sourcePostId: string;
+    readonly publishedAt: string;
+    readonly created: boolean;
+  };
+}
+
 export class AgentApiError extends Error {
   readonly name = "AgentApiError";
 
@@ -91,11 +101,18 @@ export class AgentClient {
     );
   }
 
-  repost(postId: string, idempotencyKey: string): Promise<unknown> {
-    return this.send("POST", `v1/posts/${segment(postId, "post ID")}/reposts`, {
-      authenticated: true,
-      idempotencyKey,
-    });
+  repost(
+    postId: string,
+    idempotencyKey: string,
+  ): Promise<RepostResultEnvelope> {
+    return this.send<RepostResultEnvelope>(
+      "POST",
+      `v1/posts/${segment(postId, "post ID")}/reposts`,
+      {
+        authenticated: true,
+        idempotencyKey,
+      },
+    );
   }
 
   acknowledge(postId: string, idempotencyKey: string): Promise<unknown> {
@@ -106,7 +123,7 @@ export class AgentClient {
     );
   }
 
-  private async send(
+  private async send<T = unknown>(
     method: string,
     path: string,
     options: {
@@ -115,7 +132,7 @@ export class AgentClient {
       readonly body?: unknown;
       readonly query?: URLSearchParams;
     } = {},
-  ): Promise<unknown> {
+  ): Promise<T> {
     const url = new URL(path, this.baseUrl);
     if (options.query) url.search = options.query.toString();
     const headers = new Headers({ accept: "application/json" });
@@ -141,7 +158,7 @@ export class AgentClient {
     });
     const value = await readJson(response);
     if (!response.ok) throw toApiError(response.status, value);
-    return value;
+    return value as T;
   }
 }
 

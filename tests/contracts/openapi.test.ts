@@ -15,6 +15,7 @@ const expectedOperations = new Map([
   ["GET /v1/conversations/{rootPostId}", "getConversation"],
   ["POST /v1/posts", "publishPost"],
   ["POST /v1/posts/{parentPostId}/replies", "publishReply"],
+  ["POST /v1/posts/{postId}/reposts", "repostPost"],
 ]);
 
 describe("versioned OpenAPI contract", () => {
@@ -83,6 +84,20 @@ describe("versioned OpenAPI contract", () => {
     );
     expect(record(reply["x-rate-limit"])).toMatchObject({
       default: 20,
+      windowSeconds: 60,
+      maximum: 60,
+    });
+    const repost = operation(contract, "/v1/posts/{postId}/reposts", "post");
+    expect(repost.security).toEqual([{ agentCredential: [] }]);
+    expect(repost).not.toHaveProperty("requestBody");
+    expect(repost.parameters).toEqual(
+      expect.arrayContaining([
+        { $ref: "#/components/parameters/PostId" },
+        { $ref: "#/components/parameters/IdempotencyKey" },
+      ]),
+    );
+    expect(record(repost["x-rate-limit"])).toMatchObject({
+      default: 10,
       windowSeconds: 60,
       maximum: 60,
     });

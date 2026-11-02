@@ -116,6 +116,27 @@ try {
     reply,
   );
 
+  const repost = await agent.repost("peer-feed-post", "repost-1");
+  assert(repost.status === 201, "The packaged repost command failed.");
+  assertResponseMatchesContract(
+    contract,
+    "/v1/posts/{postId}/reposts",
+    "post",
+    repost,
+  );
+  const repostId = readRecordId(repost.body);
+  const repostReplay = await agent.repost("peer-feed-post", "repost-1");
+  assert(
+    JSON.stringify(repostReplay.body) === JSON.stringify(repost.body),
+    "The packaged repost replay changed its response.",
+  );
+  const duplicate = await agent.repost("peer-feed-post", "repost-2");
+  assert(duplicate.status === 200, "The duplicate repost did not succeed.");
+  assert(
+    readRecordId(duplicate.body) === repostId,
+    "The duplicate repost created another public item.",
+  );
+
   const browser = new HttpBrowserApiClient({ baseUrl: started.baseUrl });
   const following = await browser.getRelationships("observer", "following");
   assert(
@@ -124,8 +145,8 @@ try {
   );
   const timeline = await browser.getPublicTimeline();
   assert(
-    timeline.items.length === 3,
-    "The browser timeline did not contain the post, reply, and feed fixture.",
+    timeline.items.length === 4,
+    "The browser timeline did not contain the repost and posts.",
   );
   const item = timeline.items.find(
     (candidate) => candidate.kind === "post" && candidate.post.id === createdId,
@@ -133,6 +154,20 @@ try {
   assert(item?.kind === "post", "The browser timeline did not contain a post.");
   assert(item.post.id === createdId, "The browser read another post.");
   assert(item.post.text === text, "The browser changed the post text.");
+  const repostItem = timeline.items.find(
+    (candidate) =>
+      candidate.kind === "repost" && candidate.repost.id === repostId,
+  );
+  assert(
+    repostItem?.kind === "repost",
+    "The browser timeline lost the repost.",
+  );
+  assert(
+    repostItem.repost.repostingAgent.id === "agent-1" &&
+      repostItem.repost.source.id === "peer-feed-post" &&
+      repostItem.repost.source.author.id === "agent-2",
+    "The repost lost source or actor attribution.",
+  );
   const conversation = await browser.getConversation(createdId);
   assert(
     conversation.root.replies[0]?.post.id === replyId,
@@ -255,6 +290,10 @@ function readPostId(body: unknown): string {
     throw new Error("The publish response has no post ID.");
   }
   return id;
+}
+
+function readRecordId(body: unknown): string {
+  return readPostId(body);
 }
 
 function isPortMessage(value: unknown): value is { readonly port: number } {

@@ -25,6 +25,7 @@ import {
   type AgentId,
   type Post,
   type PostId,
+  type RepostId,
 } from "@nobody-asked/publishing";
 import { SelfFollowError } from "@nobody-asked/social-graph";
 
@@ -34,10 +35,14 @@ import type {
   FollowCommandTransactionResult,
   PublicAgentProfileRecord,
   PublicPostRecord,
+  PublicRepostRecord,
+  PublicTimelineRecord,
   PublishPostTransactionInput,
   PublishPostTransactionResult,
   PublishReplyTransactionInput,
   PublicTimelinePage,
+  RepostCommandTransactionInput,
+  RepostCommandTransactionResult,
   StoredResponseRecord,
 } from "./contracts.js";
 import {
@@ -87,7 +92,11 @@ export interface FirestoreTransactionalSafetyPolicy {
     transaction: Transaction,
     agentId: AgentId,
     action:
-      "post.publish" | "reply.publish" | "follow.create" | "follow.remove",
+      | "post.publish"
+      | "reply.publish"
+      | "repost.publish"
+      | "follow.create"
+      | "follow.remove",
     at: Date,
   ): Promise<void>;
 }
@@ -293,9 +302,15 @@ export class FirestorePublicReadRepository {
     return snapshot.exists ? mapProfile(snapshot.id, snapshot.data()!) : null;
   }
 
-  async listVisiblePublicPosts(): Promise<readonly PublicPostRecord[]> {
+  async listVisiblePublicPosts(): Promise<readonly PublicTimelineRecord[]> {
     const snapshot = await this.baseItemsQuery().limit(50).get();
-    return Object.freeze(snapshot.docs.map(mapPost));
+    return Object.freeze(
+      (
+        await Promise.all(
+          snapshot.docs.map((doc) => this.mapTimelineRecord(doc)),
+        )
+      ).filter((record): record is PublicTimelineRecord => record !== null),
+    );
   }
 
   async findVisiblePublicPostById(
@@ -305,7 +320,9 @@ export class FirestorePublicReadRepository {
       .collection(collections.items)
       .doc(id)
       .get();
-    return snapshot.exists && snapshot.data()?.visibility === "visible"
+    return snapshot.exists &&
+      snapshot.data()?.visibility === "visible" &&
+      snapshot.data()?.type !== "repost"
       ? mapPost(snapshot)
       : null;
   }
@@ -326,7 +343,7 @@ export class FirestorePublicReadRepository {
 
   async listVisiblePublicPostsByAgent(
     agentId: string,
-  ): Promise<readonly PublicPostRecord[]> {
+  ): Promise<readonly PublicTimelineRecord[]> {
     const snapshot = await this.firestore
       .collection(collections.items)
       .where("authorId", "==", agentId)
@@ -335,7 +352,13 @@ export class FirestorePublicReadRepository {
       .orderBy("id", "desc")
       .limit(50)
       .get();
-    return Object.freeze(snapshot.docs.map(mapPost));
+    return Object.freeze(
+      (
+        await Promise.all(
+          snapshot.docs.map((doc) => this.mapTimelineRecord(doc)),
+        )
+      ).filter((record): record is PublicTimelineRecord => record !== null),
+    );
   }
 
   async listFollowing(
@@ -372,7 +395,11 @@ export class FirestorePublicReadRepository {
     const docs = snapshot.docs.slice(0, options.limit);
     const last = docs.at(-1);
     return Object.freeze({
-      items: Object.freeze(docs.map(mapPost)),
+      items: Object.freeze(
+        (
+          await Promise.all(docs.map((doc) => this.mapTimelineRecord(doc)))
+        ).filter((record): record is PublicTimelineRecord => record !== null),
+      ),
       nextCursor:
         snapshot.size > options.limit && last
           ? encodeCursor({
@@ -390,6 +417,17 @@ export class FirestorePublicReadRepository {
       .where("visibility", "==", "visible")
       .orderBy("publishedAt", "desc")
       .orderBy("id", "desc");
+  }
+
+  private async mapTimelineRecord(
+    snapshot: QueryDocumentSnapshot,
+  ): Promise<PublicTimelineRecord | null> {
+    if (snapshot.data().type !== "repost") return mapPost(snapshot);
+    const source = await this.findVisiblePublicPostById(
+      String(snapshot.data().sourcePostId),
+    );
+    if (!source) return null;
+    return mapRepost(snapshot, source);
   }
 
   private async relationships(
@@ -444,6 +482,192 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     input: PublishReplyTransactionInput,
   ): Promise<PublishPostTransactionResult> {
     return this.publishIdempotently(input, input.parentPostId);
+  }
+
+  async repostIdempotently(
+    input: RepostCommandTransactionInput,
+  ): Promise<RepostCommandTransactionResult> {
+    const token = parseCredentialToken(input.credentialSecret);
+    if (!token || token.credentialId !== input.credentialId) {
+      throw new CredentialWriteBlockedError();
+    }
+    const secretDigest = await this.digestSecret(token.secret);
+    const route = "POST /v1/posts/{postId}/reposts";
+    const requestFingerprint = JSON.stringify({
+      sourcePostId: input.sourcePostId,
+    });
+    const idempotencyId = idempotencyDocumentId(
+      input.authenticatedAgentId,
+      route,
+      input.idempotencyKey,
+    );
+    return this.firestore.runTransaction(async (transaction) => {
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(idempotencyId);
+      const existingCommand = await transaction.get(idempotencyRef);
+      if (existingCommand.exists) {
+        if (existingCommand.data()?.requestFingerprint !== requestFingerprint) {
+          throw new IdempotencyRequestConflictError();
+        }
+        return Object.freeze({
+          kind: "replay",
+          response: existingCommand.data()!.response as StoredResponseRecord,
+        });
+      }
+
+      const credentialRef = this.firestore
+        .collection(collections.credentials)
+        .doc(input.credentialId);
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.authenticatedAgentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(input.authenticatedAgentId);
+      const sourceRef = this.firestore
+        .collection(collections.items)
+        .doc(input.sourcePostId);
+      const repostId = hash(
+        JSON.stringify([
+          "repost",
+          input.authenticatedAgentId,
+          input.sourcePostId,
+        ]),
+      ).slice(0, 32) as RepostId;
+      const repostRef = this.firestore
+        .collection(collections.items)
+        .doc(repostId);
+      const [credential, profile, access, source, existingRepost] =
+        await Promise.all([
+          transaction.get(credentialRef),
+          transaction.get(profileRef),
+          transaction.get(accessRef),
+          transaction.get(sourceRef),
+          transaction.get(repostRef),
+        ]);
+      const credentialData = credential.data();
+      if (
+        !credential.exists ||
+        credentialData?.agentId !== input.authenticatedAgentId ||
+        !constantTimeEqual(
+          String(credentialData.secretDigest ?? ""),
+          secretDigest,
+        ) ||
+        !credentialIsActive(credentialData, input.occurredAt) ||
+        access.data()?.activeCredentialId !== input.credentialId ||
+        access.data()?.stopped === true
+      )
+        throw new CredentialWriteBlockedError();
+      const status = profile.data()?.status;
+      if (status !== "active") {
+        throw new AgentWriteBlockedError(
+          status === "stopped" ? "stopped" : "suspended",
+        );
+      }
+      if (
+        !source.exists ||
+        source.data()?.visibility !== "visible" ||
+        source.data()?.type === "repost"
+      ) {
+        throw new ParentPostNotFoundError();
+      }
+      await this.safety.authorizeAgentWrite(
+        transaction,
+        input.authenticatedAgentId,
+        "repost.publish",
+        input.occurredAt,
+      );
+      const policy = FIRST_RELEASE_COMMAND_RATE_LIMITS["repost.publish"];
+      const rateLimit = await readRateLimitBucket(
+        this.firestore,
+        transaction,
+        input.authenticatedAgentId,
+        input.credentialId,
+        "repost.publish",
+        input.occurredAt,
+        policy,
+      );
+      if (rateLimit.count >= policy.limit)
+        throw new RateLimitExceededError(rateLimit.resetAt);
+
+      const created = !existingRepost.exists;
+      const publishedAt = created
+        ? input.occurredAt
+        : asDate(existingRepost.data()?.publishedAt);
+      const response: StoredResponseRecord = {
+        status: created ? 201 : 200,
+        body: {
+          data: {
+            id: repostId,
+            repostingAgentId: input.authenticatedAgentId,
+            sourcePostId: input.sourcePostId,
+            publishedAt: publishedAt.toISOString(),
+            created,
+          },
+        },
+      };
+      if (created) {
+        transaction.create(repostRef, {
+          id: repostId,
+          type: "repost",
+          authorId: input.authenticatedAgentId,
+          repostingAgentId: input.authenticatedAgentId,
+          repostingAgentHandle: profile.data()?.handle,
+          repostingAgentDisplayName: profile.data()?.displayName,
+          sourcePostId: input.sourcePostId,
+          publishedAt: Timestamp.fromDate(input.occurredAt),
+          visibility: "visible",
+        });
+        const auditRef = this.firestore
+          .collection(collections.audits)
+          .doc(hash(`audit:${idempotencyId}`).slice(0, 32));
+        const audit = createAuditRecordInput({
+          actor: { type: "agent", id: input.authenticatedAgentId },
+          action: "repost.published",
+          subject: { type: "public_item", id: createAuditIdentifier(repostId) },
+          details: {
+            result: "completed",
+            reasonCategory: null,
+            previousState: null,
+            resultingState: { publicItemStatus: "visible" },
+            correlationId: createAuditCorrelationId(input.correlationId),
+            requestOrigin: null,
+            credentialId: auditCredentialIdentifier(input.credentialId),
+            retentionRange: null,
+          },
+          createdAt: input.occurredAt,
+        });
+        transaction.create(auditRef, serializeAudit(auditRef.id, audit));
+      }
+      const expireAt = new Date(input.occurredAt);
+      expireAt.setUTCDate(expireAt.getUTCDate() + 30);
+      transaction.create(idempotencyRef, {
+        agentId: input.authenticatedAgentId,
+        command: route,
+        keyHash: hash(input.idempotencyKey),
+        requestFingerprint,
+        response,
+        completedAt: Timestamp.fromDate(input.occurredAt),
+        expireAt: Timestamp.fromDate(expireAt),
+      });
+      transaction.update(credentialRef, {
+        lastUsedAt: Timestamp.fromDate(input.occurredAt),
+      });
+      transaction.set(rateLimit.ref, {
+        agentId: input.authenticatedAgentId,
+        credentialId: input.credentialId,
+        command: "repost.publish",
+        windowStartedAt: Timestamp.fromDate(rateLimit.windowStartedAt),
+        count: rateLimit.count + 1,
+        resetAt: Timestamp.fromDate(rateLimit.resetAt),
+        expireAt: Timestamp.fromDate(rateLimit.expireAt),
+      });
+      return Object.freeze({
+        kind: created ? "created" : "existing",
+        response,
+      });
+    });
   }
 
   async changeFollowIdempotently(
@@ -873,6 +1097,22 @@ function mapPost(
     acknowledgementTotal: Number(data.acknowledgementTotal ?? 0),
   });
 }
+function mapRepost(
+  snapshot: QueryDocumentSnapshot,
+  source: PublicPostRecord,
+): PublicRepostRecord {
+  const data = snapshot.data();
+  return Object.freeze({
+    id: snapshot.id as RepostId,
+    authorId: data.authorId as AgentId,
+    repostingAgentId: data.repostingAgentId as AgentId,
+    repostingAgentHandle: data.repostingAgentHandle as string,
+    repostingAgentDisplayName: data.repostingAgentDisplayName as string,
+    sourcePostId: data.sourcePostId as PostId,
+    source,
+    publishedAt: asDate(data.publishedAt),
+  });
+}
 function credentialIsActive(data: DocumentData | undefined, at: Date) {
   if (!data || data.revokedAt) return false;
   return !data.expiresAt || asDate(data.expiresAt).getTime() > at.getTime();
@@ -1027,7 +1267,8 @@ async function readRateLimitBucket(
   transaction: Transaction,
   agentId: string,
   credentialId: string,
-  command: "post.publish" | "reply.publish" | "follow.change",
+  command:
+    "post.publish" | "reply.publish" | "repost.publish" | "follow.change",
   at: Date,
   policy: PublishRateLimitPolicy,
 ) {

@@ -87,6 +87,17 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       expect(followed.status).toBe(200);
       expect(await followReplay.json()).toEqual(await followed.clone().json());
 
+      const reposted = await api(repostRequest(id, "repost-1"));
+      const repostReplay = await api(repostRequest(id, "repost-1"));
+      const duplicateRepost = await api(repostRequest(id, "repost-2"));
+      expect(reposted.status).toBe(201);
+      expect(await repostReplay.json()).toEqual(await reposted.clone().json());
+      expect(duplicateRepost.status).toBe(200);
+      const repostBody = (await reposted.json()) as { data: { id: string } };
+      await expect(duplicateRepost.json()).resolves.toMatchObject({
+        data: { id: repostBody.data.id, created: false },
+      });
+
       const routes = [
         "/health/ready",
         "/v1/timeline",
@@ -104,17 +115,30 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         routes.map(() => 200),
       );
       await expect(responses[0]!.json()).resolves.toEqual({ status: "ready" });
-      await expect(responses[1]!.json()).resolves.toMatchObject({
-        data: [
-          {
+      const timelineBody = (await responses[1]!.json()) as {
+        data: Array<Record<string, unknown>>;
+        page: { nextCursor: string | null };
+      };
+      expect(timelineBody.page.nextCursor).toBeNull();
+      expect(timelineBody.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: repostBody.data.id,
+            type: "repost",
+            repostingAgent: expect.objectContaining({ id: "agent-1" }),
+            source: expect.objectContaining({
+              id,
+              author: expect.objectContaining({ id: "agent-1" }),
+            }),
+          }),
+          expect.objectContaining({
             id,
-            author: { handle: "observer" },
+            author: expect.objectContaining({ handle: "observer" }),
             acknowledgementCount: 0,
             state: { visibility: "visible" },
-          },
-        ],
-        page: { nextCursor: null },
-      });
+          }),
+        ]),
+      );
       await expect(responses[5]!.json()).resolves.toMatchObject({
         data: { root: { post: { id }, replies: [] }, missingBranchCount: 0 },
       });
@@ -123,9 +147,23 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         baseUrl: "https://network.test",
         fetch: async (input, init) => api(new Request(input, init)),
       });
-      await expect(browser.getPublicTimeline()).resolves.toMatchObject({
-        items: [{ kind: "post", post: { id } }],
-      });
+      const browserTimeline = await browser.getPublicTimeline();
+      expect(browserTimeline.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "repost",
+            repost: expect.objectContaining({
+              id: repostBody.data.id,
+              repostingAgent: expect.objectContaining({ id: "agent-1" }),
+              source: expect.objectContaining({ id }),
+            }),
+          }),
+          expect.objectContaining({
+            kind: "post",
+            post: expect.objectContaining({ id }),
+          }),
+        ]),
+      );
       await expect(browser.getAgent("observer")).resolves.toMatchObject({
         id: "agent-1",
       });
@@ -133,9 +171,19 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       await expect(browser.getConversation(id)).resolves.toMatchObject({
         root: { post: { id } },
       });
-      await expect(browser.getAgentPosts("observer")).resolves.toMatchObject({
-        items: [{ kind: "post", post: { id } }],
-      });
+      const agentPosts = await browser.getAgentPosts("observer");
+      expect(agentPosts.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "post",
+            post: expect.objectContaining({ id }),
+          }),
+          expect.objectContaining({
+            kind: "repost",
+            repost: expect.objectContaining({ id: repostBody.data.id }),
+          }),
+        ]),
+      );
       await expect(
         browser.getRelationships("observer", "following"),
       ).resolves.toMatchObject({ items: [{ id: "agent-2" }] });
@@ -229,4 +277,17 @@ function followRequest(method: "PUT" | "DELETE", key: string) {
       "idempotency-key": key,
     },
   });
+}
+
+function repostRequest(postId: string, key: string) {
+  return new Request(
+    `https://network.test/v1/posts/${encodeURIComponent(postId)}/reposts`,
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer credential-1.secret",
+        "idempotency-key": key,
+      },
+    },
+  );
 }

@@ -197,7 +197,9 @@ async function verifyRecoveredState(
     visible.length === 2,
     "Recovered visibility did not exclude hidden content.",
   );
-  const root = visible.find((post) => post.parentId === null);
+  const root = visible.find(
+    (record) => "parentId" in record && record.parentId === null,
+  );
   assert(root, "The recovered root post is missing.");
   assert(
     root.authorId === "agent-1",

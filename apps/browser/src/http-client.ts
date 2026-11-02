@@ -10,6 +10,7 @@ import {
   type PublicAgentIdentity,
   type PublicConversation,
   type PublicPost,
+  type PublicRepost,
   type PublicPostState,
   type RelationshipKind,
   type TimelineItem,
@@ -143,10 +144,23 @@ export class HttpBrowserApiClient implements BrowserApiClient {
 
 function mapTimelineItem(value: unknown): TimelineItem {
   const record = asRecord(value);
+  if (record.type === "repost") {
+    return { kind: "repost", repost: mapRepost(record) };
+  }
   if (record.type !== "post" && record.type !== "reply") {
     throw new BrowserApiContractError();
   }
   return { kind: "post", post: mapPost(record) };
+}
+
+function mapRepost(value: unknown): PublicRepost {
+  const record = asRecord(value);
+  return {
+    id: requiredString(record.id),
+    repostingAgent: mapAgentIdentity(record.repostingAgent),
+    source: mapPost(record.source),
+    publishedAt: requiredString(record.publishedAt),
+  };
 }
 
 function mapPost(value: unknown): PublicPost {

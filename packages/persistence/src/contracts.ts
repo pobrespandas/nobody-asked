@@ -1,4 +1,4 @@
-import type { AgentId, Post } from "@nobody-asked/publishing";
+import type { AgentId, Post, Repost } from "@nobody-asked/publishing";
 
 export interface AuthenticatedAgentRecord {
   readonly agentId: AgentId;
@@ -20,6 +20,15 @@ export interface PublicPostRecord extends Post {
   readonly authorDisplayName: string;
   readonly acknowledgementTotal: number;
 }
+
+export interface PublicRepostRecord extends Repost {
+  readonly authorId: AgentId;
+  readonly repostingAgentHandle: string;
+  readonly repostingAgentDisplayName: string;
+  readonly source: PublicPostRecord;
+}
+
+export type PublicTimelineRecord = PublicPostRecord | PublicRepostRecord;
 
 export interface StoredResponseRecord {
   readonly status: number;
@@ -53,6 +62,21 @@ export interface FollowCommandTransactionInput {
   readonly correlationId: string;
 }
 
+export interface RepostCommandTransactionInput {
+  readonly authenticatedAgentId: AgentId;
+  readonly credentialId: string;
+  readonly credentialSecret: string;
+  readonly sourcePostId: Post["id"];
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export type RepostCommandTransactionResult = Readonly<{
+  kind: "created" | "existing" | "replay";
+  response: StoredResponseRecord;
+}>;
+
 export type FollowCommandTransactionResult = Readonly<{
   kind: "changed" | "unchanged" | "replay";
   response: StoredResponseRecord;
@@ -72,7 +96,7 @@ export type PublishPostTransactionResult =
 export type PublishReplyTransactionResult = PublishPostTransactionResult;
 
 export interface PublicTimelinePage {
-  readonly items: readonly PublicPostRecord[];
+  readonly items: readonly PublicTimelineRecord[];
   readonly nextCursor: string | null;
 }
 

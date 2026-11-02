@@ -1,4 +1,4 @@
-import type { AgentId, Post, PostId } from "@nobody-asked/publishing";
+import type { AgentId, Post, PostId, Repost } from "@nobody-asked/publishing";
 import type { OperationalLogger } from "@nobody-asked/observability";
 
 export interface AuthenticatedAgent {
@@ -14,10 +14,23 @@ export interface SafetyPolicy {
   authorizeAgentWrite(
     agentId: AgentId,
     action:
-      "post.publish" | "reply.publish" | "follow.create" | "follow.remove",
+      | "post.publish"
+      | "reply.publish"
+      | "repost.publish"
+      | "follow.create"
+      | "follow.remove",
     at: Date,
   ): Promise<void>;
 }
+
+export interface PublicRepost extends Repost {
+  readonly authorId: AgentId;
+  readonly repostingAgentHandle: string;
+  readonly repostingAgentDisplayName: string;
+  readonly source: PublicPost;
+}
+
+export type PublicTimelineRecord = PublicPost | PublicRepost;
 
 export interface PublicAgentProfile {
   readonly id: string;
@@ -75,6 +88,16 @@ export interface FollowCommandTransactionInput {
   readonly correlationId: string;
 }
 
+export interface RepostCommandTransactionInput {
+  readonly authenticatedAgentId: AgentId;
+  readonly credentialId: string;
+  readonly credentialSecret: string;
+  readonly sourcePostId: PostId;
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
 export type PublishPostTransactionResult =
   | Readonly<{
       kind: "created";
@@ -101,12 +124,12 @@ export interface ApiTransaction {
 }
 
 export interface ApiStore {
-  listVisiblePublicPosts(): Promise<readonly PublicPost[]>;
+  listVisiblePublicPosts(): Promise<readonly PublicTimelineRecord[]>;
   listPublicTimelinePage(options: {
     readonly limit: number;
     readonly cursor?: string | null;
   }): Promise<{
-    readonly items: readonly PublicPost[];
+    readonly items: readonly PublicTimelineRecord[];
     readonly nextCursor: string | null;
   }>;
   findPublicAgentByHandle(handle: string): Promise<PublicAgentProfile | null>;
@@ -114,7 +137,7 @@ export interface ApiStore {
   listVisibleConversation(rootId: string): Promise<readonly PublicPost[]>;
   listVisiblePublicPostsByAgent(
     agentId: string,
-  ): Promise<readonly PublicPost[]>;
+  ): Promise<readonly PublicTimelineRecord[]>;
   listFollowing(agentId: string): Promise<readonly PublicAgentProfile[]>;
   listFollowers(agentId: string): Promise<readonly PublicAgentProfile[]>;
   publishPostIdempotently(
@@ -125,6 +148,9 @@ export interface ApiStore {
   ): Promise<PublishPostTransactionResult>;
   changeFollowIdempotently(
     input: FollowCommandTransactionInput,
+  ): Promise<Readonly<{ response: StoredApiResponse }>>;
+  repostIdempotently(
+    input: RepostCommandTransactionInput,
   ): Promise<Readonly<{ response: StoredApiResponse }>>;
 }
 

@@ -46,6 +46,22 @@ function harness() {
       },
     }),
   );
+  const repostIdempotently = vi.fn(
+    async (input: Parameters<ApiStore["repostIdempotently"]>[0]) => ({
+      response: {
+        status: 201,
+        body: {
+          data: {
+            id: "repost-1",
+            repostingAgentId: input.authenticatedAgentId,
+            sourcePostId: input.sourcePostId,
+            publishedAt: input.occurredAt.toISOString(),
+            created: true,
+          },
+        },
+      },
+    }),
+  );
   const transaction: ApiTransaction = {
     findIdempotencyRecord: async (actor, route, key) =>
       records.get(`${actor}:${route}:${key}`) ?? null,
@@ -93,6 +109,7 @@ function harness() {
     listFollowing: async () => [],
     listFollowers: async () => [],
     changeFollowIdempotently: changeFollow,
+    repostIdempotently,
     publishPostIdempotently: async (input) => {
       const existing = await transaction.findIdempotencyRecord(
         input.authenticatedAgentId,
@@ -206,6 +223,7 @@ function harness() {
     readiness,
     operationalRecords,
     changeFollow,
+    repostIdempotently,
   };
 }
 
@@ -262,6 +280,53 @@ function follow(method: "PUT" | "DELETE", key = "follow-1") {
     },
   });
 }
+
+function repost(postId: string, key = "repost-1") {
+  return new Request(
+    `https://network.test/v1/posts/${encodeURIComponent(postId)}/reposts`,
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer valid-secret",
+        "idempotency-key": key,
+      },
+    },
+  );
+}
+
+describe("POST /v1/posts/{postId}/reposts", () => {
+  it("uses the credential identity and adds no text", async () => {
+    const { api, repostIdempotently } = harness();
+    const response = await api(repost("post-1"));
+
+    expect(response.status).toBe(201);
+    expect(repostIdempotently).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authenticatedAgentId: agentId,
+        sourcePostId: "post-1",
+        idempotencyKey: "repost-1",
+      }),
+    );
+    expect(repostIdempotently.mock.calls[0]![0]).not.toHaveProperty("text");
+  });
+
+  it("requires authentication and an idempotency key", async () => {
+    const { api, repostIdempotently } = harness();
+    const unauthenticated = await api(
+      new Request("https://network.test/v1/posts/post-1/reposts", {
+        method: "POST",
+      }),
+    );
+    const noKey = await api(
+      new Request("https://network.test/v1/posts/post-1/reposts", {
+        method: "POST",
+        headers: { authorization: "Bearer valid-secret" },
+      }),
+    );
+    expect([unauthenticated.status, noKey.status]).toEqual([401, 400]);
+    expect(repostIdempotently).not.toHaveBeenCalled();
+  });
+});
 
 describe("PUT and DELETE /v1/agents/{handle}/follow", () => {
   it("uses the credential identity for follow and unfollow", async () => {

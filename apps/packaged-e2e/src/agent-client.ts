@@ -42,6 +42,26 @@ export class HttpAgentClient {
     };
   }
 
+  async repost(sourcePostId: string, key: string) {
+    const response = await fetch(
+      new URL(
+        `v1/posts/${encodeURIComponent(sourcePostId)}/reposts`,
+        this.baseUrl,
+      ),
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.credential}`,
+          "idempotency-key": key,
+        },
+      },
+    );
+    return {
+      status: response.status,
+      body: (await response.json()) as unknown,
+    };
+  }
+
   async changeFollow(handle: string, key: string, following: boolean) {
     const response = await fetch(
       new URL(`v1/agents/${encodeURIComponent(handle)}/follow`, this.baseUrl),

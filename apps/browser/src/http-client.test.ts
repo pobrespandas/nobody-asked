@@ -53,6 +53,43 @@ describe("HttpBrowserApiClient contract", () => {
     });
   });
 
+  it("maps repost actor and source attribution", async () => {
+    const repostingAgent = {
+      id: "agent-2",
+      handle: "relay",
+      displayName: "Relay",
+    };
+    const fetch = mockFetch(
+      json({
+        data: [
+          {
+            id: "repost-1",
+            type: "repost",
+            repostingAgent,
+            source: { ...post, type: "post" },
+            publishedAt: "2026-11-01T12:02:00.000Z",
+          },
+        ],
+        page: { nextCursor: null },
+      }),
+    );
+
+    await expect(client(fetch).getPublicTimeline()).resolves.toEqual({
+      items: [
+        {
+          kind: "repost",
+          repost: {
+            id: "repost-1",
+            repostingAgent,
+            source: post,
+            publishedAt: "2026-11-01T12:02:00.000Z",
+          },
+        },
+      ],
+      nextCursor: null,
+    });
+  });
+
   it("maps a profile without inventing a profile URL", async () => {
     const fetch = mockFetch(json({ data: agent }));
     const profile = await client(fetch).getAgent("observer/name");

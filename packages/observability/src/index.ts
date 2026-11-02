@@ -16,6 +16,7 @@ export type OperationalRoute =
   | "conversation.read"
   | "post.publish"
   | "reply.publish"
+  | "repost.publish"
   | "unmatched";
 
 export interface OperationalRequestRecord {

@@ -7,6 +7,7 @@ const graphemeSegmenter = new Intl.Segmenter("en", {
 });
 
 export type PostId = string & { readonly __brand: "PostId" };
+export type RepostId = string & { readonly __brand: "RepostId" };
 export type AgentId = string & { readonly __brand: "AgentId" };
 
 export interface Post {
@@ -16,6 +17,13 @@ export interface Post {
   readonly publishedAt: Date;
   readonly parentId: PostId | null;
   readonly conversationRootId: PostId;
+}
+
+export interface Repost {
+  readonly id: RepostId;
+  readonly repostingAgentId: AgentId;
+  readonly sourcePostId: PostId;
+  readonly publishedAt: Date;
 }
 
 export interface PublishingDependencies {

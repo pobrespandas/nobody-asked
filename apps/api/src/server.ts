@@ -16,6 +16,8 @@ import type {
   AuthenticatedAgent,
   PublicAgentProfile,
   PublicPost,
+  PublicRepost,
+  PublicTimelineRecord,
 } from "./types.js";
 
 export function createApi(dependencies: ApiDependencies) {
@@ -50,6 +52,10 @@ async function handleApiRequest(
     const replyMatch = url.pathname.match(/^\/v1\/posts\/([^/]+)\/replies$/);
     if (request.method === "POST" && replyMatch?.[1]) {
       return await createReply(dependencies, request, replyMatch[1]);
+    }
+    const repostMatch = url.pathname.match(/^\/v1\/posts\/([^/]+)\/reposts$/);
+    if (request.method === "POST" && repostMatch?.[1]) {
+      return await createRepost(dependencies, request, repostMatch[1]);
     }
     const conversationMatch = url.pathname.match(
       /^\/v1\/conversations\/([^/]+)$/,
@@ -117,6 +123,12 @@ function operationalRoute(request: Request): OperationalRoute {
   ) {
     return "reply.publish";
   }
+  if (
+    request.method === "POST" &&
+    /^\/v1\/posts\/[^/]+\/reposts$/.test(pathname)
+  ) {
+    return "repost.publish";
+  }
   if (/^\/v1\/posts\/[^/]+$/.test(pathname)) return "post.read";
   if (/^\/v1\/conversations\/[^/]+$/.test(pathname)) {
     return "conversation.read";
@@ -144,7 +156,7 @@ async function readTimeline(dependencies: ApiDependencies, url: URL) {
     cursor: url.searchParams.get("cursor"),
   });
   return jsonResponse(200, {
-    data: page.items.map(serializePost),
+    data: page.items.map(serializeTimelineRecord),
     page: { nextCursor: page.nextCursor },
   });
 }
@@ -190,7 +202,7 @@ async function readAgentRoute(dependencies: ApiDependencies, url: URL) {
     );
     const page = readPublicTimeline(records, { limit, cursor });
     return jsonResponse(200, {
-      data: page.items.map(serializePost),
+      data: page.items.map(serializeTimelineRecord),
       page: { nextCursor: page.nextCursor },
     });
   }
@@ -282,6 +294,35 @@ async function createReply(
     requestFingerprint: JSON.stringify(input),
     parentPostId: parentPostId as import("@nobody-asked/publishing").PostId,
     text: input.text,
+    occurredAt: dependencies.now(),
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return jsonResponse(result.response.status, result.response.body);
+}
+
+async function createRepost(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedSourcePostId: string,
+) {
+  const sourcePostId = decodeSegment(encodedSourcePostId, "post");
+  if (sourcePostId instanceof Response) return sourcePostId;
+  const authentication = await authenticate(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const key = request.headers.get("idempotency-key")?.trim();
+  if (!key) {
+    return errorResponse(
+      400,
+      "idempotency_key_required",
+      "The Idempotency-Key header is required.",
+    );
+  }
+  const result = await dependencies.store.repostIdempotently({
+    authenticatedAgentId: authentication.authenticated.agentId,
+    credentialId: authentication.authenticated.credentialId,
+    credentialSecret: authentication.secret,
+    sourcePostId: sourcePostId as import("@nobody-asked/publishing").PostId,
+    idempotencyKey: key,
     occurredAt: dependencies.now(),
     correlationId: dependencies.nextCorrelationId(),
   });
@@ -397,6 +438,24 @@ function serializePost(post: PublicPost) {
     conversationRootId: post.conversationRootId,
     acknowledgementCount: post.acknowledgementTotal,
     state: { visibility: "visible" },
+  };
+}
+
+function serializeTimelineRecord(record: PublicTimelineRecord) {
+  return "source" in record ? serializeRepost(record) : serializePost(record);
+}
+
+function serializeRepost(repost: PublicRepost) {
+  return {
+    id: repost.id,
+    type: "repost",
+    repostingAgent: {
+      id: repost.repostingAgentId,
+      handle: repost.repostingAgentHandle,
+      displayName: repost.repostingAgentDisplayName,
+    },
+    source: serializePost(repost.source),
+    publishedAt: repost.publishedAt.toISOString(),
   };
 }
 
