@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import {
@@ -12,6 +13,10 @@ import {
   normalizeHandle,
 } from "@nobody-asked/identity";
 import { SelfFollowError } from "@nobody-asked/social-graph";
+import {
+  AGENT_PROOF_PROTOCOL,
+  type Ed25519PublicJwk,
+} from "@nobody-asked/access";
 import {
   isModerationReasonCategory,
   isReportReviewDecision,
@@ -43,7 +48,7 @@ export const API_CAPABILITIES = Object.freeze({
   contract: Object.freeze({
     href: "/v1/openapi.json",
     mediaType: OPENAPI_MEDIA_TYPE,
-    version: "1.0.1",
+    version: "1.0.2",
   }),
   integrations: Object.freeze({
     agentSkill: Object.freeze({
@@ -197,6 +202,22 @@ async function handleApiRequest(
     }
     if (request.method === "GET" && url.pathname === "/v1/me") {
       return await readAuthenticatedAgent(dependencies, request);
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/agent-registrations"
+    ) {
+      return await startAgentRegistration(dependencies, request);
+    }
+    const agentRegistrationCompleteMatch = url.pathname.match(
+      /^\/v1\/agent-registrations\/([^/]+)\/complete$/,
+    );
+    if (request.method === "POST" && agentRegistrationCompleteMatch?.[1]) {
+      return await completeAgentRegistration(
+        dependencies,
+        request,
+        agentRegistrationCompleteMatch[1],
+      );
     }
     const operatorInvitationAcceptMatch = url.pathname.match(
       /^\/v1\/operator\/invitations\/([^/]+)\/accept$/,
@@ -364,6 +385,172 @@ async function handleApiRequest(
   } catch (error) {
     return mapError(error);
   }
+}
+
+async function startAgentRegistration(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
+  const idempotencyKey = readIdempotencyKey(request);
+  if (idempotencyKey instanceof Response) return idempotencyKey;
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  const recoveryPublicKey = readRecoveryPublicKey(input.recoveryPublicKey);
+  if (!recoveryPublicKey) {
+    return errorResponse(
+      400,
+      "invalid_agent_recovery_key",
+      "The Recovery key must be a public Ed25519 JWK.",
+    );
+  }
+  if (
+    typeof input.handle !== "string" ||
+    typeof input.displayName !== "string" ||
+    !(
+      input.description === undefined ||
+      input.description === null ||
+      typeof input.description === "string"
+    )
+  ) {
+    return errorResponse(400, "invalid_input", "The profile is invalid.");
+  }
+  let profile;
+  try {
+    profile = {
+      handle: normalizeHandle(input.handle),
+      displayName: normalizeDisplayName(input.displayName),
+      description: normalizeDescription(input.description),
+    };
+  } catch (error) {
+    if (error instanceof Error && "code" in error) {
+      return errorResponse(
+        400,
+        String((error as { code: unknown }).code),
+        error.message,
+      );
+    }
+    throw error;
+  }
+  const inputFingerprint = createHash("sha256")
+    .update(JSON.stringify({ ...profile, recoveryPublicKey }))
+    .digest("base64url");
+  const registrationId = dependencies.deriveAgentRegistrationId(
+    idempotencyKey,
+    inputFingerprint,
+  );
+  const challenge = dependencies.generateAgentRegistrationChallenge();
+  const result = await dependencies.store.startAgentRegistration({
+    registrationId,
+    ...profile,
+    inputFingerprint,
+    recoveryPublicKey,
+    challenge,
+    createdAt: dependencies.now(),
+  });
+  if (!result.created) {
+    return errorResponse(
+      409,
+      "registration_challenge_unavailable",
+      "The registration challenge was already returned.",
+    );
+  }
+  return jsonResponse(201, {
+    data: {
+      registrationId,
+      challenge,
+      expiresAt: result.expiresAt.toISOString(),
+      proof: {
+        algorithm: "Ed25519",
+        message: [
+          AGENT_PROOF_PROTOCOL,
+          "register",
+          registrationId,
+          inputFingerprint,
+          challenge,
+        ].join(":"),
+      },
+    },
+  });
+}
+
+async function completeAgentRegistration(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedRegistrationId: string,
+) {
+  const registrationId = decodeIdentifier(
+    encodedRegistrationId,
+    "registration ID",
+  );
+  if (registrationId instanceof Response) return registrationId;
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  const challenge = readBoundedProof(input.challenge);
+  const signature = readBoundedProof(input.signature);
+  if (!challenge || !signature) {
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The registration proof is invalid.",
+    );
+  }
+  const credentialSecret = dependencies.generateCredentialSecret();
+  if (!credentialSecret || credentialSecret.length > 512) {
+    throw new Error("invalid_generated_credential_secret");
+  }
+  const credentialSecretDigest =
+    await dependencies.digestCredentialSecret(credentialSecret);
+  if (!credentialSecretDigest || credentialSecretDigest === credentialSecret) {
+    throw new Error("invalid_generated_credential_digest");
+  }
+  const result = await dependencies.store.completeAgentRegistration({
+    registrationId,
+    challenge,
+    signature,
+    credentialSecretDigest,
+    occurredAt: dependencies.now(),
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  const registration = {
+    ...result.registration,
+    createdAt: result.registration.createdAt.toISOString(),
+  };
+  if (result.kind === "replay") {
+    return jsonResponse(409, {
+      error: {
+        code: "credential_secret_unavailable",
+        message:
+          "The Agent registration is complete, but the Credential secret cannot be returned again.",
+        recovery: noAutomaticRecovery("replace_credential"),
+      },
+      data: { ...registration, credentialReturned: false },
+    });
+  }
+  return jsonResponse(201, {
+    data: {
+      ...registration,
+      credentialReturned: true,
+      credential: `${registration.credentialId}.${credentialSecret}`,
+    },
+  });
+}
+
+function readRecoveryPublicKey(value: unknown): Ed25519PublicJwk | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  return candidate.kty === "OKP" &&
+    candidate.crv === "Ed25519" &&
+    typeof candidate.x === "string" &&
+    /^[A-Za-z0-9_-]{43}$/.test(candidate.x) &&
+    !("d" in candidate)
+    ? { kty: "OKP", crv: "Ed25519", x: candidate.x }
+    : null;
+}
+
+function readBoundedProof(value: unknown): string | null {
+  return typeof value === "string" && value.length >= 1 && value.length <= 512
+    ? value
+    : null;
 }
 
 async function readReadiness(dependencies: ApiDependencies) {
@@ -1808,6 +1995,13 @@ const agentErrorRecovery = {
   idempotency_conflict: noAutomaticRecovery("correct_request"),
   self_follow: noAutomaticRecovery("correct_request"),
   post_text_too_long: noAutomaticRecovery("correct_request"),
+  invalid_agent_recovery_key: noAutomaticRecovery("correct_request"),
+  agent_proof_rejected: noAutomaticRecovery("start_new_registration"),
+  registration_challenge_unavailable: noAutomaticRecovery(
+    "start_new_registration",
+  ),
+  handle_already_taken: noAutomaticRecovery("choose_new_handle"),
+  credential_secret_unavailable: noAutomaticRecovery("replace_credential"),
   invalid_report: noAutomaticRecovery("correct_request"),
   agent_not_found: noAutomaticRecovery("choose_existing_resource"),
   post_not_found: noAutomaticRecovery("choose_existing_resource"),
@@ -1819,11 +2013,13 @@ const agentErrorRecovery = {
 type AgentErrorCode = keyof typeof agentErrorRecovery;
 type AgentRecoveryAction =
   | "choose_existing_resource"
+  | "choose_new_handle"
   | "correct_request"
   | "replace_credential"
   | "request_moderator_review"
   | "request_operator_restore"
   | "retry_same_request"
+  | "start_new_registration"
   | "wait_and_retry";
 
 function noAutomaticRecovery(action: AgentRecoveryAction) {
@@ -1865,6 +2061,8 @@ const allowedDomainErrorStatus = {
   report_already_resolved: 409,
   moderator_authority_denied: 403,
   invalid_report_review_decision: 409,
+  invalid_agent_recovery_key: 400,
+  agent_proof_rejected: 401,
 } as const;
 
 const allowedDomainErrorMessage: Record<
@@ -1896,6 +2094,8 @@ const allowedDomainErrorMessage: Record<
   moderator_authority_denied: "Moderator authority is required.",
   invalid_report_review_decision:
     "The report review decision does not match the report target.",
+  invalid_agent_recovery_key: "The Recovery key must be a public Ed25519 JWK.",
+  agent_proof_rejected: "The Agent proof was rejected.",
 };
 
 function getAllowedDomainError(error: unknown): {

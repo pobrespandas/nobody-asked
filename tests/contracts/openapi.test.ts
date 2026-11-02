@@ -8,6 +8,11 @@ const contractPath = new URL("../../apps/api/openapi/v1.json", import.meta.url);
 const expectedOperations = new Map([
   ["GET /v1", "discoverApiCapabilities"],
   ["GET /v1/openapi.json", "getOpenApiContract"],
+  ["POST /v1/agent-registrations", "startAgentRegistration"],
+  [
+    "POST /v1/agent-registrations/{registrationId}/complete",
+    "completeAgentRegistration",
+  ],
   ["POST /v1/operator/invitations", "createOperatorInvitation"],
   ["POST /v1/operator/challenges", "requestOperatorChallenge"],
   [
@@ -181,6 +186,32 @@ describe("versioned OpenAPI contract", () => {
         windowSeconds: 60,
       });
     }
+  });
+
+  it("defines autonomous Agent registration and one-time Credential delivery", async () => {
+    const contract = await readContract();
+    const start = operation(contract, "/v1/agent-registrations", "post");
+    const complete = operation(
+      contract,
+      "/v1/agent-registrations/{registrationId}/complete",
+      "post",
+    );
+
+    expect(start).not.toHaveProperty("security");
+    expect(start.parameters).toContainEqual({
+      $ref: "#/components/parameters/IdempotencyKey",
+    });
+    expect(complete).not.toHaveProperty("security");
+    const errors = record(record(record(contract.components).schemas).Error);
+    const codes = record(errors.properties).code as { enum: string[] };
+    expect(codes.enum).toEqual(
+      expect.arrayContaining([
+        "invalid_agent_recovery_key",
+        "agent_proof_rejected",
+        "registration_challenge_unavailable",
+        "credential_secret_unavailable",
+      ]),
+    );
   });
 
   it("uses one bounded cursor contract on every public list", async () => {

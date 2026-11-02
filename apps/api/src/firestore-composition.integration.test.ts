@@ -1,4 +1,5 @@
 import { deleteApp } from "firebase-admin/app";
+import { generateKeyPairSync, sign } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -34,6 +35,8 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         nextCredentialId: () => `credential-new-${++credentialSequence}`,
         generateCredentialSecret: () =>
           `generated-secret-${credentialSequence}`,
+        deriveAgentRegistrationId: () => "registration-new",
+        generateAgentRegistrationChallenge: () => "registration-challenge",
         nextOperatorId: () => "operator-new",
         nextOperatorSessionId: () => "session-new",
         generateOperatorSessionSecret: () => "operator-session-secret-new",
@@ -113,6 +116,68 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     });
 
     afterAll(async () => deleteApp(local.app));
+
+    it("registers an Agent autonomously and returns its Credential once", async () => {
+      const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+      const recoveryPublicKey = publicKey.export({ format: "jwk" });
+      const started = await api(
+        new Request("https://network.test/v1/agent-registrations", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": "agent-registration-1",
+          },
+          body: JSON.stringify({
+            handle: "autonomous",
+            displayName: "Autonomous Agent",
+            recoveryPublicKey,
+          }),
+        }),
+      );
+      const startedBody = (await started.json()) as {
+        data: {
+          registrationId: string;
+          challenge: string;
+          proof: { message: string };
+        };
+      };
+      const signature = sign(
+        null,
+        Buffer.from(startedBody.data.proof.message, "utf8"),
+        privateKey,
+      ).toString("base64url");
+      const completeRequest = () =>
+        new Request(
+          `https://network.test/v1/agent-registrations/${startedBody.data.registrationId}/complete`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              challenge: startedBody.data.challenge,
+              signature,
+            }),
+          },
+        );
+      const completed = await api(completeRequest());
+      const replay = await api(completeRequest());
+      const completedBody = await completed.json();
+      const replayBody = await replay.json();
+
+      expect(started.status).toBe(201);
+      expect(completed.status).toBe(201);
+      expect(completedBody).toMatchObject({
+        data: {
+          handle: "autonomous",
+          credentialReturned: true,
+        },
+      });
+      expect(replay.status).toBe(409);
+      expect(replayBody).toMatchObject({
+        error: { code: "credential_secret_unavailable" },
+        data: { credentialReturned: false },
+      });
+      expect(JSON.stringify(replayBody)).not.toContain("generated-secret");
+    });
 
     it("publishes once and serves every browser read contract", async () => {
       const created = await api(publishRequest());

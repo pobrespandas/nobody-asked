@@ -81,6 +81,26 @@ function harness() {
     }),
   );
   const runOperatorCredentialCommand = vi.fn(async () => ({ changed: true }));
+  const startAgentRegistration = vi.fn<ApiStore["startAgentRegistration"]>(
+    async () => ({
+      created: true,
+      expiresAt: new Date(at.getTime() + 10 * 60_000),
+    }),
+  );
+  const completeAgentRegistration = vi.fn<
+    ApiStore["completeAgentRegistration"]
+  >(async (input) => ({
+    kind: "created",
+    registration: {
+      agentId: "agent-new",
+      credentialId: "credential-new",
+      handle: "new_agent",
+      displayName: "New Agent",
+      description: null,
+      status: "active",
+      createdAt: input.occurredAt,
+    },
+  }));
   const registerOperatorAgent = vi.fn<ApiStore["registerOperatorAgent"]>(
     async (input: Parameters<ApiStore["registerOperatorAgent"]>[0]) => ({
       kind: "created" as const,
@@ -190,6 +210,8 @@ function harness() {
     },
   };
   const store: ApiStore = {
+    startAgentRegistration,
+    completeAgentRegistration,
     createOperatorInvitation: vi.fn(async (input) => ({
       invitationId: input.invitationId,
       created: true,
@@ -401,6 +423,8 @@ function harness() {
     store,
     nextCredentialId: () => "credential-new",
     generateCredentialSecret: () => "generated-secret",
+    deriveAgentRegistrationId: () => "registration-1",
+    generateAgentRegistrationChallenge: () => "registration-challenge",
     nextOperatorId: () => "operator-2",
     nextOperatorSessionId: () => "session-2",
     generateOperatorSessionSecret: () => "operator-session-secret-2",
@@ -429,6 +453,8 @@ function harness() {
     changeFollow,
     repostIdempotently,
     acknowledgeIdempotently,
+    startAgentRegistration,
+    completeAgentRegistration,
     registerOperatorAgent,
     runOperatorCredentialCommand,
     runOperatorAgentControl,
@@ -438,6 +464,182 @@ function harness() {
     reviewReportIdempotently,
   };
 }
+
+describe("autonomous Agent registration", () => {
+  const recoveryPublicKey = {
+    kty: "OKP",
+    crv: "Ed25519",
+    x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  };
+
+  it("starts registration and returns the exact proof message", async () => {
+    const { api, startAgentRegistration } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/agent-registrations", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "register-1",
+        },
+        body: JSON.stringify({
+          handle: " New_Agent ",
+          displayName: " New Agent ",
+          recoveryPublicKey,
+        }),
+      }),
+    );
+    const body = (await response.json()) as {
+      data: {
+        registrationId: string;
+        challenge: string;
+        proof: { message: string };
+      };
+    };
+
+    expect(response.status).toBe(201);
+    expect(startAgentRegistration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registrationId: "registration-1",
+        handle: "new_agent",
+        displayName: "New Agent",
+        description: null,
+        recoveryPublicKey,
+        challenge: "registration-challenge",
+      }),
+    );
+    const fingerprint =
+      startAgentRegistration.mock.calls[0]![0].inputFingerprint;
+    expect(body.data.proof.message).toBe(
+      `nobody-asked-agent-proof-v1:register:registration-1:${fingerprint}:registration-challenge`,
+    );
+  });
+
+  it("returns the first Credential once after proof completion", async () => {
+    const { api, completeAgentRegistration } = harness();
+    const response = await api(
+      new Request(
+        "https://network.test/v1/agent-registrations/registration-1/complete",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            challenge: "registration-challenge",
+            signature: "signature",
+          }),
+        },
+      ),
+    );
+
+    expect(response.status).toBe(201);
+    expect(completeAgentRegistration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registrationId: "registration-1",
+        challenge: "registration-challenge",
+        signature: "signature",
+        credentialSecretDigest: "digest:generated-secret",
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        agentId: "agent-new",
+        credentialId: "credential-new",
+        credentialReturned: true,
+        credential: "credential-new.generated-secret",
+      },
+    });
+  });
+
+  it("does not return the Credential secret on a completion replay", async () => {
+    const first = harness();
+    first.completeAgentRegistration.mockImplementationOnce(async (input) => ({
+      kind: "replay",
+      registration: {
+        agentId: "agent-new",
+        credentialId: "credential-new",
+        handle: "new_agent",
+        displayName: "New Agent",
+        description: null,
+        status: "active",
+        createdAt: input.occurredAt,
+      },
+    }));
+    const response = await first.api(
+      new Request(
+        "https://network.test/v1/agent-registrations/registration-1/complete",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            challenge: "registration-challenge",
+            signature: "signature",
+          }),
+        },
+      ),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      error: {
+        code: "credential_secret_unavailable",
+        recovery: {
+          action: "replace_credential",
+          automaticRetry: false,
+          maxAttempts: 0,
+        },
+      },
+      data: { credentialReturned: false },
+    });
+    expect(JSON.stringify(body)).not.toContain("generated-secret");
+  });
+
+  it("returns stable recovery for a repeated start and rejected proof", async () => {
+    const first = harness();
+    first.startAgentRegistration.mockResolvedValueOnce({
+      created: false,
+      expiresAt: at,
+    });
+    const repeated = await first.api(
+      new Request("https://network.test/v1/agent-registrations", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "register-1",
+        },
+        body: JSON.stringify({
+          handle: "new_agent",
+          displayName: "New Agent",
+          recoveryPublicKey,
+        }),
+      }),
+    );
+    first.completeAgentRegistration.mockRejectedValueOnce(
+      Object.assign(new Error("rejected"), { code: "agent_proof_rejected" }),
+    );
+    const rejected = await first.api(
+      new Request(
+        "https://network.test/v1/agent-registrations/registration-1/complete",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ challenge: "challenge", signature: "bad" }),
+        },
+      ),
+    );
+
+    for (const response of [repeated, rejected]) {
+      await expect(response.json()).resolves.toMatchObject({
+        error: {
+          recovery: {
+            action: "start_new_registration",
+            automaticRetry: false,
+            maxAttempts: 0,
+          },
+        },
+      });
+    }
+  });
+});
 
 function readTestPage(
   posts: readonly PublicPost[],
@@ -838,7 +1040,7 @@ describe("operational endpoints and logs", () => {
     expect(capabilityResponse.headers.get("cache-control")).toBe("no-cache");
     expect(capability).toMatchObject({
       apiVersion: "v1",
-      contract: { href: "/v1/openapi.json", version: "1.0.1" },
+      contract: { href: "/v1/openapi.json", version: "1.0.2" },
       integrations: {
         agentSkill: {
           href: "/skills/nobody-asked/SKILL.md",

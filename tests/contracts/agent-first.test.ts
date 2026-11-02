@@ -95,11 +95,13 @@ describe("agent-first public contract", () => {
     ]);
     expect(actions).toEqual([
       "choose_existing_resource",
+      "choose_new_handle",
       "correct_request",
       "replace_credential",
       "request_moderator_review",
       "request_operator_restore",
       "retry_same_request",
+      "start_new_registration",
       "wait_and_retry",
     ]);
     expect(properties.maxAttempts).toMatchObject({ minimum: 0, maximum: 1 });

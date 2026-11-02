@@ -5,6 +5,7 @@ import type {
   ModerationReasonCategory,
   ReportReviewDecision,
 } from "@nobody-asked/safety";
+import type { Ed25519PublicJwk } from "@nobody-asked/access";
 
 export interface AuthenticatedAgent {
   readonly agentId: AgentId;
@@ -170,6 +171,37 @@ export interface ApiTransaction {
 }
 
 export interface ApiStore {
+  startAgentRegistration(input: {
+    readonly registrationId: string;
+    readonly handle: string;
+    readonly displayName: string;
+    readonly description: string | null;
+    readonly inputFingerprint: string;
+    readonly recoveryPublicKey: Ed25519PublicJwk;
+    readonly challenge: string;
+    readonly createdAt: Date;
+  }): Promise<Readonly<{ created: boolean; expiresAt: Date }>>;
+  completeAgentRegistration(input: {
+    readonly registrationId: string;
+    readonly challenge: string;
+    readonly signature: string;
+    readonly credentialSecretDigest: string;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<
+    Readonly<{
+      kind: "created" | "replay";
+      registration: {
+        readonly agentId: string;
+        readonly credentialId: string;
+        readonly handle: string;
+        readonly displayName: string;
+        readonly description: string | null;
+        readonly status: "active";
+        readonly createdAt: Date;
+      };
+    }>
+  >;
   createOperatorInvitation(input: {
     readonly issuerOperatorId: string;
     readonly invitationId: string;
@@ -347,6 +379,11 @@ export interface ApiDependencies {
   readonly store: ApiStore;
   readonly nextCredentialId: () => string;
   readonly generateCredentialSecret: () => string;
+  readonly deriveAgentRegistrationId: (
+    idempotencyKey: string,
+    inputFingerprint: string,
+  ) => string;
+  readonly generateAgentRegistrationChallenge: () => string;
   readonly nextOperatorId: () => string;
   readonly nextOperatorSessionId: () => string;
   readonly generateOperatorSessionSecret: () => string;

@@ -13,6 +13,8 @@ export interface FirestoreApiDependencies extends FirestoreAdapterInput {
   readonly monotonicNow: ApiDependencies["monotonicNow"];
   readonly nextCredentialId: ApiDependencies["nextCredentialId"];
   readonly generateCredentialSecret: ApiDependencies["generateCredentialSecret"];
+  readonly deriveAgentRegistrationId: ApiDependencies["deriveAgentRegistrationId"];
+  readonly generateAgentRegistrationChallenge: ApiDependencies["generateAgentRegistrationChallenge"];
   readonly nextOperatorId: ApiDependencies["nextOperatorId"];
   readonly nextOperatorSessionId: ApiDependencies["nextOperatorSessionId"];
   readonly generateOperatorSessionSecret: ApiDependencies["generateOperatorSessionSecret"];
@@ -31,6 +33,9 @@ export function createFirestoreApi(dependencies: FirestoreApiDependencies) {
     store: adapters.store,
     nextCredentialId: dependencies.nextCredentialId,
     generateCredentialSecret: dependencies.generateCredentialSecret,
+    deriveAgentRegistrationId: dependencies.deriveAgentRegistrationId,
+    generateAgentRegistrationChallenge:
+      dependencies.generateAgentRegistrationChallenge,
     nextOperatorId: dependencies.nextOperatorId,
     nextOperatorSessionId: dependencies.nextOperatorSessionId,
     generateOperatorSessionSecret: dependencies.generateOperatorSessionSecret,
