@@ -29,12 +29,12 @@ describe("first release readiness review", () => {
     expect(review).toContain(issueIdentifier);
   });
 
-  it("records all first release outcomes", () => {
+  it("records every blocked outcome and infrastructure check", () => {
     const outcomeRows = review
       .split("\n")
       .filter((line) => line.startsWith("| ") && line.includes(" | Blocked |"));
 
-    expect(outcomeRows).toHaveLength(6);
+    expect(outcomeRows).toHaveLength(7);
   });
 
   it("records the deployed agent capability contract", () => {
