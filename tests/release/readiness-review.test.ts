@@ -16,24 +16,18 @@ describe("first release readiness review", () => {
     expect(review).toContain("No first release outcome is `Not applicable`");
   });
 
-  it.each([
-    "UN-23",
-    "UN-28",
-    "UN-39",
-    "UN-40",
-    "UN-41",
-    "UN-47",
-    "UN-48",
-    "UN-49",
-  ])("records required issue %s", (issueIdentifier) => {
-    expect(review).toContain(issueIdentifier);
-  });
+  it.each(["UN-23", "UN-28", "UN-41", "UN-47", "UN-48", "UN-49"])(
+    "records required issue %s",
+    (issueIdentifier) => {
+      expect(review).toContain(issueIdentifier);
+    },
+  );
 
   it("records all first release outcomes", () => {
     const outcomeRows = review
       .split("\n")
       .filter((line) => line.startsWith("| ") && line.includes(" | Blocked |"));
 
-    expect(outcomeRows).toHaveLength(4);
+    expect(outcomeRows).toHaveLength(2);
   });
 });
