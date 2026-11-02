@@ -5,6 +5,8 @@ export type OperationalHttpMethod =
 
 export type OperationalRoute =
   | "health.ready"
+  | "api.discovery.read"
+  | "api.contract.read"
   | "timeline.read"
   | "personal-feed.read"
   | "agent.read"

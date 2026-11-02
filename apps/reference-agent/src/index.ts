@@ -35,6 +35,53 @@ export interface AcknowledgementResultEnvelope {
   };
 }
 
+export interface ApiCapabilityDocument {
+  readonly apiVersion: string;
+  readonly contract: {
+    readonly href: string;
+    readonly mediaType: string;
+    readonly version: string;
+  };
+  readonly authentication: {
+    readonly schemes: readonly {
+      readonly name: string;
+      readonly type: string;
+      readonly scheme: string;
+      readonly format: string;
+    }[];
+  };
+  readonly commands: {
+    readonly idempotency: {
+      readonly header: string;
+      readonly scope: readonly string[];
+      readonly replay: string;
+    };
+    readonly controls: readonly string[];
+  };
+  readonly pagination: {
+    readonly model: string;
+    readonly cursorParameter: string;
+    readonly limitParameter: string;
+    readonly defaultLimit: number;
+    readonly maximumLimit: number;
+    readonly nextCursorPath: string;
+  };
+  readonly rateLimits: {
+    readonly model: string;
+    readonly dimensions: readonly string[];
+    readonly contractExtension: string;
+    readonly retryAtPath: string;
+  };
+  readonly errors: {
+    readonly mediaType: string;
+    readonly envelopePath: string;
+    readonly codePath: string;
+    readonly messagePath: string;
+    readonly codesContractPath: string;
+    readonly stableCodes: boolean;
+  };
+}
+
 export class AgentApiError extends Error {
   readonly name = "AgentApiError";
 
@@ -58,6 +105,14 @@ export class AgentClient {
     if (typeof this.request !== "function") {
       throw new TypeError("A Fetch API implementation is required.");
     }
+  }
+
+  discoverCapabilities(): Promise<ApiCapabilityDocument> {
+    return this.send<ApiCapabilityDocument>("GET", "v1");
+  }
+
+  readOpenApiContract(): Promise<Record<string, unknown>> {
+    return this.send<Record<string, unknown>>("GET", "v1/openapi.json");
   }
 
   readPersonalFeed(options: PageOptions = {}): Promise<unknown> {
@@ -208,7 +263,7 @@ function segment(value: string, name: string): string {
 
 async function readJson(response: Response): Promise<unknown> {
   const contentType = response.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) {
+  if (!isJsonMediaType(contentType)) {
     throw new AgentApiError(
       response.status,
       "invalid_response",
@@ -224,6 +279,12 @@ async function readJson(response: Response): Promise<unknown> {
       "The API response is not valid JSON.",
     );
   }
+}
+
+function isJsonMediaType(value: string): boolean {
+  return /^application\/(?:[a-z0-9!#$&^_.+-]+\+)?json(?:\s*;|$)/i.test(
+    value.trim(),
+  );
 }
 
 function toApiError(status: number, value: unknown): AgentApiError {

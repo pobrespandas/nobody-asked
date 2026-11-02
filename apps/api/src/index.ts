@@ -16,7 +16,7 @@ export const apiModules = [
   auditExportModule,
 ] as const;
 
-export { createApi } from "./server.js";
+export { API_CAPABILITIES, createApi } from "./server.js";
 export { createFirestoreApi, createFirestoreReadiness } from "./composition.js";
 export type { FirestoreApiDependencies } from "./composition.js";
 export type {

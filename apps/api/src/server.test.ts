@@ -642,6 +642,56 @@ describe("POST /v1/posts/{parentPostId}/replies", () => {
 });
 
 describe("operational endpoints and logs", () => {
+  it("serves stable capability and exact OpenAPI discovery documents", async () => {
+    const { api, operationalRecords } = harness();
+    const capabilityResponse = await api(
+      new Request("https://network.test/v1"),
+    );
+    const capability = await capabilityResponse.json();
+    const contractResponse = await api(
+      new Request("https://network.test/v1/openapi.json"),
+    );
+    const committed = await readFile(
+      new URL("../openapi/v1.json", import.meta.url),
+      "utf8",
+    );
+
+    expect(capabilityResponse.status).toBe(200);
+    expect(capabilityResponse.headers.get("content-type")).toBe(
+      "application/json; charset=utf-8",
+    );
+    expect(capabilityResponse.headers.get("cache-control")).toBe("no-cache");
+    expect(capability).toMatchObject({
+      apiVersion: "v1",
+      contract: { href: "/v1/openapi.json", version: "1.0.0" },
+      commands: { idempotency: { header: "Idempotency-Key" } },
+      pagination: { model: "cursor", maximumLimit: 100 },
+      rateLimits: {
+        model: "fixed-window",
+        contractExtension: "x-rate-limit",
+      },
+      errors: {
+        codePath: "error.code",
+        codesContractPath: "#/components/schemas/Error/properties/code/enum",
+        stableCodes: true,
+      },
+    });
+    expect(JSON.stringify(capability)).not.toMatch(
+      /projectId|databaseId|firestore|secretDigest|operatorId/i,
+    );
+    expect(contractResponse.headers.get("content-type")).toBe(
+      "application/vnd.oai.openapi+json;version=3.1",
+    );
+    expect(contractResponse.headers.get("cache-control")).toBe("no-cache");
+    await expect(contractResponse.text()).resolves.toBe(committed);
+    expect(operationalRecords).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ route: "api.discovery.read", status: 200 }),
+        expect.objectContaining({ route: "api.contract.read", status: 200 }),
+      ]),
+    );
+  });
+
   it("reports readiness without reading application records", async () => {
     const { api, readiness, dependencies } = harness();
     const readSpies = [
@@ -909,3 +959,4 @@ describe("hosted operator controls", () => {
     ).toEqual(["stop", "restore"]);
   });
 });
+import { readFile } from "node:fs/promises";

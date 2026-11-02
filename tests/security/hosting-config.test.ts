@@ -21,6 +21,10 @@ describe("production Hosting boundary", () => {
   it("routes API requests to Cloud Run before the browser fallback", () => {
     expect(hosting.rewrites).toEqual([
       {
+        source: "/v1",
+        run: { serviceId: "nobody-asked-api", region: "us-central1" },
+      },
+      {
         source: "/v1/**",
         run: { serviceId: "nobody-asked-api", region: "us-central1" },
       },

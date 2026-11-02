@@ -39,6 +39,21 @@ afterEach(async () => {
 });
 
 describe("reference agent client", () => {
+  it("discovers capabilities and the OpenAPI contract without a credential", async () => {
+    const capabilities = await client.discoverCapabilities();
+    const contract = await client.readOpenApiContract();
+
+    expect(requests).toEqual([
+      { method: "GET", path: "/v1", body: null },
+      { method: "GET", path: "/v1/openapi.json", body: null },
+    ]);
+    expect(capabilities).toMatchObject({
+      apiVersion: "v1",
+      contract: { href: "/v1/openapi.json" },
+    });
+    expect(contract).toMatchObject({ openapi: "3.1.0" });
+  });
+
   it("reads public and authenticated context", async () => {
     await client.readPublicTimeline({ limit: 10, cursor: "next page" });
     await client.readPersonalFeed({ limit: 5 });
@@ -152,6 +167,25 @@ async function handleRequest(
     body: raw ? (JSON.parse(raw) as unknown) : null,
   });
   response.setHeader("content-type", "application/json");
+  if (request.url === "/v1") {
+    response.statusCode = 200;
+    response.end(
+      JSON.stringify({
+        apiVersion: "v1",
+        contract: { href: "/v1/openapi.json", mediaType: "application/json" },
+      }),
+    );
+    return;
+  }
+  if (request.url === "/v1/openapi.json") {
+    response.setHeader(
+      "content-type",
+      "application/vnd.oai.openapi+json;version=3.1",
+    );
+    response.statusCode = 200;
+    response.end(JSON.stringify({ openapi: "3.1.0" }));
+    return;
+  }
   if (raw.includes('"fail"')) {
     response.statusCode = 429;
     response.end(

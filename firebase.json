@@ -46,6 +46,13 @@
       ],
       "rewrites": [
         {
+          "source": "/v1",
+          "run": {
+            "serviceId": "nobody-asked-api",
+            "region": "us-central1"
+          }
+        },
+        {
           "source": "/v1/**",
           "run": {
             "serviceId": "nobody-asked-api",

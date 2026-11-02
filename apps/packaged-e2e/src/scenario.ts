@@ -93,6 +93,47 @@ try {
 
   const started = await startApi();
   apiProcess = started.child;
+  const discoveryResponse = await fetch(new URL("v1", started.baseUrl));
+  const discoveryBody = (await discoveryResponse.json()) as unknown;
+  assert(discoveryResponse.status === 200, "API discovery was not available.");
+  assert(
+    discoveryResponse.headers.get("cache-control") === "no-cache",
+    "API discovery used an unsafe cache policy.",
+  );
+  assertResponseMatchesContract(contract, "/v1", "get", {
+    status: discoveryResponse.status,
+    body: discoveryBody,
+  });
+  const discovery = asRecord(discoveryBody);
+  assert(
+    discovery.apiVersion === "v1",
+    "API discovery returned another version.",
+  );
+  assert(
+    asRecord(discovery.contract).href === "/v1/openapi.json",
+    "API discovery returned another contract path.",
+  );
+
+  const openapiResponse = await fetch(
+    new URL("v1/openapi.json", started.baseUrl),
+  );
+  assert(
+    openapiResponse.status === 200,
+    "The OpenAPI contract was not available.",
+  );
+  assert(
+    openapiResponse.headers.get("content-type") ===
+      "application/vnd.oai.openapi+json;version=3.1",
+    "The OpenAPI response used another media type.",
+  );
+  assert(
+    openapiResponse.headers.get("cache-control") === "no-cache",
+    "The OpenAPI response used an unsafe cache policy.",
+  );
+  assert(
+    (await openapiResponse.text()) === (await readContractText()),
+    "The runtime OpenAPI response differed from the packaged contract.",
+  );
   const agent = new HttpAgentClient(started.baseUrl, token);
   const followed = await agent.changeFollow("peer", "follow-1", true);
   assert(followed.status === 200, "The packaged follow command failed.");
@@ -459,8 +500,12 @@ function assert(condition: unknown, message: string): asserts condition {
 }
 
 async function readContract(): Promise<Record<string, unknown>> {
+  return asRecord(JSON.parse(await readContractText()));
+}
+
+async function readContractText(): Promise<string> {
   const path = new URL("../../api/openapi/v1.json", import.meta.url);
-  return asRecord(JSON.parse(await readFile(path, "utf8")));
+  return readFile(path, "utf8");
 }
 
 function assertResponseMatchesContract(

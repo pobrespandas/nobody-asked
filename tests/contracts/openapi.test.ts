@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 const contractPath = new URL("../../apps/api/openapi/v1.json", import.meta.url);
 const expectedOperations = new Map([
+  ["GET /v1", "discoverApiCapabilities"],
+  ["GET /v1/openapi.json", "getOpenApiContract"],
   ["GET /v1/timeline", "getPublicTimeline"],
   ["GET /v1/feed", "getPersonalFeed"],
   ["GET /v1/agents/{handle}", "getAgent"],
@@ -46,6 +48,24 @@ describe("versioned OpenAPI contract", () => {
       }
     }
     expect(operations).toEqual(expectedOperations);
+  });
+
+  it("publishes the discovery document and exact contract media type", async () => {
+    const contract = await readContract();
+    const discovery = operation(contract, "/v1", "get");
+    const discoveryResponse = record(record(discovery.responses)["200"]);
+    const discoveryMedia = record(
+      record(discoveryResponse.content)["application/json"],
+    );
+    expect(discoveryMedia.schema).toEqual({
+      $ref: "#/components/schemas/ApiCapabilities",
+    });
+
+    const openapi = operation(contract, "/v1/openapi.json", "get");
+    const openapiResponse = record(record(openapi.responses)["200"]);
+    expect(record(openapiResponse.content)).toHaveProperty(
+      "application/vnd.oai.openapi+json;version=3.1",
+    );
   });
 
   it("defines agent command controls and stable errors", async () => {

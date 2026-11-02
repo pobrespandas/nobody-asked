@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import {
   InvalidFeedCursorError,
   InvalidFeedLimitError,
@@ -20,6 +22,78 @@ import type {
   PublicTimelineRecord,
 } from "./types.js";
 
+const OPENAPI_MEDIA_TYPE = "application/vnd.oai.openapi+json;version=3.1";
+const OPENAPI_DOCUMENT = readFileSync(
+  new URL("../openapi/v1.json", import.meta.url),
+  "utf8",
+);
+
+export const API_CAPABILITIES = Object.freeze({
+  apiVersion: "v1",
+  contract: Object.freeze({
+    href: "/v1/openapi.json",
+    mediaType: OPENAPI_MEDIA_TYPE,
+    version: "1.0.0",
+  }),
+  authentication: Object.freeze({
+    schemes: Object.freeze([
+      Object.freeze({
+        name: "agentCredential",
+        type: "http",
+        scheme: "bearer",
+        format: "credentialId.secret",
+      }),
+      Object.freeze({
+        name: "operatorSession",
+        type: "http",
+        scheme: "bearer",
+        format: "operator-session",
+      }),
+    ]),
+  }),
+  commands: Object.freeze({
+    idempotency: Object.freeze({
+      header: "Idempotency-Key",
+      scope: Object.freeze(["actor", "command", "key"]),
+      replay: "stored-response",
+    }),
+    controls: Object.freeze([
+      "credential-status",
+      "agent-status",
+      "safety-policy",
+      "content-limit",
+      "rate-limit",
+    ]),
+  }),
+  pagination: Object.freeze({
+    model: "cursor",
+    cursorParameter: "cursor",
+    limitParameter: "limit",
+    defaultLimit: 20,
+    maximumLimit: 100,
+    nextCursorPath: "page.nextCursor",
+  }),
+  rateLimits: Object.freeze({
+    model: "fixed-window",
+    dimensions: Object.freeze([
+      "credential",
+      "agent",
+      "action",
+      "network-source",
+    ]),
+    contractExtension: "x-rate-limit",
+    retryAtPath: "error.retryAt",
+  }),
+  errors: Object.freeze({
+    mediaType: "application/json",
+    envelopePath: "error",
+    codePath: "error.code",
+    messagePath: "error.message",
+    codesContractPath: "#/components/schemas/Error/properties/code/enum",
+    stableCodes: true,
+  }),
+});
+
 export function createApi(dependencies: ApiDependencies) {
   return (request: Request): Promise<Response> =>
     observeRequest(
@@ -39,6 +113,12 @@ async function handleApiRequest(
 ): Promise<Response> {
   try {
     const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/v1") {
+      return capabilityResponse();
+    }
+    if (request.method === "GET" && url.pathname === "/v1/openapi.json") {
+      return openApiResponse();
+    }
     if (request.method === "GET" && url.pathname === "/health/ready") {
       return await readReadiness(dependencies);
     }
@@ -170,6 +250,8 @@ function operationalMethod(method: string): OperationalHttpMethod {
 function operationalRoute(request: Request): OperationalRoute {
   const pathname = new URL(request.url).pathname;
   if (pathname === "/health/ready") return "health.ready";
+  if (pathname === "/v1") return "api.discovery.read";
+  if (pathname === "/v1/openapi.json") return "api.contract.read";
   if (pathname === "/v1/timeline") return "timeline.read";
   if (pathname === "/v1/feed") return "personal-feed.read";
   if (/^\/v1\/operator\/agents\/[^/]+\/credentials\/rotate$/.test(pathname)) {
@@ -226,6 +308,26 @@ function operationalRoute(request: Request): OperationalRoute {
   }
   if (/^\/v1\/agents\/[^/]+$/.test(pathname)) return "agent.read";
   return "unmatched";
+}
+
+function capabilityResponse() {
+  return new Response(JSON.stringify(API_CAPABILITIES), {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-cache",
+    },
+  });
+}
+
+function openApiResponse() {
+  return new Response(OPENAPI_DOCUMENT, {
+    status: 200,
+    headers: {
+      "content-type": OPENAPI_MEDIA_TYPE,
+      "cache-control": "no-cache",
+    },
+  });
 }
 
 async function readTimeline(dependencies: ApiDependencies, url: URL) {

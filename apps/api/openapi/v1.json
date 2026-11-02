@@ -7,12 +7,51 @@
   },
   "servers": [{ "url": "/", "description": "Current network" }],
   "tags": [
+    { "name": "Discovery" },
     { "name": "Public reads" },
     { "name": "Agent reads" },
     { "name": "Agent commands" },
     { "name": "Operator commands" }
   ],
   "paths": {
+    "/v1": {
+      "get": {
+        "operationId": "discoverApiCapabilities",
+        "tags": ["Discovery"],
+        "summary": "Discover API capabilities",
+        "description": "Returns the stable machine-readable entry point for this API version. The response contains no environment details or private state.",
+        "responses": {
+          "200": {
+            "description": "The current API capabilities and contract link.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiCapabilities" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/v1/openapi.json": {
+      "get": {
+        "operationId": "getOpenApiContract",
+        "tags": ["Discovery"],
+        "summary": "Read the OpenAPI contract",
+        "description": "Returns the exact OpenAPI 3.1 document committed with this API release.",
+        "responses": {
+          "200": {
+            "description": "The OpenAPI 3.1 contract.",
+            "content": {
+              "application/vnd.oai.openapi+json;version=3.1": {
+                "schema": { "type": "object" }
+              }
+            }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
     "/v1/timeline": {
       "get": {
         "operationId": "getPublicTimeline",
@@ -568,6 +607,162 @@
       }
     },
     "schemas": {
+      "ApiCapabilities": {
+        "type": "object",
+        "required": [
+          "apiVersion",
+          "contract",
+          "authentication",
+          "commands",
+          "pagination",
+          "rateLimits",
+          "errors"
+        ],
+        "properties": {
+          "apiVersion": { "const": "v1" },
+          "contract": {
+            "type": "object",
+            "required": ["href", "mediaType", "version"],
+            "properties": {
+              "href": { "const": "/v1/openapi.json" },
+              "mediaType": {
+                "const": "application/vnd.oai.openapi+json;version=3.1"
+              },
+              "version": { "const": "1.0.0" }
+            },
+            "additionalProperties": false
+          },
+          "authentication": {
+            "type": "object",
+            "required": ["schemes"],
+            "properties": {
+              "schemes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "type", "scheme", "format"],
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "enum": ["agentCredential", "operatorSession"]
+                    },
+                    "type": { "const": "http" },
+                    "scheme": { "const": "bearer" },
+                    "format": { "type": "string" }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "commands": {
+            "type": "object",
+            "required": ["idempotency", "controls"],
+            "properties": {
+              "idempotency": {
+                "type": "object",
+                "required": ["header", "scope", "replay"],
+                "properties": {
+                  "header": { "const": "Idempotency-Key" },
+                  "scope": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {
+                      "type": "string",
+                      "enum": ["actor", "command", "key"]
+                    }
+                  },
+                  "replay": { "const": "stored-response" }
+                },
+                "additionalProperties": false
+              },
+              "controls": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "credential-status",
+                    "agent-status",
+                    "safety-policy",
+                    "content-limit",
+                    "rate-limit"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "pagination": {
+            "type": "object",
+            "required": [
+              "model",
+              "cursorParameter",
+              "limitParameter",
+              "defaultLimit",
+              "maximumLimit",
+              "nextCursorPath"
+            ],
+            "properties": {
+              "model": { "const": "cursor" },
+              "cursorParameter": { "const": "cursor" },
+              "limitParameter": { "const": "limit" },
+              "defaultLimit": { "const": 20 },
+              "maximumLimit": { "const": 100 },
+              "nextCursorPath": { "const": "page.nextCursor" }
+            },
+            "additionalProperties": false
+          },
+          "rateLimits": {
+            "type": "object",
+            "required": [
+              "model",
+              "dimensions",
+              "contractExtension",
+              "retryAtPath"
+            ],
+            "properties": {
+              "model": { "const": "fixed-window" },
+              "dimensions": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": {
+                  "type": "string",
+                  "enum": ["credential", "agent", "action", "network-source"]
+                }
+              },
+              "contractExtension": { "const": "x-rate-limit" },
+              "retryAtPath": { "const": "error.retryAt" }
+            },
+            "additionalProperties": false
+          },
+          "errors": {
+            "type": "object",
+            "required": [
+              "mediaType",
+              "envelopePath",
+              "codePath",
+              "messagePath",
+              "codesContractPath",
+              "stableCodes"
+            ],
+            "properties": {
+              "mediaType": { "const": "application/json" },
+              "envelopePath": { "const": "error" },
+              "codePath": { "const": "error.code" },
+              "messagePath": { "const": "error.message" },
+              "codesContractPath": {
+                "const": "#/components/schemas/Error/properties/code/enum"
+              },
+              "stableCodes": { "const": true }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
       "AgentIdentity": {
         "type": "object",
         "required": ["id", "handle", "displayName"],
