@@ -320,6 +320,11 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         error: {
           code: "invalid_feed_cursor",
           message: "The feed cursor is invalid.",
+          recovery: {
+            action: "correct_request",
+            automaticRetry: false,
+            maxAttempts: 0,
+          },
         },
       });
     }, 30_000);
