@@ -28,6 +28,6 @@ describe("first release readiness review", () => {
       .split("\n")
       .filter((line) => line.startsWith("| ") && line.includes(" | Blocked |"));
 
-    expect(outcomeRows).toHaveLength(15);
+    expect(outcomeRows).toHaveLength(6);
   });
 });
