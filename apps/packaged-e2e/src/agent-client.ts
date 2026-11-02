@@ -1,125 +1,91 @@
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+
+interface DiscoveredOperation {
+  readonly method: HttpMethod;
+  readonly path: string;
+}
+
 export class HttpAgentClient {
-  constructor(
+  readonly #operations: ReadonlyMap<string, DiscoveredOperation>;
+  readonly #exercised = new Set<string>();
+
+  private constructor(
     private readonly baseUrl: URL,
     private readonly credential: string,
-  ) {}
+    readonly discovery: Record<string, unknown>,
+    readonly contract: Record<string, unknown>,
+    operations: ReadonlyMap<string, DiscoveredOperation>,
+  ) {
+    this.#operations = operations;
+  }
+
+  static async discover(baseUrl: URL, credential: string) {
+    const discoveryResponse = await fetch(new URL("v1", baseUrl));
+    assert(
+      discoveryResponse.status === 200,
+      "API discovery was not available.",
+    );
+    const discovery = asRecord(await discoveryResponse.json());
+    const contractLink = asRecord(discovery.contract);
+    assert(
+      typeof contractLink.href === "string",
+      "API discovery did not link an OpenAPI contract.",
+    );
+    const contractResponse = await fetch(new URL(contractLink.href, baseUrl));
+    assert(
+      contractResponse.status === 200,
+      "The discovered OpenAPI contract was not available.",
+    );
+    const contract = asRecord(await contractResponse.json());
+    return new HttpAgentClient(
+      baseUrl,
+      credential,
+      discovery,
+      contract,
+      discoverAgentOperations(contract),
+    );
+  }
 
   async identify() {
-    const response = await fetch(new URL("v1/me", this.baseUrl), {
-      headers: { authorization: `Bearer ${this.credential}` },
-    });
-    return {
-      status: response.status,
-      body: (await response.json()) as unknown,
-    };
+    return this.#send("getAuthenticatedAgent", {});
   }
 
   async publish(text: string, key: string) {
-    const response = await fetch(new URL("v1/posts", this.baseUrl), {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${this.credential}`,
-        "content-type": "application/json",
-        "idempotency-key": key,
-      },
-      body: JSON.stringify({ text }),
-    });
-    return {
-      status: response.status,
-      body: (await response.json()) as unknown,
-    };
+    return this.#send("publishPost", {}, { text }, key);
   }
 
   async readFeed(limit = 25, cursor?: string) {
-    const url = new URL("v1/feed", this.baseUrl);
-    url.searchParams.set("limit", String(limit));
-    if (cursor) url.searchParams.set("cursor", cursor);
-    const response = await fetch(url, {
-      headers: { authorization: `Bearer ${this.credential}` },
-    });
-    return {
-      status: response.status,
-      body: (await response.json()) as unknown,
-    };
+    return this.#send(
+      "getPersonalFeed",
+      {},
+      undefined,
+      undefined,
+      new URLSearchParams({
+        limit: String(limit),
+        ...(cursor === undefined ? {} : { cursor }),
+      }),
+    );
   }
 
   async reply(parentPostId: string, text: string, key: string) {
-    const response = await fetch(
-      new URL(
-        `v1/posts/${encodeURIComponent(parentPostId)}/replies`,
-        this.baseUrl,
-      ),
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.credential}`,
-          "content-type": "application/json",
-          "idempotency-key": key,
-        },
-        body: JSON.stringify({ text }),
-      },
-    );
-    return {
-      status: response.status,
-      body: (await response.json()) as unknown,
-    };
+    return this.#send("publishReply", { parentPostId }, { text }, key);
   }
 
   async repost(sourcePostId: string, key: string) {
-    const response = await fetch(
-      new URL(
-        `v1/posts/${encodeURIComponent(sourcePostId)}/reposts`,
-        this.baseUrl,
-      ),
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${this.credential}`,
-          "idempotency-key": key,
-        },
-      },
-    );
-    return {
-      status: response.status,
-      body: (await response.json()) as unknown,
-    };
+    return this.#send("repostPost", { postId: sourcePostId }, undefined, key);
   }
 
   async acknowledge(postId: string, key: string) {
-    const response = await fetch(
-      new URL(
-        `v1/posts/${encodeURIComponent(postId)}/acknowledgement`,
-        this.baseUrl,
-      ),
-      {
-        method: "PUT",
-        headers: {
-          authorization: `Bearer ${this.credential}`,
-          "idempotency-key": key,
-        },
-      },
-    );
-    return {
-      status: response.status,
-      body: (await response.json()) as unknown,
-    };
+    return this.#send("acknowledgePost", { postId }, undefined, key);
   }
 
   async changeFollow(handle: string, key: string, following: boolean) {
-    const response = await fetch(
-      new URL(`v1/agents/${encodeURIComponent(handle)}/follow`, this.baseUrl),
-      {
-        method: following ? "PUT" : "DELETE",
-        headers: {
-          authorization: `Bearer ${this.credential}`,
-          "idempotency-key": key,
-        },
-      },
+    return this.#send(
+      following ? "followAgent" : "unfollowAgent",
+      { handle },
+      undefined,
+      key,
     );
-    return {
-      status: response.status,
-      body: (await response.json()) as unknown,
-    };
   }
 
   async report(
@@ -130,18 +96,102 @@ export class HttpAgentClient {
     reasonCategory: "spam" | "impersonation" | "abuse" | "unsafe_link",
     key: string,
   ) {
-    const response = await fetch(new URL("v1/reports", this.baseUrl), {
-      method: "POST",
+    return this.#send("createReport", {}, { target, reasonCategory }, key);
+  }
+
+  async readReport(reportId: string) {
+    return this.#send("getOwnReport", { reportId });
+  }
+
+  assertEveryDiscoveredCapabilityWasExercised(): void {
+    const missing = [...this.#operations.keys()].filter(
+      (operationId) => !this.#exercised.has(operationId),
+    );
+    assert(
+      missing.length === 0,
+      `The conformance test did not exercise: ${missing.join(", ")}.`,
+    );
+  }
+
+  async #send(
+    operationId: string,
+    pathParameters: Readonly<Record<string, string>>,
+    body?: unknown,
+    idempotencyKey?: string,
+    query?: URLSearchParams,
+  ) {
+    const operation = this.#operations.get(operationId);
+    assert(
+      operation !== undefined,
+      `OpenAPI does not publish Agent capability ${operationId}.`,
+    );
+    this.#exercised.add(operationId);
+    const path = operation.path.replaceAll(
+      /\{([^}]+)\}/g,
+      (_match, name: string) => {
+        const value = pathParameters[name];
+        assert(value !== undefined, `Missing OpenAPI path parameter ${name}.`);
+        return encodeURIComponent(value);
+      },
+    );
+    const url = new URL(path, this.baseUrl);
+    if (query) url.search = query.toString();
+    const response = await fetch(url, {
+      method: operation.method,
       headers: {
         authorization: `Bearer ${this.credential}`,
-        "content-type": "application/json",
-        "idempotency-key": key,
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+        ...(idempotencyKey === undefined
+          ? {}
+          : { "idempotency-key": idempotencyKey }),
       },
-      body: JSON.stringify({ target, reasonCategory }),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     return {
       status: response.status,
       body: (await response.json()) as unknown,
     };
   }
+}
+
+function discoverAgentOperations(
+  contract: Record<string, unknown>,
+): ReadonlyMap<string, DiscoveredOperation> {
+  const operations = new Map<string, DiscoveredOperation>();
+  for (const [path, pathItemValue] of Object.entries(
+    asRecord(contract.paths),
+  )) {
+    const pathItem = asRecord(pathItemValue);
+    for (const method of ["get", "post", "put", "delete"] as const) {
+      if (!(method in pathItem)) continue;
+      const operation = asRecord(pathItem[method]);
+      const tags = Array.isArray(operation.tags) ? operation.tags : [];
+      if (
+        !tags.some((tag) => tag === "Agent reads" || tag === "Agent commands")
+      )
+        continue;
+      assert(
+        typeof operation.operationId === "string",
+        `${method.toUpperCase()} ${path} has no operationId.`,
+      );
+      operations.set(operation.operationId, {
+        method: method.toUpperCase() as HttpMethod,
+        path,
+      });
+    }
+  }
+  assert(operations.size > 0, "OpenAPI published no Agent capabilities.");
+  return operations;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  assert(
+    !!value && typeof value === "object" && !Array.isArray(value),
+    "Expected an object in the discovered API contract.",
+  );
+  return value as Record<string, unknown>;
+}
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
 }

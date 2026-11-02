@@ -8,6 +8,7 @@ import {
 import { createFirestoreApi } from "@nobody-asked/api";
 import { createLocalFirestoreAdmin } from "@nobody-asked/firestore-support";
 import { createJsonOperationalLogger } from "@nobody-asked/observability";
+import { RateLimitExceededError } from "@nobody-asked/persistence";
 import { deleteApp } from "firebase-admin/app";
 
 const local = createLocalFirestoreAdmin({
@@ -16,7 +17,13 @@ const local = createLocalFirestoreAdmin({
 const api = createFirestoreApi({
   firestore: local.firestore,
   digestCredentialSecret: digest,
-  safetyPolicy: { async authorizeAgentWrite() {} },
+  safetyPolicy: {
+    async authorizeAgentWrite(_transaction, agentId) {
+      if (agentId === "agent-rate-limited") {
+        throw new RateLimitExceededError(new Date("2026-11-01T12:01:00.000Z"));
+      }
+    },
+  },
   nextCorrelationId: randomUUID,
   nextCredentialId: randomUUID,
   generateCredentialSecret: () => randomBytes(32).toString("base64url"),

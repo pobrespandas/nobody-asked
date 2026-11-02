@@ -17,7 +17,6 @@ const token = `credential-1.${secret}`;
 const local = createLocalFirestoreAdmin({
   appName: `packaged-scenario-${process.pid}`,
 });
-const contract = await readContract();
 const adapters = createFirestoreApiAdapters({
   firestore: local.firestore,
   digestCredentialSecret: digest,
@@ -36,6 +35,56 @@ try {
     updatedAt: at,
     controllingOperatorId: "operator-1",
   });
+  for (const fixture of [
+    {
+      id: "agent-stopped",
+      handle: "stopped",
+      displayName: "Stopped",
+      status: "stopped" as const,
+      credentialId: "credential-stopped",
+      secret: "stopped-secret",
+    },
+    {
+      id: "agent-suspended",
+      handle: "suspended",
+      displayName: "Suspended",
+      status: "suspended" as const,
+      credentialId: "credential-suspended",
+      secret: "suspended-secret",
+    },
+    {
+      id: "agent-rate-limited",
+      handle: "rate_limited",
+      displayName: "Rate Limited",
+      status: "active" as const,
+      credentialId: "credential-rate-limited",
+      secret: "rate-limited-secret",
+    },
+  ]) {
+    await adapters.identity.createAgentProfile({
+      id: fixture.id,
+      handle: fixture.handle,
+      displayName: fixture.displayName,
+      description: null,
+      status: "active",
+      createdAt: at,
+      updatedAt: at,
+      controllingOperatorId: "operator-1",
+    });
+    await adapters.access.issueCredential({
+      id: fixture.credentialId,
+      agentId: fixture.id,
+      secretDigest: digest(fixture.secret),
+      createdAt: at,
+      expiresAt: null,
+    });
+    if (fixture.status !== "active") {
+      await local.firestore
+        .collection("agentProfiles")
+        .doc(fixture.id)
+        .update({ status: fixture.status, updatedAt: Timestamp.fromDate(at) });
+    }
+  }
   await adapters.identity.createAgentProfile({
     id: "agent-2",
     handle: "peer",
@@ -121,6 +170,8 @@ try {
 
   const started = await startApi();
   apiProcess = started.child;
+  const agent = await HttpAgentClient.discover(started.baseUrl, token);
+  const contract = agent.contract;
   const discoveryResponse = await fetch(new URL("v1", started.baseUrl));
   const discoveryBody = (await discoveryResponse.json()) as unknown;
   assert(discoveryResponse.status === 200, "API discovery was not available.");
@@ -162,7 +213,6 @@ try {
     (await openapiResponse.text()) === (await readContractText()),
     "The runtime OpenAPI response differed from the packaged contract.",
   );
-  const agent = new HttpAgentClient(started.baseUrl, token);
   const identity = await agent.identify();
   assert(identity.status === 200, "Agent self-discovery failed.");
   assertResponseMatchesContract(contract, "/v1/me", "get", identity);
@@ -223,14 +273,52 @@ try {
     revocationResponse.status === 200,
     "The packaged operator session was not revoked.",
   );
+  for (const blocked of [
+    {
+      token: "credential-stopped.stopped-secret",
+      status: 401,
+      code: "invalid_credential",
+    },
+    {
+      token: "credential-suspended.suspended-secret",
+      status: 401,
+      code: "invalid_credential",
+    },
+  ]) {
+    const blockedAgent = await HttpAgentClient.discover(
+      started.baseUrl,
+      blocked.token,
+    );
+    const response = await blockedAgent.publish(
+      "This blocked Agent must not publish.",
+      `blocked-${blocked.code}`,
+    );
+    assert(
+      response.status === blocked.status &&
+        asRecord(asRecord(response.body).error).code === blocked.code,
+      `The API did not reject ${blocked.code}.`,
+    );
+  }
+  const rateLimitedAgent = await HttpAgentClient.discover(
+    started.baseUrl,
+    "credential-rate-limited.rate-limited-secret",
+  );
+  const rateLimited = await rateLimitedAgent.publish(
+    "This request must expose a retry time.",
+    "rate-limited",
+  );
+  const rateLimitError = asRecord(asRecord(rateLimited.body).error);
+  assert(
+    rateLimited.status === 429 &&
+      rateLimitError.code === "rate_limit_exceeded" &&
+      rateLimitError.retryAt === "2026-11-01T12:01:00.000Z" &&
+      asRecord(rateLimitError.recovery).action === "wait_and_retry" &&
+      asRecord(rateLimitError.recovery).automaticRetry === true,
+    "The rate limit did not expose retryAt.",
+  );
   const followed = await agent.changeFollow("peer", "follow-1", true);
   assert(followed.status === 200, "The packaged follow command failed.");
-  assertResponseMatchesContract(
-    contract,
-    "/v1/agents/{handle}/follow",
-    "put",
-    followed,
-  );
+  assertOperationResponseMatchesContract(contract, "followAgent", followed);
   const followReplay = await agent.changeFollow("peer", "follow-1", true);
   assert(
     JSON.stringify(followReplay.body) === JSON.stringify(followed.body),
@@ -238,10 +326,23 @@ try {
   );
   const personalFeed = await agent.readFeed(1);
   assert(personalFeed.status === 200, "The personal feed read failed.");
-  assertResponseMatchesContract(contract, "/v1/feed", "get", personalFeed);
+  assertOperationResponseMatchesContract(
+    contract,
+    "getPersonalFeed",
+    personalFeed,
+  );
   assert(
     readFeedIds(personalFeed.body).join(",") === "peer-feed-post",
     "The personal feed did not contain only the followed Agent post.",
+  );
+  const invalidCursor = await agent.readFeed(25, "not opaque");
+  assert(
+    invalidCursor.status === 400 &&
+      asRecord(asRecord(invalidCursor.body).error).code ===
+        "invalid_feed_cursor" &&
+      asRecord(asRecord(asRecord(invalidCursor.body).error).recovery).action ===
+        "correct_request",
+    "The Agent could not restart after an invalid cursor.",
   );
   const text = "A".repeat(128);
   const created = await agent.publish(text, "request-1");
@@ -250,7 +351,7 @@ try {
     `Expected publish status 201, got ${created.status}.`,
   );
   const createdId = readPostId(created.body);
-  assertResponseMatchesContract(contract, "/v1/posts", "post", created);
+  assertOperationResponseMatchesContract(contract, "publishPost", created);
 
   const replay = await agent.publish(text, "request-1");
   assert(
@@ -268,21 +369,20 @@ try {
     `Expected reply status 201, got ${reply.status}.`,
   );
   const replyId = readPostId(reply.body);
-  assertResponseMatchesContract(
-    contract,
-    "/v1/posts/{parentPostId}/replies",
-    "post",
-    reply,
+  assertOperationResponseMatchesContract(contract, "publishReply", reply);
+  const replyReplay = await agent.reply(
+    createdId,
+    "A direct reply.",
+    "reply-1",
+  );
+  assert(
+    JSON.stringify(replyReplay.body) === JSON.stringify(reply.body),
+    "The packaged reply replay changed its response.",
   );
 
   const repost = await agent.repost("peer-feed-post", "repost-1");
   assert(repost.status === 201, "The packaged repost command failed.");
-  assertResponseMatchesContract(
-    contract,
-    "/v1/posts/{postId}/reposts",
-    "post",
-    repost,
-  );
+  assertOperationResponseMatchesContract(contract, "repostPost", repost);
   const repostId = readRecordId(repost.body);
   const repostReplay = await agent.repost("peer-feed-post", "repost-1");
   assert(
@@ -304,10 +404,9 @@ try {
     acknowledgement.status === 201,
     "The packaged acknowledgement command failed.",
   );
-  assertResponseMatchesContract(
+  assertOperationResponseMatchesContract(
     contract,
-    "/v1/posts/{postId}/acknowledgement",
-    "put",
+    "acknowledgePost",
     acknowledgement,
   );
   const acknowledgementReplay = await agent.acknowledge(
@@ -373,11 +472,11 @@ try {
 
   const unfollowed = await agent.changeFollow("peer", "unfollow-1", false);
   assert(unfollowed.status === 200, "The packaged unfollow command failed.");
-  assertResponseMatchesContract(
-    contract,
-    "/v1/agents/{handle}/follow",
-    "delete",
-    unfollowed,
+  assertOperationResponseMatchesContract(contract, "unfollowAgent", unfollowed);
+  const unfollowReplay = await agent.changeFollow("peer", "unfollow-1", false);
+  assert(
+    JSON.stringify(unfollowReplay.body) === JSON.stringify(unfollowed.body),
+    "The packaged unfollow replay changed its response.",
   );
   const afterUnfollow = await browser.getRelationships("observer", "following");
   assert(
@@ -483,8 +582,37 @@ try {
     "report-1",
   );
   assert(report.status === 201, "The packaged report command failed.");
-  assertResponseMatchesContract(contract, "/v1/reports", "post", report);
+  assertOperationResponseMatchesContract(contract, "createReport", report);
   const reportId = readRecordId(report.body);
+  const openReport = await agent.readReport(reportId);
+  assert(
+    openReport.status === 200,
+    "The reporting Agent could not read its report.",
+  );
+  assertOperationResponseMatchesContract(contract, "getOwnReport", openReport);
+  assert(
+    asRecord(asRecord(openReport.body).data).status === "open",
+    "The reporting Agent did not read the open report state.",
+  );
+  const reportReplay = await agent.report(
+    { type: "public_item", id: "peer-feed-post" },
+    "unsafe_link",
+    "report-1",
+  );
+  assert(
+    JSON.stringify(reportReplay.body) === JSON.stringify(report.body),
+    "The packaged report replay changed its response.",
+  );
+  const openReports = await operatorCommand(
+    started.baseUrl,
+    "/v1/moderator/reports",
+    "GET",
+    operatorHeaders,
+  );
+  assert(
+    JSON.stringify(openReports.body).includes(reportId),
+    "The report command was not visible through a read.",
+  );
   const review = await operatorCommand(
     started.baseUrl,
     `/v1/moderator/reports/${reportId}/review`,
@@ -507,6 +635,14 @@ try {
   assert(
     !JSON.stringify(review.body).includes("internalNote"),
     "The packaged review exposed its internal note.",
+  );
+  const resolvedReport = await agent.readReport(reportId);
+  assert(
+    resolvedReport.status === 200 &&
+      asRecord(asRecord(resolvedReport.body).data).status === "resolved" &&
+      asRecord(asRecord(resolvedReport.body).data).decision ===
+        "content_hidden",
+    "The reporting Agent could not inspect the resolved report.",
   );
   const issued = await operatorCommand(
     started.baseUrl,
@@ -539,7 +675,10 @@ try {
     "post",
     stopped,
   );
-  const stoppedAgent = new HttpAgentClient(started.baseUrl, issuedCredential);
+  const stoppedAgent = await HttpAgentClient.discover(
+    started.baseUrl,
+    issuedCredential,
+  );
   assert(
     (await stoppedAgent.readFeed()).status === 401,
     "A stopped Agent credential remained active.",
@@ -577,6 +716,7 @@ try {
     "Revocation changed post attribution.",
   );
   assert(retained.text === text, "Revocation changed prior public history.");
+  agent.assertEveryDiscoveredCapabilityWasExercised();
 } finally {
   if (apiProcess) await stopChild(apiProcess);
   await deleteApp(local.app);
@@ -743,6 +883,24 @@ function assertResponseMatchesContract(
     root,
     `${method.toUpperCase()} ${path}`,
   );
+}
+
+function assertOperationResponseMatchesContract(
+  root: Record<string, unknown>,
+  operationId: string,
+  response: { readonly status: number; readonly body: unknown },
+): void {
+  for (const [path, pathItemValue] of Object.entries(asRecord(root.paths))) {
+    const pathItem = asRecord(pathItemValue);
+    for (const method of ["get", "post", "put", "delete"] as const) {
+      if (!(method in pathItem)) continue;
+      const operation = asRecord(pathItem[method]);
+      if (operation.operationId !== operationId) continue;
+      assertResponseMatchesContract(root, path, method, response);
+      return;
+    }
+  }
+  throw new Error(`OpenAPI does not publish operation ${operationId}.`);
 }
 
 function assertSchema(
