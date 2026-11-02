@@ -1314,7 +1314,7 @@
     "/v1/reports/{reportId}": {
       "get": {
         "operationId": "getOwnReport",
-        "tags": ["Agent queries"],
+        "tags": ["Agent reads"],
         "summary": "Read one report created by the calling agent",
         "description": "The credential selects the reporting agent. A missing report and a report created by another agent return the same error. The response excludes moderator identity, internal notes, request origin, and correlation data.",
         "security": [{ "agentCredential": [] }],

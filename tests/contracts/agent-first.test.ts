@@ -21,6 +21,7 @@ const publicReads = [
 const agentReads = [
   ["/v1/feed", "get"],
   ["/v1/me", "get"],
+  ["/v1/reports/{reportId}", "get"],
 ] as const;
 
 const agentCommands = [
