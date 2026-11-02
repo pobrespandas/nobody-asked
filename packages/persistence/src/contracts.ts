@@ -31,6 +31,68 @@ export interface OperatorAgentControlInput {
   readonly correlationId: string;
 }
 
+export interface OperatorEnrollmentCommandInput {
+  readonly invitationId: string;
+  readonly invitationSecret: string;
+  readonly challengeId: string;
+  readonly challengeSecret: string;
+  readonly operatorId: string;
+  readonly sessionId: string;
+  readonly sessionSecret: string;
+  readonly origin: string;
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export interface OperatorInvitationCreationInput {
+  readonly issuerOperatorId: string;
+  readonly invitationId: string;
+  readonly intendedIdentity: string;
+  readonly invitationSecret: string;
+  readonly idempotencyKey: string;
+  readonly expiresAt: Date;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export interface OperatorChallengeCreationInput {
+  readonly normalizedIdentity: string;
+  readonly challengeId: string;
+  readonly challengeSecret: string;
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+}
+
+export interface OperatorSessionCommandInput {
+  readonly normalizedIdentity: string;
+  readonly challengeId: string;
+  readonly challengeSecret: string;
+  readonly sessionId: string;
+  readonly sessionSecret: string;
+  readonly origin: string;
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export interface OperatorSessionRevocationInput {
+  readonly operatorId: string;
+  readonly sessionId: string;
+  readonly origin: string;
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export type OperatorSessionCommandResult = Readonly<{
+  kind: "created" | "replay";
+  operatorId: string;
+  sessionId: string;
+  expiresAt: Date;
+  response: StoredResponseRecord;
+}>;
+
 export interface OperatorPortableExportInput {
   readonly operatorId: string;
   readonly agentId: string;

@@ -34,6 +34,15 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         nextCredentialId: () => `credential-new-${++credentialSequence}`,
         generateCredentialSecret: () =>
           `generated-secret-${credentialSequence}`,
+        nextOperatorId: () => "operator-new",
+        nextOperatorSessionId: () => "session-new",
+        generateOperatorSessionSecret: () => "operator-session-secret-new",
+        nextOperatorInvitationId: () => "invitation-new",
+        generateOperatorInvitationSecret: () =>
+          "operator-invitation-secret-new",
+        nextOperatorChallengeId: () => "challenge-new",
+        generateOperatorChallengeSecret: () => "operator-challenge-secret-new",
+        deliverOperatorChallenge: async () => {},
         now: () => new Date(at),
         operationalLogger: { write() {} },
         monotonicNow: () => 0,

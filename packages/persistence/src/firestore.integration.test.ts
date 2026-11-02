@@ -42,6 +42,72 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     beforeEach(async () => resetLocalFirestore());
     afterAll(async () => deleteApp(local.app));
 
+    it("enrolls one invited operator with one revocable 12-hour session", async () => {
+      await local.firestore
+        .collection("operatorInvitations")
+        .doc("invite-1")
+        .set({
+          intendedIdentity: "operator@example.test",
+          secretDigest: "digest:invitation-secret",
+          expiresAt: Timestamp.fromDate(new Date(at.getTime() + 60_000)),
+          acceptedAt: null,
+          acceptedOperatorId: null,
+          recipientProofAt: null,
+          revokedAt: null,
+        });
+      await local.firestore
+        .collection("operatorChallenges")
+        .doc("challenge-1")
+        .set({
+          normalizedIdentity: "operator@example.test",
+          secretDigest: "digest:challenge-secret",
+          expiresAt: Timestamp.fromDate(new Date(at.getTime() + 60_000)),
+          consumedAt: null,
+        });
+      const input = {
+        invitationId: "invite-1",
+        invitationSecret: "invitation-secret",
+        challengeId: "challenge-1",
+        challengeSecret: "challenge-secret",
+        operatorId: "operator-1",
+        sessionId: "session-1",
+        sessionSecret: "session-secret",
+        origin: "https://operator.example",
+        idempotencyKey: "enroll-1",
+        occurredAt: at,
+        correlationId: "enroll-correlation",
+      };
+      const [first, replay] = await Promise.all([
+        adapters.store.acceptOperatorInvitationIdempotently(input),
+        adapters.store.acceptOperatorInvitationIdempotently(input),
+      ]);
+
+      expect([first.kind, replay.kind].sort()).toEqual(["created", "replay"]);
+      const session = await local.firestore
+        .collection("operatorSessions")
+        .doc("session-1")
+        .get();
+      expect(session.data()).toMatchObject({
+        operatorId: "operator-1",
+        secretDigest: "digest:session-secret",
+      });
+      expect(session.data()).not.toHaveProperty("secret");
+      expect(session.data()!.expiresAt.toDate().getTime() - at.getTime()).toBe(
+        12 * 60 * 60 * 1_000,
+      );
+      await adapters.store.revokeOperatorSessionIdempotently({
+        operatorId: "operator-1",
+        sessionId: "session-1",
+        origin: "https://operator.example",
+        idempotencyKey: "revoke-1",
+        occurredAt: new Date(at.getTime() + 1),
+        correlationId: "revoke-correlation",
+      });
+      expect((await session.ref.get()).data()!.revokedAt.toDate()).toEqual(
+        new Date(at.getTime() + 1),
+      );
+    });
+
     it("registers one controlled agent and first credential idempotently", async () => {
       await local.firestore
         .collection("operators")

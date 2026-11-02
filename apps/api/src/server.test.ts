@@ -145,6 +145,41 @@ function harness() {
     },
   };
   const store: ApiStore = {
+    createOperatorInvitation: vi.fn(async (input) => ({
+      invitationId: input.invitationId,
+      created: true,
+    })),
+    createOperatorChallenge: vi.fn(async () => ({
+      accepted: true,
+      created: true,
+    })),
+    acceptOperatorInvitationIdempotently: vi.fn(async (input) => ({
+      kind: "created" as const,
+      operatorId: input.operatorId,
+      sessionId: input.sessionId,
+      expiresAt: new Date(at.getTime() + 12 * 60 * 60 * 1_000),
+      response: {
+        status: 201,
+        body: {
+          data: { operatorId: input.operatorId, sessionId: input.sessionId },
+        },
+      },
+    })),
+    createOperatorSessionIdempotently: vi.fn(async (input) => ({
+      kind: "created" as const,
+      operatorId: "operator-1",
+      sessionId: input.sessionId,
+      expiresAt: new Date(at.getTime() + 12 * 60 * 60 * 1_000),
+      response: {
+        status: 201,
+        body: {
+          data: { operatorId: "operator-1", sessionId: input.sessionId },
+        },
+      },
+    })),
+    revokeOperatorSessionIdempotently: vi.fn(async () => ({
+      response: { status: 200, body: { data: { revoked: true } } },
+    })),
     listVisiblePublicPosts: async () => posts,
     listPublicTimelinePage: async ({ limit, cursor }) => {
       const page = readTestPage(posts, limit, cursor);
@@ -291,6 +326,14 @@ function harness() {
     store,
     nextCredentialId: () => "credential-new",
     generateCredentialSecret: () => "generated-secret",
+    nextOperatorId: () => "operator-2",
+    nextOperatorSessionId: () => "session-2",
+    generateOperatorSessionSecret: () => "operator-session-secret-2",
+    nextOperatorInvitationId: () => "invitation-2",
+    generateOperatorInvitationSecret: () => "operator-invitation-secret-2",
+    nextOperatorChallengeId: () => "challenge-2",
+    generateOperatorChallengeSecret: () => "operator-challenge-secret-2",
+    deliverOperatorChallenge: vi.fn(async () => {}),
     digestCredentialSecret: (secret) => `digest:${secret}`,
     nextCorrelationId: () => "correlation-1",
     now: () => new Date(at),
@@ -923,6 +966,76 @@ describe("hosted operator controls", () => {
       },
     });
 
+  it("requests recipient proof without exposing identity existence", async () => {
+    const first = harness();
+    const response = await first.api(
+      new Request("https://network.test/v1/operator/challenges", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": "challenge-1",
+        },
+        body: JSON.stringify({ identity: "Operator@Example.Test" }),
+      }),
+    );
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        accepted: true,
+        message: "If the identity can authenticate, a challenge was sent.",
+      },
+    });
+    expect(first.dependencies.deliverOperatorChallenge).toHaveBeenCalledWith(
+      "operator@example.test",
+      "operator-challenge-secret-2",
+    );
+  });
+
+  it("accepts an invitation and sets one hardened 12-hour session cookie", async () => {
+    const { api } = harness();
+    const response = await api(
+      new Request(
+        "https://network.test/v1/operator/invitations/invitation-1/accept",
+        {
+          method: "POST",
+          headers: {
+            origin: "https://operator.test",
+            "content-type": "application/json",
+            "idempotency-key": "enroll-1",
+          },
+          body: JSON.stringify({
+            invitationSecret: "invitation-secret-long",
+            challengeId: "challenge-1",
+            challengeSecret: "challenge-secret-long",
+          }),
+        },
+      ),
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get("set-cookie")).toContain(
+      "Max-Age=43200; HttpOnly; Secure; SameSite=Strict",
+    );
+    expect(JSON.stringify(await response.json())).not.toContain("secret");
+  });
+
+  it("revokes the current session and clears its cookie", async () => {
+    const { api } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/operator/sessions/current", {
+        method: "DELETE",
+        headers: {
+          cookie: "operator_session=session-1.secret",
+          origin: "https://operator.test",
+          "idempotency-key": "signout-1",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
   it("registers one agent and returns its credential secret once", async () => {
     const { api, registerOperatorAgent } = harness();
     const registration = request("/v1/operator/agents");

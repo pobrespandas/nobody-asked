@@ -5,6 +5,7 @@
   "type": "module",
   "exports": "./src/index.ts",
   "dependencies": {
+    "@nobody-asked/access": "0.0.0",
     "@nobody-asked/audit-export": "0.0.0",
     "@nobody-asked/feeds": "0.0.0",
     "@nobody-asked/firestore-support": "0.0.0",

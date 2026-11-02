@@ -1,6 +1,15 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
+  assertInvitationEnrollment,
+  assertOperatorAuthentication,
+  createOperatorSession,
+  OperatorAuthenticationRejectedError,
+  OperatorEnrollmentRejectedError,
+  UnsafeOperatorSecretDigestError,
+  type OperatorSessionRecord,
+} from "@nobody-asked/access";
+import {
   createPortableAgentExport,
   createAuditCorrelationId,
   createAuditIdentifier,
@@ -57,6 +66,12 @@ import type {
   RepostCommandTransactionResult,
   OperatorAgentControlInput,
   OperatorCredentialCommandInput,
+  OperatorEnrollmentCommandInput,
+  OperatorInvitationCreationInput,
+  OperatorChallengeCreationInput,
+  OperatorSessionCommandInput,
+  OperatorSessionCommandResult,
+  OperatorSessionRevocationInput,
   OperatorPortableExportInput,
   OperatorPortableExport,
   RegisterOperatorAgentInput,
@@ -84,6 +99,9 @@ const collections = {
   credentials: "credentials",
   access: "agentAccess",
   operators: "operators",
+  operatorInvitations: "operatorInvitations",
+  operatorChallenges: "operatorChallenges",
+  moderatorAuthorities: "moderatorAuthorities",
   operatorSessions: "operatorSessions",
   items: "publicItems",
   follows: "follows",
@@ -242,6 +260,43 @@ export class FirestoreIdentityRepository {
 
 export class FirestoreAccessRepository {
   constructor(private readonly firestore: Firestore) {}
+
+  createBootstrapOperatorInvitation(input: {
+    readonly id: string;
+    readonly intendedIdentity: string;
+    readonly secretDigest: string;
+    readonly issuedAt: Date;
+    readonly expiresAt: Date;
+    readonly correlationId: string;
+  }): Promise<void> {
+    return this.firestore.runTransaction(async (transaction) => {
+      const invitationRef = this.firestore
+        .collection(collections.operatorInvitations)
+        .doc(input.id);
+      if ((await transaction.get(invitationRef)).exists)
+        throw new IdempotencyRequestConflictError();
+      transaction.create(invitationRef, {
+        intendedIdentity: input.intendedIdentity,
+        secretDigest: input.secretDigest,
+        issuerOperatorId: null,
+        issuedAt: Timestamp.fromDate(input.issuedAt),
+        expiresAt: Timestamp.fromDate(input.expiresAt),
+        recipientProofAt: null,
+        acceptedAt: null,
+        acceptedOperatorId: null,
+        revokedAt: null,
+      });
+      writeOperatorAudit(
+        this.firestore,
+        transaction,
+        "operator.invitation_created",
+        { type: "system", id: "deployment-bootstrap" },
+        input.id,
+        input.issuedAt,
+        input.correlationId,
+      );
+    });
+  }
 
   issueCredential(value: {
     readonly id: string;
@@ -788,6 +843,489 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         expireAt: Timestamp.fromDate(expireAt),
       });
       return Object.freeze({ kind: "created" as const, registration });
+    });
+  }
+
+  async createOperatorInvitation(
+    input: OperatorInvitationCreationInput,
+  ): Promise<Readonly<{ invitationId: string; created: boolean }>> {
+    const secretDigest = await this.digestSecret(input.invitationSecret);
+    if (!secretDigest || secretDigest === input.invitationSecret)
+      throw new UnsafeOperatorSecretDigestError();
+    const route = "POST /v1/operator/invitations";
+    const requestFingerprint = hash(input.intendedIdentity);
+    return this.firestore.runTransaction(async (transaction) => {
+      const authorityRef = this.firestore
+        .collection(collections.moderatorAuthorities)
+        .doc(input.issuerOperatorId);
+      const invitationRef = this.firestore
+        .collection(collections.operatorInvitations)
+        .doc(input.invitationId);
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(
+          idempotencyDocumentId(
+            `operator:${input.issuerOperatorId}`,
+            route,
+            input.idempotencyKey,
+          ),
+        );
+      const [authority, invitation, existing] = await Promise.all([
+        transaction.get(authorityRef),
+        transaction.get(invitationRef),
+        transaction.get(idempotencyRef),
+      ]);
+      if (existing.exists) {
+        if (existing.data()!.requestFingerprint !== requestFingerprint)
+          throw new IdempotencyRequestConflictError();
+        return Object.freeze({
+          invitationId: String(existing.data()!.invitationId),
+          created: false,
+        });
+      }
+      if (!authority.exists) throw new OperatorControlDeniedError();
+      if (invitation.exists) throw new IdempotencyRequestConflictError();
+      transaction.create(invitationRef, {
+        intendedIdentity: input.intendedIdentity,
+        secretDigest,
+        issuerOperatorId: input.issuerOperatorId,
+        issuedAt: Timestamp.fromDate(input.occurredAt),
+        expiresAt: Timestamp.fromDate(input.expiresAt),
+        recipientProofAt: null,
+        acceptedAt: null,
+        acceptedOperatorId: null,
+        revokedAt: null,
+      });
+      writeOperatorAudit(
+        this.firestore,
+        transaction,
+        "operator.invitation_created",
+        { type: "operator", id: input.issuerOperatorId },
+        input.invitationId,
+        input.occurredAt,
+        input.correlationId,
+      );
+      saveOperatorIdempotency(
+        transaction,
+        idempotencyRef,
+        input.issuerOperatorId,
+        route,
+        input.idempotencyKey,
+        requestFingerprint,
+        { status: 201, body: { data: { invitationId: input.invitationId } } },
+        input.occurredAt,
+      );
+      transaction.update(idempotencyRef, { invitationId: input.invitationId });
+      return Object.freeze({ invitationId: input.invitationId, created: true });
+    });
+  }
+
+  async createOperatorChallenge(
+    input: OperatorChallengeCreationInput,
+  ): Promise<Readonly<{ accepted: boolean; created: boolean }>> {
+    const challengeDigest = await this.digestSecret(input.challengeSecret);
+    if (!challengeDigest || challengeDigest === input.challengeSecret)
+      throw new UnsafeOperatorSecretDigestError();
+    const route = "POST /v1/operator/challenges";
+    const requestFingerprint = hash(input.normalizedIdentity);
+    return this.firestore.runTransaction(async (transaction) => {
+      const invitationQuery = this.firestore
+        .collection(collections.operatorInvitations)
+        .where("intendedIdentity", "==", input.normalizedIdentity)
+        .limit(1);
+      const operatorQuery = this.firestore
+        .collection(collections.operators)
+        .where("normalizedIdentity", "==", input.normalizedIdentity)
+        .limit(1);
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(
+          idempotencyDocumentId(
+            `identity:${input.normalizedIdentity}`,
+            route,
+            input.idempotencyKey,
+          ),
+        );
+      const [invitations, operators, existing] = await Promise.all([
+        transaction.get(invitationQuery),
+        transaction.get(operatorQuery),
+        transaction.get(idempotencyRef),
+      ]);
+      if (existing.exists) {
+        if (existing.data()!.requestFingerprint !== requestFingerprint)
+          throw new IdempotencyRequestConflictError();
+        return Object.freeze({
+          accepted: existing.data()!.accepted === true,
+          created: false,
+        });
+      }
+      const invitation = invitations.docs[0];
+      const accepted =
+        (!!invitation &&
+          !invitation.data().acceptedAt &&
+          !invitation.data().revokedAt &&
+          asDate(invitation.data().expiresAt).getTime() >
+            input.occurredAt.getTime()) ||
+        !operators.empty;
+      if (accepted) {
+        const expiresAt = new Date(
+          input.occurredAt.getTime() + 10 * 60 * 1_000,
+        );
+        transaction.create(
+          this.firestore
+            .collection(collections.operatorChallenges)
+            .doc(input.challengeId),
+          {
+            normalizedIdentity: input.normalizedIdentity,
+            secretDigest: challengeDigest,
+            createdAt: Timestamp.fromDate(input.occurredAt),
+            expiresAt: Timestamp.fromDate(expiresAt),
+            consumedAt: null,
+          },
+        );
+      }
+      saveOperatorIdempotency(
+        transaction,
+        idempotencyRef,
+        input.normalizedIdentity,
+        route,
+        input.idempotencyKey,
+        requestFingerprint,
+        { status: 202, body: { data: { accepted: true } } },
+        input.occurredAt,
+      );
+      transaction.update(idempotencyRef, { accepted });
+      return Object.freeze({ accepted, created: true });
+    });
+  }
+
+  async acceptOperatorInvitationIdempotently(
+    input: OperatorEnrollmentCommandInput,
+  ): Promise<OperatorSessionCommandResult> {
+    if (!isAllowedWebOrigin(input.origin))
+      throw new OperatorEnrollmentRejectedError();
+    const [invitationDigest, challengeDigest, sessionDigest] =
+      await Promise.all([
+        this.digestSecret(input.invitationSecret),
+        this.digestSecret(input.challengeSecret),
+        this.digestSecret(input.sessionSecret),
+      ]);
+    const route = `POST /v1/operator/invitations/${input.invitationId}/accept`;
+    const idempotencyId = idempotencyDocumentId(
+      `invitation:${input.invitationId}`,
+      route,
+      input.idempotencyKey,
+    );
+    const requestFingerprint = hash(
+      JSON.stringify([
+        invitationDigest,
+        input.challengeId,
+        challengeDigest,
+        input.origin,
+      ]),
+    );
+    return this.firestore.runTransaction(async (transaction) => {
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(idempotencyId);
+      const existing = await transaction.get(idempotencyRef);
+      if (existing.exists) {
+        const data = existing.data()!;
+        if (data.requestFingerprint !== requestFingerprint)
+          throw new IdempotencyRequestConflictError();
+        const response = data.response as StoredResponseRecord;
+        const body = (response.body as { data: Record<string, string> }).data;
+        return Object.freeze({
+          kind: "replay" as const,
+          operatorId: body.operatorId!,
+          sessionId: body.sessionId!,
+          expiresAt: new Date(body.expiresAt!),
+          response,
+        });
+      }
+      const invitationRef = this.firestore
+        .collection(collections.operatorInvitations)
+        .doc(input.invitationId);
+      const challengeRef = this.firestore
+        .collection(collections.operatorChallenges)
+        .doc(input.challengeId);
+      const operatorRef = this.firestore
+        .collection(collections.operators)
+        .doc(input.operatorId);
+      const [invitation, challenge, operator] = await Promise.all([
+        transaction.get(invitationRef),
+        transaction.get(challengeRef),
+        transaction.get(operatorRef),
+      ]);
+      assertInvitationEnrollment({
+        invitation: invitation.exists
+          ? mapOperatorInvitation(invitation.id, invitation.data()!)
+          : null,
+        challenge: challenge.exists
+          ? mapOperatorChallenge(challenge.id, challenge.data()!)
+          : null,
+        invitationDigest,
+        challengeDigest,
+        at: input.occurredAt,
+        digestsMatch: constantTimeEqual,
+      });
+      if (operator.exists) throw new OperatorEnrollmentRejectedError();
+      const session = createOperatorSession({
+        id: input.sessionId,
+        operatorId: input.operatorId,
+        rawSecret: input.sessionSecret,
+        secretDigest: sessionDigest,
+        origin: input.origin,
+        authenticatedAt: input.occurredAt,
+      });
+      const sessionRef = this.firestore
+        .collection(collections.operatorSessions)
+        .doc(session.id);
+      if ((await transaction.get(sessionRef)).exists)
+        throw new OperatorEnrollmentRejectedError();
+      transaction.update(invitationRef, {
+        acceptedAt: Timestamp.fromDate(input.occurredAt),
+        acceptedOperatorId: input.operatorId,
+        recipientProofAt: Timestamp.fromDate(input.occurredAt),
+      });
+      transaction.update(challengeRef, {
+        consumedAt: Timestamp.fromDate(input.occurredAt),
+      });
+      transaction.create(operatorRef, {
+        normalizedIdentity: invitation.data()!.intendedIdentity,
+        sourceInvitationId: input.invitationId,
+        createdAt: Timestamp.fromDate(input.occurredAt),
+      });
+      transaction.create(sessionRef, serializeOperatorSession(session));
+      const response = operatorSessionResponse(
+        201,
+        input.operatorId,
+        session.id,
+        session.authenticatedAt,
+        session.expiresAt,
+      );
+      writeOperatorAudit(
+        this.firestore,
+        transaction,
+        "operator.enrolled",
+        { type: "system", id: "invitation-authority" },
+        input.operatorId,
+        input.occurredAt,
+        input.correlationId,
+      );
+      saveOperatorIdempotency(
+        transaction,
+        idempotencyRef,
+        input.invitationId,
+        route,
+        input.idempotencyKey,
+        requestFingerprint,
+        response,
+        input.occurredAt,
+      );
+      return Object.freeze({
+        kind: "created" as const,
+        operatorId: input.operatorId,
+        sessionId: session.id,
+        expiresAt: session.expiresAt,
+        response,
+      });
+    });
+  }
+
+  async createOperatorSessionIdempotently(
+    input: OperatorSessionCommandInput,
+  ): Promise<OperatorSessionCommandResult> {
+    if (!isAllowedWebOrigin(input.origin))
+      throw new OperatorAuthenticationRejectedError();
+    const [challengeDigest, sessionDigest] = await Promise.all([
+      this.digestSecret(input.challengeSecret),
+      this.digestSecret(input.sessionSecret),
+    ]);
+    const route = "POST /v1/operator/sessions";
+    const idempotencyId = idempotencyDocumentId(
+      `operator:${input.normalizedIdentity}`,
+      route,
+      input.idempotencyKey,
+    );
+    const requestFingerprint = hash(
+      JSON.stringify([
+        input.normalizedIdentity,
+        input.challengeId,
+        challengeDigest,
+        input.origin,
+      ]),
+    );
+    return this.firestore.runTransaction(async (transaction) => {
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(idempotencyId);
+      const existing = await transaction.get(idempotencyRef);
+      if (existing.exists) {
+        if (existing.data()!.requestFingerprint !== requestFingerprint)
+          throw new IdempotencyRequestConflictError();
+        const response = existing.data()!.response as StoredResponseRecord;
+        const body = (response.body as { data: Record<string, string> }).data;
+        return Object.freeze({
+          kind: "replay" as const,
+          operatorId: body.operatorId!,
+          sessionId: body.sessionId!,
+          expiresAt: new Date(body.expiresAt!),
+          response,
+        });
+      }
+      const operatorsQuery = this.firestore
+        .collection(collections.operators)
+        .where("normalizedIdentity", "==", input.normalizedIdentity)
+        .limit(2);
+      const challengeRef = this.firestore
+        .collection(collections.operatorChallenges)
+        .doc(input.challengeId);
+      const [operators, challenge] = await Promise.all([
+        transaction.get(operatorsQuery),
+        transaction.get(challengeRef),
+      ]);
+      const operator = operators.docs.length === 1 ? operators.docs[0]! : null;
+      assertOperatorAuthentication({
+        operatorIdentity: operator
+          ? String(operator.data().normalizedIdentity)
+          : null,
+        challenge: challenge.exists
+          ? mapOperatorChallenge(challenge.id, challenge.data()!)
+          : null,
+        challengeDigest,
+        at: input.occurredAt,
+        digestsMatch: constantTimeEqual,
+      });
+      const activeSessions = await transaction.get(
+        this.firestore
+          .collection(collections.operatorSessions)
+          .where("operatorId", "==", operator!.id),
+      );
+      const session = createOperatorSession({
+        id: input.sessionId,
+        operatorId: operator!.id,
+        rawSecret: input.sessionSecret,
+        secretDigest: sessionDigest,
+        origin: input.origin,
+        authenticatedAt: input.occurredAt,
+      });
+      const sessionRef = this.firestore
+        .collection(collections.operatorSessions)
+        .doc(session.id);
+      if ((await transaction.get(sessionRef)).exists)
+        throw new OperatorAuthenticationRejectedError();
+      transaction.update(challengeRef, {
+        consumedAt: Timestamp.fromDate(input.occurredAt),
+      });
+      for (const existingSession of activeSessions.docs) {
+        if (!existingSession.data().revokedAt) {
+          transaction.update(existingSession.ref, {
+            revokedAt: Timestamp.fromDate(input.occurredAt),
+          });
+        }
+      }
+      transaction.create(sessionRef, serializeOperatorSession(session));
+      const response = operatorSessionResponse(
+        201,
+        operator!.id,
+        session.id,
+        session.authenticatedAt,
+        session.expiresAt,
+      );
+      writeOperatorAudit(
+        this.firestore,
+        transaction,
+        "operator.authenticated",
+        { type: "operator", id: operator!.id },
+        operator!.id,
+        input.occurredAt,
+        input.correlationId,
+      );
+      saveOperatorIdempotency(
+        transaction,
+        idempotencyRef,
+        operator!.id,
+        route,
+        input.idempotencyKey,
+        requestFingerprint,
+        response,
+        input.occurredAt,
+      );
+      return Object.freeze({
+        kind: "created" as const,
+        operatorId: operator!.id,
+        sessionId: session.id,
+        expiresAt: session.expiresAt,
+        response,
+      });
+    });
+  }
+
+  async revokeOperatorSessionIdempotently(
+    input: OperatorSessionRevocationInput,
+  ): Promise<Readonly<{ response: StoredResponseRecord }>> {
+    const route = "DELETE /v1/operator/sessions/current";
+    const idempotencyId = idempotencyDocumentId(
+      `operator:${input.operatorId}`,
+      route,
+      input.idempotencyKey,
+    );
+    const requestFingerprint = hash(
+      JSON.stringify([input.operatorId, input.sessionId, input.origin]),
+    );
+    return this.firestore.runTransaction(async (transaction) => {
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(idempotencyId);
+      const existing = await transaction.get(idempotencyRef);
+      if (existing.exists) {
+        if (existing.data()!.requestFingerprint !== requestFingerprint)
+          throw new IdempotencyRequestConflictError();
+        return Object.freeze({
+          response: existing.data()!.response as StoredResponseRecord,
+        });
+      }
+      const sessionRef = this.firestore
+        .collection(collections.operatorSessions)
+        .doc(input.sessionId);
+      const session = await transaction.get(sessionRef);
+      if (
+        !session.exists ||
+        session.data()?.operatorId !== input.operatorId ||
+        session.data()?.origin !== input.origin
+      ) {
+        throw new OperatorAuthenticationRejectedError();
+      }
+      if (!session.data()?.revokedAt) {
+        transaction.update(sessionRef, {
+          revokedAt: Timestamp.fromDate(input.occurredAt),
+        });
+        writeOperatorAudit(
+          this.firestore,
+          transaction,
+          "operator.session_revoked",
+          { type: "operator", id: input.operatorId },
+          input.operatorId,
+          input.occurredAt,
+          input.correlationId,
+        );
+      }
+      const response: StoredResponseRecord = {
+        status: 200,
+        body: { data: { revoked: true } },
+      };
+      saveOperatorIdempotency(
+        transaction,
+        idempotencyRef,
+        input.operatorId,
+        route,
+        input.idempotencyKey,
+        requestFingerprint,
+        response,
+        input.occurredAt,
+      );
+      return Object.freeze({ response });
     });
   }
 
@@ -1905,6 +2443,120 @@ export function createFirestoreApiAdapters(input: {
     identity: new FirestoreIdentityRepository(input.firestore),
     access: new FirestoreAccessRepository(input.firestore),
   });
+}
+
+function mapOperatorInvitation(id: string, data: DocumentData) {
+  return {
+    id,
+    intendedIdentity: String(data.intendedIdentity ?? ""),
+    secretDigest: String(data.secretDigest ?? ""),
+    expiresAt: asDate(data.expiresAt),
+    acceptedAt: optionalDate(data.acceptedAt),
+    revokedAt: optionalDate(data.revokedAt),
+  };
+}
+
+function mapOperatorChallenge(id: string, data: DocumentData) {
+  return {
+    id,
+    normalizedIdentity: String(data.normalizedIdentity ?? ""),
+    secretDigest: String(data.secretDigest ?? ""),
+    expiresAt: asDate(data.expiresAt),
+    consumedAt: optionalDate(data.consumedAt),
+  };
+}
+
+function serializeOperatorSession(session: OperatorSessionRecord) {
+  return {
+    operatorId: session.operatorId,
+    secretDigest: session.secretDigest,
+    origin: session.origin,
+    authenticatedAt: Timestamp.fromDate(session.authenticatedAt),
+    expiresAt: Timestamp.fromDate(session.expiresAt),
+    revokedAt: null,
+  };
+}
+
+function operatorSessionResponse(
+  status: number,
+  operatorId: string,
+  sessionId: string,
+  authenticatedAt: Date,
+  expiresAt: Date,
+): StoredResponseRecord {
+  return {
+    status,
+    body: {
+      data: {
+        operatorId,
+        sessionId,
+        authenticatedAt: authenticatedAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      },
+    },
+  };
+}
+
+function saveOperatorIdempotency(
+  transaction: Transaction,
+  reference: FirebaseFirestore.DocumentReference,
+  actorId: string,
+  command: string,
+  key: string,
+  requestFingerprint: string,
+  response: StoredResponseRecord,
+  at: Date,
+) {
+  const expireAt = new Date(at);
+  expireAt.setUTCDate(expireAt.getUTCDate() + 30);
+  transaction.create(reference, {
+    actorId,
+    command,
+    keyHash: hash(key),
+    requestFingerprint,
+    response,
+    completedAt: Timestamp.fromDate(at),
+    expireAt: Timestamp.fromDate(expireAt),
+  });
+}
+
+function writeOperatorAudit(
+  firestore: Firestore,
+  transaction: Transaction,
+  action:
+    | "operator.invitation_created"
+    | "operator.enrolled"
+    | "operator.authenticated"
+    | "operator.session_revoked",
+  actor: { readonly type: "system" | "operator"; readonly id: string },
+  operatorId: string,
+  at: Date,
+  correlationId: string,
+) {
+  const audit = createAuditRecordInput({
+    actor: {
+      type: actor.type,
+      id: createAuditIdentifier(actor.id),
+    },
+    action,
+    subject: {
+      type: "operator",
+      id: createAuditIdentifier(operatorId),
+    },
+    details: {
+      result: "completed",
+      reasonCategory: null,
+      previousState: null,
+      resultingState: null,
+      correlationId: createAuditCorrelationId(correlationId),
+      requestOrigin: createInternalRequestOrigin("hosted-api"),
+      credentialId: null,
+      retentionRange: null,
+    },
+    createdAt: at,
+  });
+  const auditRef = firestore.collection(collections.audits).doc();
+  transaction.create(auditRef, serializeAudit(auditRef.id, audit));
 }
 
 function serializeProfile(profile: PublicAgentProfileRecord) {

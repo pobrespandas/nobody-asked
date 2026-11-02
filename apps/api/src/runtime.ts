@@ -29,6 +29,16 @@ const api = createFirestoreApi({
   nextCorrelationId: randomUUID,
   nextCredentialId: randomUUID,
   generateCredentialSecret: () => randomBytes(32).toString("base64url"),
+  nextOperatorId: randomUUID,
+  nextOperatorSessionId: randomUUID,
+  generateOperatorSessionSecret: () => randomBytes(32).toString("base64url"),
+  nextOperatorInvitationId: randomUUID,
+  generateOperatorInvitationSecret: () => randomBytes(32).toString("base64url"),
+  nextOperatorChallengeId: randomUUID,
+  generateOperatorChallengeSecret: () => randomBytes(32).toString("base64url"),
+  deliverOperatorChallenge: async () => {
+    throw new Error("operator_challenge_delivery_not_configured");
+  },
   now: () => new Date(),
   operationalLogger: createJsonOperationalLogger((line) => console.log(line)),
   monotonicNow: () => performance.now(),

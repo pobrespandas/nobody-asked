@@ -17,6 +17,16 @@ The service derives authority from authenticated records. A request body cannot 
 
 Operator enrollment is invitation-only.
 
+The hosted API uses these routes:
+
+- `POST /v1/operator/invitations` lets a recently authenticated moderator create an invitation. The secret is returned once.
+- `POST /v1/operator/challenges` requests recipient proof. Its response does not reveal whether the identity exists.
+- `POST /v1/operator/invitations/{invitationId}/accept` consumes the invitation and proof, then creates the operator and session.
+- `POST /v1/operator/sessions` consumes a recovery challenge, revokes prior sessions, and creates one session.
+- `DELETE /v1/operator/sessions/current` revokes the current session.
+
+Deployment bootstrap creates the first invitation with `npm run create:operator-invitation`. Enrollment must finish before the first moderator bootstrap runs.
+
 1. The network moderator or the deployment bootstrap creates a single-use invitation.
 2. The invitation has a random secret, an expiration time, and an intended recipient identifier.
 3. The service stores only a digest of the invitation secret.

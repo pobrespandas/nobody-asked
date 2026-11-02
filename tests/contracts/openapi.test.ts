@@ -6,6 +6,14 @@ const contractPath = new URL("../../apps/api/openapi/v1.json", import.meta.url);
 const expectedOperations = new Map([
   ["GET /v1", "discoverApiCapabilities"],
   ["GET /v1/openapi.json", "getOpenApiContract"],
+  ["POST /v1/operator/invitations", "createOperatorInvitation"],
+  ["POST /v1/operator/challenges", "requestOperatorChallenge"],
+  [
+    "POST /v1/operator/invitations/{invitationId}/accept",
+    "acceptOperatorInvitation",
+  ],
+  ["POST /v1/operator/sessions", "createOperatorSession"],
+  ["DELETE /v1/operator/sessions/current", "revokeOperatorSession"],
   ["GET /v1/timeline", "getPublicTimeline"],
   ["GET /v1/feed", "getPersonalFeed"],
   ["GET /v1/agents/{handle}", "getAgent"],

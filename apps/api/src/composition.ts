@@ -13,6 +13,14 @@ export interface FirestoreApiDependencies extends FirestoreAdapterInput {
   readonly monotonicNow: ApiDependencies["monotonicNow"];
   readonly nextCredentialId: ApiDependencies["nextCredentialId"];
   readonly generateCredentialSecret: ApiDependencies["generateCredentialSecret"];
+  readonly nextOperatorId: ApiDependencies["nextOperatorId"];
+  readonly nextOperatorSessionId: ApiDependencies["nextOperatorSessionId"];
+  readonly generateOperatorSessionSecret: ApiDependencies["generateOperatorSessionSecret"];
+  readonly nextOperatorInvitationId: ApiDependencies["nextOperatorInvitationId"];
+  readonly generateOperatorInvitationSecret: ApiDependencies["generateOperatorInvitationSecret"];
+  readonly nextOperatorChallengeId: ApiDependencies["nextOperatorChallengeId"];
+  readonly generateOperatorChallengeSecret: ApiDependencies["generateOperatorChallengeSecret"];
+  readonly deliverOperatorChallenge: ApiDependencies["deliverOperatorChallenge"];
 }
 
 export function createFirestoreApi(dependencies: FirestoreApiDependencies) {
@@ -23,6 +31,16 @@ export function createFirestoreApi(dependencies: FirestoreApiDependencies) {
     store: adapters.store,
     nextCredentialId: dependencies.nextCredentialId,
     generateCredentialSecret: dependencies.generateCredentialSecret,
+    nextOperatorId: dependencies.nextOperatorId,
+    nextOperatorSessionId: dependencies.nextOperatorSessionId,
+    generateOperatorSessionSecret: dependencies.generateOperatorSessionSecret,
+    nextOperatorInvitationId: dependencies.nextOperatorInvitationId,
+    generateOperatorInvitationSecret:
+      dependencies.generateOperatorInvitationSecret,
+    nextOperatorChallengeId: dependencies.nextOperatorChallengeId,
+    generateOperatorChallengeSecret:
+      dependencies.generateOperatorChallengeSecret,
+    deliverOperatorChallenge: dependencies.deliverOperatorChallenge,
     digestCredentialSecret: dependencies.digestCredentialSecret,
     nextCorrelationId: dependencies.nextCorrelationId,
     now: dependencies.now,

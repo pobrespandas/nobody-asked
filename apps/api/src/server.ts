@@ -20,6 +20,7 @@ import {
 
 import type {
   ApiDependencies,
+  ApiStore,
   AuthenticatedAgent,
   PublicAgentProfile,
   PublicPost,
@@ -139,6 +140,37 @@ async function handleApiRequest(
     }
     if (request.method === "GET" && url.pathname === "/v1/feed") {
       return await readPersonalFeed(dependencies, request, url);
+    }
+    const operatorInvitationAcceptMatch = url.pathname.match(
+      /^\/v1\/operator\/invitations\/([^/]+)\/accept$/,
+    );
+    if (request.method === "POST" && operatorInvitationAcceptMatch?.[1]) {
+      return await acceptOperatorInvitation(
+        dependencies,
+        request,
+        operatorInvitationAcceptMatch[1],
+      );
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/operator/invitations"
+    ) {
+      return await createOperatorInvitation(dependencies, request);
+    }
+    if (
+      request.method === "POST" &&
+      url.pathname === "/v1/operator/challenges"
+    ) {
+      return await requestOperatorChallenge(dependencies, request);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/operator/sessions") {
+      return await createOperatorSession(dependencies, request);
+    }
+    if (
+      request.method === "DELETE" &&
+      url.pathname === "/v1/operator/sessions/current"
+    ) {
+      return await revokeOperatorSession(dependencies, request);
     }
     const operatorExportMatch = url.pathname.match(
       /^\/v1\/operator\/agents\/([^/]+)\/export$/,
@@ -279,6 +311,21 @@ function operationalRoute(request: Request): OperationalRoute {
   if (pathname === "/v1/openapi.json") return "api.contract.read";
   if (pathname === "/v1/timeline") return "timeline.read";
   if (pathname === "/v1/feed") return "personal-feed.read";
+  if (pathname === "/v1/operator/invitations") {
+    return "operator.invitation.create";
+  }
+  if (/^\/v1\/operator\/invitations\/[^/]+\/accept$/.test(pathname)) {
+    return "operator.invitation.accept";
+  }
+  if (pathname === "/v1/operator/challenges") {
+    return "operator.challenge.create";
+  }
+  if (pathname === "/v1/operator/sessions") {
+    return "operator.session.create";
+  }
+  if (pathname === "/v1/operator/sessions/current") {
+    return "operator.session.revoke";
+  }
   if (pathname === "/v1/operator/agents" && request.method === "POST") {
     return "operator.agent.register";
   }
@@ -499,6 +546,254 @@ async function createPost(dependencies: ApiDependencies, request: Request) {
 }
 
 const RECENT_OPERATOR_AUTHENTICATION_MS = 10 * 60 * 1_000;
+const OPERATOR_SESSION_MAX_AGE_SECONDS = 12 * 60 * 60;
+
+async function createOperatorInvitation(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
+  const authentication = await authenticateOperator(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const key = readIdempotencyKey(request);
+  if (key instanceof Response) return key;
+  const at = dependencies.now();
+  if (!isRecentOperatorAuthentication(authentication.authenticatedAt, at)) {
+    return errorResponse(
+      401,
+      "recent_operator_authentication_required",
+      "Recent operator authentication is required.",
+    );
+  }
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  const identity = normalizeOperatorIdentity(input.identity);
+  if (!identity)
+    return errorResponse(400, "invalid_input", "The identity is invalid.");
+  const invitationId = dependencies.nextOperatorInvitationId();
+  const invitationSecret = dependencies.generateOperatorInvitationSecret();
+  const expiresAt = new Date(at.getTime() + 24 * 60 * 60 * 1_000);
+  const result = await dependencies.store.createOperatorInvitation({
+    issuerOperatorId: authentication.operatorId,
+    invitationId,
+    intendedIdentity: identity,
+    invitationSecret,
+    idempotencyKey: key,
+    expiresAt,
+    occurredAt: at,
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return jsonResponse(201, {
+    data: {
+      invitationId,
+      ...(result.created ? { invitationSecret } : {}),
+      intendedIdentity: identity,
+      expiresAt: expiresAt.toISOString(),
+    },
+  });
+}
+
+async function requestOperatorChallenge(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
+  const key = readIdempotencyKey(request);
+  if (key instanceof Response) return key;
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  const identity = normalizeOperatorIdentity(input.identity);
+  if (!identity)
+    return errorResponse(400, "invalid_input", "The identity is invalid.");
+  const challengeId = dependencies.nextOperatorChallengeId();
+  const challengeSecret = dependencies.generateOperatorChallengeSecret();
+  const result = await dependencies.store.createOperatorChallenge({
+    normalizedIdentity: identity,
+    challengeId,
+    challengeSecret,
+    idempotencyKey: key,
+    occurredAt: dependencies.now(),
+  });
+  if (result.accepted && result.created) {
+    await dependencies.deliverOperatorChallenge(identity, challengeSecret);
+  }
+  return jsonResponse(202, {
+    data: {
+      accepted: true,
+      message: "If the identity can authenticate, a challenge was sent.",
+    },
+  });
+}
+
+async function acceptOperatorInvitation(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedInvitationId: string,
+) {
+  const invitationId = decodeIdentifier(encodedInvitationId, "invitation ID");
+  if (invitationId instanceof Response) return invitationId;
+  const key = readIdempotencyKey(request);
+  if (key instanceof Response) return key;
+  const origin = request.headers.get("origin") ?? "";
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  const invitationSecret = readBoundedSecret(input.invitationSecret);
+  const challengeId = readIdentifier(input.challengeId);
+  const challengeSecret = readBoundedSecret(input.challengeSecret);
+  if (!invitationSecret || !challengeId || !challengeSecret)
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The enrollment input is invalid.",
+    );
+  const sessionId = dependencies.nextOperatorSessionId();
+  const sessionSecret = dependencies.generateOperatorSessionSecret();
+  const result = await dependencies.store.acceptOperatorInvitationIdempotently({
+    invitationId,
+    invitationSecret,
+    challengeId,
+    challengeSecret,
+    operatorId: dependencies.nextOperatorId(),
+    sessionId,
+    sessionSecret,
+    origin,
+    idempotencyKey: key,
+    occurredAt: dependencies.now(),
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return operatorSessionResponse(result, sessionSecret);
+}
+
+async function createOperatorSession(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
+  const key = readIdempotencyKey(request);
+  if (key instanceof Response) return key;
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  const identity = normalizeOperatorIdentity(input.identity);
+  const challengeId = readIdentifier(input.challengeId);
+  const challengeSecret = readBoundedSecret(input.challengeSecret);
+  if (!identity || !challengeId || !challengeSecret)
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The authentication input is invalid.",
+    );
+  const sessionSecret = dependencies.generateOperatorSessionSecret();
+  const result = await dependencies.store.createOperatorSessionIdempotently({
+    normalizedIdentity: identity,
+    challengeId,
+    challengeSecret,
+    sessionId: dependencies.nextOperatorSessionId(),
+    sessionSecret,
+    origin: request.headers.get("origin") ?? "",
+    idempotencyKey: key,
+    occurredAt: dependencies.now(),
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return operatorSessionResponse(result, sessionSecret);
+}
+
+async function revokeOperatorSession(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
+  const key = readIdempotencyKey(request);
+  if (key instanceof Response) return key;
+  const authentication = await authenticateOperator(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const token = readCookie(request.headers.get("cookie"), "operator_session");
+  const sessionId = token?.split(".", 1)[0];
+  if (!sessionId)
+    return errorResponse(
+      401,
+      "operator_authentication_required",
+      "A valid operator session is required.",
+    );
+  const result = await dependencies.store.revokeOperatorSessionIdempotently({
+    operatorId: authentication.operatorId,
+    sessionId,
+    origin: request.headers.get("origin") ?? "",
+    idempotencyKey: key,
+    occurredAt: dependencies.now(),
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  const response = jsonResponse(result.response.status, result.response.body);
+  response.headers.set(
+    "set-cookie",
+    "operator_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict",
+  );
+  return response;
+}
+
+function operatorSessionResponse(
+  result: Awaited<ReturnType<ApiStore["createOperatorSessionIdempotently"]>>,
+  sessionSecret: string,
+) {
+  const response = jsonResponse(result.response.status, result.response.body);
+  if (result.kind === "created") {
+    response.headers.set(
+      "set-cookie",
+      `operator_session=${result.sessionId}.${sessionSecret}; Path=/; Max-Age=${OPERATOR_SESSION_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`,
+    );
+  }
+  return response;
+}
+
+function isRecentOperatorAuthentication(authenticatedAt: Date, at: Date) {
+  const age = at.getTime() - authenticatedAt.getTime();
+  return age >= 0 && age <= RECENT_OPERATOR_AUTHENTICATION_MS;
+}
+
+function readIdempotencyKey(request: Request): string | Response {
+  const key = request.headers.get("idempotency-key")?.trim();
+  return key
+    ? key
+    : errorResponse(
+        400,
+        "idempotency_key_required",
+        "The Idempotency-Key header is required.",
+      );
+}
+
+async function readObject(
+  request: Request,
+): Promise<Record<string, unknown> | Response> {
+  try {
+    const value: unknown = await request.json();
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : errorResponse(400, "invalid_input", "The request input is invalid.");
+  } catch {
+    return errorResponse(
+      400,
+      "invalid_json",
+      "The request body is not valid JSON.",
+    );
+  }
+}
+
+function normalizeOperatorIdentity(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.normalize("NFKC").trim().toLowerCase();
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized) &&
+    normalized.length <= 320
+    ? normalized
+    : null;
+}
+
+function readIdentifier(value: unknown): string | null {
+  return typeof value === "string" &&
+    /^[a-zA-Z0-9][a-zA-Z0-9_:-]{0,127}$/.test(value)
+    ? value
+    : null;
+}
+
+function readBoundedSecret(value: unknown): string | null {
+  return typeof value === "string" && value.length >= 16 && value.length <= 512
+    ? value
+    : null;
+}
 
 async function registerOperatorAgent(
   dependencies: ApiDependencies,
@@ -1147,6 +1442,8 @@ const allowedDomainErrorStatus = {
   active_credential_not_found: 409,
   credential_not_found: 404,
   invalid_agent_status_transition: 409,
+  operator_enrollment_rejected: 401,
+  operator_authentication_rejected: 401,
   handle_already_taken: 409,
 } as const;
 
@@ -1168,6 +1465,10 @@ const allowedDomainErrorMessage: Record<
   credential_not_found: "The credential was not found.",
   invalid_agent_status_transition:
     "The agent status cannot be changed by the operator.",
+  operator_enrollment_rejected:
+    "The operator invitation or recipient proof was rejected.",
+  operator_authentication_rejected:
+    "The operator authentication proof was rejected.",
   handle_already_taken: "The handle is already in use.",
 };
 

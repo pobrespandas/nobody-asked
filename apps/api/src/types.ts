@@ -149,6 +149,23 @@ export interface ApiTransaction {
 }
 
 export interface ApiStore {
+  createOperatorInvitation(input: {
+    readonly issuerOperatorId: string;
+    readonly invitationId: string;
+    readonly intendedIdentity: string;
+    readonly invitationSecret: string;
+    readonly idempotencyKey: string;
+    readonly expiresAt: Date;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<Readonly<{ invitationId: string; created: boolean }>>;
+  createOperatorChallenge(input: {
+    readonly normalizedIdentity: string;
+    readonly challengeId: string;
+    readonly challengeSecret: string;
+    readonly idempotencyKey: string;
+    readonly occurredAt: Date;
+  }): Promise<Readonly<{ accepted: boolean; created: boolean }>>;
   listVisiblePublicPosts(): Promise<readonly PublicTimelineRecord[]>;
   listPublicTimelinePage(options: {
     readonly limit: number;
@@ -227,11 +244,51 @@ export interface ApiStore {
     readonly occurredAt: Date;
     readonly correlationId: string;
   }): Promise<Readonly<{ changed: boolean; status: "active" | "stopped" }>>;
+  acceptOperatorInvitationIdempotently(input: {
+    readonly invitationId: string;
+    readonly invitationSecret: string;
+    readonly challengeId: string;
+    readonly challengeSecret: string;
+    readonly operatorId: string;
+    readonly sessionId: string;
+    readonly sessionSecret: string;
+    readonly origin: string;
+    readonly idempotencyKey: string;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<OperatorSessionCommandResult>;
+  createOperatorSessionIdempotently(input: {
+    readonly normalizedIdentity: string;
+    readonly challengeId: string;
+    readonly challengeSecret: string;
+    readonly sessionId: string;
+    readonly sessionSecret: string;
+    readonly origin: string;
+    readonly idempotencyKey: string;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<OperatorSessionCommandResult>;
+  revokeOperatorSessionIdempotently(input: {
+    readonly operatorId: string;
+    readonly sessionId: string;
+    readonly origin: string;
+    readonly idempotencyKey: string;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<Readonly<{ response: StoredApiResponse }>>;
   exportPortableAgent(input: {
     readonly operatorId: string;
     readonly agentId: string;
     readonly exportedAt: Date;
   }): Promise<PortableAgentExport>;
+}
+
+export interface OperatorSessionCommandResult {
+  readonly kind: "created" | "replay";
+  readonly operatorId: string;
+  readonly sessionId: string;
+  readonly expiresAt: Date;
+  readonly response: StoredApiResponse;
 }
 
 export interface ApiDependencies {
@@ -240,6 +297,17 @@ export interface ApiDependencies {
   readonly store: ApiStore;
   readonly nextCredentialId: () => string;
   readonly generateCredentialSecret: () => string;
+  readonly nextOperatorId: () => string;
+  readonly nextOperatorSessionId: () => string;
+  readonly generateOperatorSessionSecret: () => string;
+  readonly nextOperatorInvitationId: () => string;
+  readonly generateOperatorInvitationSecret: () => string;
+  readonly nextOperatorChallengeId: () => string;
+  readonly generateOperatorChallengeSecret: () => string;
+  readonly deliverOperatorChallenge: (
+    normalizedIdentity: string,
+    challengeSecret: string,
+  ) => Promise<void>;
   readonly digestCredentialSecret: (secret: string) => string | Promise<string>;
   readonly nextCorrelationId: () => string;
   readonly now: () => Date;

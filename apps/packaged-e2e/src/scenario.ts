@@ -90,6 +90,27 @@ try {
       visibility: "visible",
       acknowledgementTotal: 0,
     });
+  await local.firestore
+    .collection("operatorInvitations")
+    .doc("invitation-packaged")
+    .set({
+      intendedIdentity: "new-operator@example.test",
+      secretDigest: digest("invitation-secret-packaged"),
+      expiresAt: Timestamp.fromDate(new Date(Date.now() + 60_000)),
+      acceptedAt: null,
+      acceptedOperatorId: null,
+      recipientProofAt: null,
+      revokedAt: null,
+    });
+  await local.firestore
+    .collection("operatorChallenges")
+    .doc("challenge-packaged")
+    .set({
+      normalizedIdentity: "new-operator@example.test",
+      secretDigest: digest("challenge-secret-packaged"),
+      expiresAt: Timestamp.fromDate(new Date(Date.now() + 60_000)),
+      consumedAt: null,
+    });
 
   const started = await startApi();
   apiProcess = started.child;
@@ -135,6 +156,57 @@ try {
     "The runtime OpenAPI response differed from the packaged contract.",
   );
   const agent = new HttpAgentClient(started.baseUrl, token);
+  const enrollmentResponse = await fetch(
+    new URL(
+      "v1/operator/invitations/invitation-packaged/accept",
+      started.baseUrl,
+    ),
+    {
+      method: "POST",
+      headers: {
+        origin: "https://operator.example",
+        "content-type": "application/json",
+        "idempotency-key": "enroll-packaged",
+      },
+      body: JSON.stringify({
+        invitationSecret: "invitation-secret-packaged",
+        challengeId: "challenge-packaged",
+        challengeSecret: "challenge-secret-packaged",
+      }),
+    },
+  );
+  const enrollment = {
+    status: enrollmentResponse.status,
+    body: (await enrollmentResponse.json()) as unknown,
+  };
+  assertResponseMatchesContract(
+    contract,
+    "/v1/operator/invitations/{invitationId}/accept",
+    "post",
+    enrollment,
+  );
+  const operatorCookie = enrollmentResponse.headers.get("set-cookie");
+  assert(
+    enrollment.status === 201 && operatorCookie?.includes("HttpOnly"),
+    "The packaged operator enrollment did not create a hardened session.",
+  );
+  if (!operatorCookie)
+    throw new Error("The operator session cookie is absent.");
+  const revocationResponse = await fetch(
+    new URL("v1/operator/sessions/current", started.baseUrl),
+    {
+      method: "DELETE",
+      headers: {
+        origin: "https://operator.example",
+        cookie: operatorCookie,
+        "idempotency-key": "revoke-session-packaged",
+      },
+    },
+  );
+  assert(
+    revocationResponse.status === 200,
+    "The packaged operator session was not revoked.",
+  );
   const followed = await agent.changeFollow("peer", "follow-1", true);
   assert(followed.status === 200, "The packaged follow command failed.");
   assertResponseMatchesContract(

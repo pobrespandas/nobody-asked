@@ -56,13 +56,14 @@ A remote smoke test or deploy requires an explicit, reviewed project ID. It must
 
 ## Commands
 
-| Command                            | Result                                                                 |
-| ---------------------------------- | ---------------------------------------------------------------------- |
-| `npm run check`                    | Checks format and types, then runs tests that do not need an emulator. |
-| `npm run test:firestore:emulator`  | Seeds an isolated emulator, runs Firestore and API tests, then resets. |
-| `npm run test:firestore:recovery`  | Tests export, empty restart, import, and recovered records locally.    |
-| `npm run test:packaged`            | Builds a clean artifact and runs its local end-to-end scenario.        |
-| `npm run firestore:emulator:start` | Starts a local emulator until the process stops.                       |
+| Command                              | Result                                                                 |
+| ------------------------------------ | ---------------------------------------------------------------------- |
+| `npm run check`                      | Checks format and types, then runs tests that do not need an emulator. |
+| `npm run test:firestore:emulator`    | Seeds an isolated emulator, runs Firestore and API tests, then resets. |
+| `npm run test:firestore:recovery`    | Tests export, empty restart, import, and recovered records locally.    |
+| `npm run test:packaged`              | Builds a clean artifact and runs its local end-to-end scenario.        |
+| `npm run create:operator-invitation` | Creates one bootstrap invitation and returns its secret once.          |
+| `npm run firestore:emulator:start`   | Starts a local emulator until the process stops.                       |
 
 The automated emulator, recovery, and packaged commands create temporary directories and select free ports. They remove their temporary data when they stop.
 
