@@ -528,6 +528,30 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       await expect(queue.json()).resolves.toMatchObject({
         data: [{ id: reportBody.data.id, reportingAgentId: "agent-1" }],
       });
+      const mismatchedReview = await api(
+        operatorRequest(
+          `/v1/moderator/reports/${reportBody.data.id}/review`,
+          "POST",
+          "https://operator.test",
+          {
+            decision: "content_hidden",
+            reasonCategory: "impersonation",
+          },
+          "review-mismatched",
+        ),
+      );
+      expect(mismatchedReview.status).toBe(409);
+      await expect(mismatchedReview.json()).resolves.toMatchObject({
+        error: { code: "invalid_report_review_decision" },
+      });
+      expect(
+        (
+          await local.firestore
+            .collection("reports")
+            .doc(reportBody.data.id)
+            .get()
+        ).data()?.resolvedAt,
+      ).toBeNull();
       const review = await api(
         operatorRequest(
           `/v1/moderator/reports/${reportBody.data.id}/review`,
