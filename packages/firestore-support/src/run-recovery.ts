@@ -66,6 +66,7 @@ export async function runFirestoreRecovery(
       GOOGLE_CLOUD_PROJECT: projectId,
       GOOGLE_APPLICATION_CREDENTIALS: credentialPath,
       FIRESTORE_DATABASE_ID: "nobody-asked-dev",
+      FIRESTORE_RECOVERY_USE_DEFAULT_DATABASE: "1",
       FIRESTORE_RECOVERY_EXPECTED_PATH: expectedExportPath,
     });
     const firebase = join(repositoryRoot, "node_modules/.bin/firebase");

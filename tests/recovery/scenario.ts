@@ -14,6 +14,7 @@ import { createLocalFirestoreAdmin } from "@nobody-asked/firestore-support";
 import { createFirestoreApiAdapters } from "@nobody-asked/persistence";
 import { deleteApp } from "firebase-admin/app";
 import {
+  getFirestore,
   Timestamp,
   type DocumentData,
   type Firestore,
@@ -29,18 +30,22 @@ const at = new Date("2026-11-01T12:00:00.000Z");
 const local = createLocalFirestoreAdmin({
   appName: `firestore-recovery-${mode}-${process.pid}`,
 });
+const firestore =
+  process.env.FIRESTORE_RECOVERY_USE_DEFAULT_DATABASE === "1"
+    ? getFirestore(local.app)
+    : local.firestore;
 
 try {
   if (mode === "seed") {
-    await seed(local.firestore);
-    const portable = await verifyRecoveredState(local.firestore);
+    await seed(firestore);
+    const portable = await verifyRecoveredState(firestore);
     await writeFile(expectedExportPath, JSON.stringify(portable), {
       mode: 0o600,
     });
   } else if (mode === "empty") {
-    await verifyEmptyState(local.firestore);
+    await verifyEmptyState(firestore);
   } else if (mode === "recovered") {
-    const portable = await verifyRecoveredState(local.firestore);
+    const portable = await verifyRecoveredState(firestore);
     const expected = await readFile(expectedExportPath, "utf8");
     assert(
       JSON.stringify(portable) === expected,

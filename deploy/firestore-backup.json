@@ -1,0 +1,8 @@
+{
+  "projectId": "gen-lang-client-0607406471",
+  "databaseId": "nobody-asked-dev",
+  "location": "us-central1",
+  "recurrence": "daily",
+  "retention": "7d",
+  "recoveryDatabasePrefix": "nobody-asked-recovery-"
+}
