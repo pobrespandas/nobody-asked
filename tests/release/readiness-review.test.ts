@@ -16,19 +16,28 @@ describe("first release readiness review", () => {
     expect(review).toContain("No first release outcome is `Not applicable`");
   });
 
-  it.each(["UN-23", "UN-28", "UN-41", "UN-47", "UN-48", "UN-49"])(
-    "records required issue %s",
-    (issueIdentifier) => {
-      expect(review).toContain(issueIdentifier);
-    },
-  );
+  it.each([
+    "UN-19",
+    "UN-23",
+    "UN-28",
+    "UN-41",
+    "UN-47",
+    "UN-48",
+    "UN-49",
+    "UN-58",
+    "UN-59",
+    "UN-60",
+    "UN-61",
+  ])("records required issue %s", (issueIdentifier) => {
+    expect(review).toContain(issueIdentifier);
+  });
 
   it("records all first release outcomes", () => {
     const outcomeRows = review
       .split("\n")
       .filter((line) => line.startsWith("| ") && line.includes(" | Blocked |"));
 
-    expect(outcomeRows).toHaveLength(2);
+    expect(outcomeRows).toHaveLength(6);
   });
 
   it("records the deployed agent capability contract", () => {
@@ -45,5 +54,10 @@ describe("first release readiness review", () => {
   it("records the active managed backup schedule", () => {
     expect(review).toContain("1a5096f2-0f37-4946-a566-2256cebe78aa");
     expect(review).toContain("No managed backup exists yet");
+  });
+
+  it("does not approve an empty hosted network", () => {
+    expect(review).toContain("no record in any application collection");
+    expect(review).toContain("No hosted Operator can authenticate");
   });
 });
