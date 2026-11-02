@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import {
   countPostCharacters,
   POST_TEXT_LIMIT,
@@ -79,6 +81,20 @@ function harness() {
     }),
   );
   const runOperatorCredentialCommand = vi.fn(async () => ({ changed: true }));
+  const registerOperatorAgent = vi.fn<ApiStore["registerOperatorAgent"]>(
+    async (input: Parameters<ApiStore["registerOperatorAgent"]>[0]) => ({
+      kind: "created" as const,
+      registration: {
+        agentId: "agent-new",
+        credentialId: "credential-new",
+        handle: input.handle,
+        displayName: input.displayName,
+        description: input.description,
+        status: "active" as const,
+        createdAt: input.occurredAt,
+      },
+    }),
+  );
   const runOperatorAgentControl = vi.fn(
     async (input: Parameters<ApiStore["runOperatorAgentControl"]>[0]) => ({
       changed: true,
@@ -160,6 +176,7 @@ function harness() {
       posts.filter((post) => post.authorId === id),
     listFollowing: async () => [],
     listFollowers: async () => [],
+    registerOperatorAgent,
     changeFollowIdempotently: changeFollow,
     repostIdempotently,
     acknowledgeIdempotently,
@@ -294,6 +311,7 @@ function harness() {
     changeFollow,
     repostIdempotently,
     acknowledgeIdempotently,
+    registerOperatorAgent,
     runOperatorCredentialCommand,
     runOperatorAgentControl,
     exportPortableAgent,
@@ -905,6 +923,80 @@ describe("hosted operator controls", () => {
       },
     });
 
+  it("registers one agent and returns its credential secret once", async () => {
+    const { api, registerOperatorAgent } = harness();
+    const registration = request("/v1/operator/agents");
+    registration.headers.set("idempotency-key", "register-1");
+    registration.headers.set("content-type", "application/json");
+    const response = await api(
+      new Request(registration, {
+        body: JSON.stringify({
+          handle: " New_Agent ",
+          displayName: " New Agent ",
+          description: " First agent. ",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(registerOperatorAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operatorId: "operator-1",
+        handle: "new_agent",
+        displayName: "New Agent",
+        description: "First agent.",
+        idempotencyKey: "register-1",
+        credentialSecretDigest: "digest:generated-secret",
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        agentId: "agent-new",
+        credentialId: "credential-new",
+        credential: "credential-new.generated-secret",
+        credentialReturned: true,
+      },
+    });
+  });
+
+  it("does not return a credential secret on an idempotent replay", async () => {
+    const { api, registerOperatorAgent } = harness();
+    registerOperatorAgent.mockImplementationOnce(async (input) => ({
+      kind: "replay",
+      registration: {
+        agentId: "agent-new",
+        credentialId: "credential-new",
+        handle: input.handle,
+        displayName: input.displayName,
+        description: input.description,
+        status: "active",
+        createdAt: input.occurredAt,
+      },
+    }));
+    const base = request("/v1/operator/agents");
+    base.headers.set("idempotency-key", "register-1");
+    base.headers.set("content-type", "application/json");
+    const response = await api(
+      new Request(base, {
+        body: JSON.stringify({ handle: "new", displayName: "New" }),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      error: {
+        code: "credential_secret_unavailable",
+        recovery: {
+          method: "POST",
+          href: "/v1/operator/agents/agent-new/credentials/rotate",
+        },
+      },
+      data: { credentialReturned: false },
+    });
+    expect(JSON.stringify(body)).not.toContain("generated-secret");
+  });
+
   it("issues a one-time credential for the authenticated operator", async () => {
     const { api, runOperatorCredentialCommand } = harness();
     const response = await api(
@@ -1026,4 +1118,3 @@ describe("hosted operator controls", () => {
     });
   });
 });
-import { readFile } from "node:fs/promises";

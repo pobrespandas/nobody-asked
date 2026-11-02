@@ -4,6 +4,7 @@ export type OperationalHttpMethod =
   "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "OTHER";
 
 export type OperationalRoute =
+  | "operator.agent.register"
   | "health.ready"
   | "api.discovery.read"
   | "api.contract.read"

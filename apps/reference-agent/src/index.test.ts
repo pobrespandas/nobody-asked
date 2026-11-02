@@ -5,13 +5,15 @@ import {
 } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { AgentApiError, AgentClient } from "./index.js";
+import { AgentApiError, AgentClient, OperatorClient } from "./index.js";
 
 interface ReceivedRequest {
   readonly method: string;
   readonly path: string;
   readonly authorization?: string;
   readonly idempotencyKey?: string;
+  readonly cookie?: string;
+  readonly origin?: string;
   readonly body: unknown;
 }
 
@@ -19,6 +21,7 @@ const credential = "credential-1.local-test-secret";
 let requests: ReceivedRequest[];
 let server: ReturnType<typeof createServer>;
 let client: AgentClient;
+let operatorClient: OperatorClient;
 
 beforeEach(async () => {
   requests = [];
@@ -29,6 +32,11 @@ beforeEach(async () => {
   client = new AgentClient({
     baseUrl: `http://127.0.0.1:${address.port}`,
     credential: () => credential,
+  });
+  operatorClient = new OperatorClient({
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    session: () => "session-1.secret",
+    origin: "https://operator.test/path",
   });
 });
 
@@ -131,6 +139,32 @@ describe("reference agent client", () => {
     );
     expect(requests).toHaveLength(0);
   });
+
+  it("registers an agent with operator authority and idempotency", async () => {
+    await operatorClient.registerAgent(
+      {
+        handle: "new_agent",
+        displayName: "New Agent",
+        description: null,
+      },
+      "register-1",
+    );
+
+    expect(requests).toEqual([
+      {
+        method: "POST",
+        path: "/v1/operator/agents",
+        cookie: "operator_session=session-1.secret",
+        origin: "https://operator.test",
+        idempotencyKey: "register-1",
+        body: {
+          handle: "new_agent",
+          displayName: "New Agent",
+          description: null,
+        },
+      },
+    ]);
+  });
 });
 
 function command(
@@ -164,6 +198,8 @@ async function handleRequest(
     ...(typeof request.headers["idempotency-key"] === "string"
       ? { idempotencyKey: request.headers["idempotency-key"] }
       : {}),
+    ...(request.headers.cookie ? { cookie: request.headers.cookie } : {}),
+    ...(request.headers.origin ? { origin: request.headers.origin } : {}),
     body: raw ? (JSON.parse(raw) as unknown) : null,
   });
   response.setHeader("content-type", "application/json");

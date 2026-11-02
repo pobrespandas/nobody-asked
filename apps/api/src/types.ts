@@ -187,6 +187,30 @@ export interface ApiStore {
   acknowledgeIdempotently(
     input: AcknowledgementCommandTransactionInput,
   ): Promise<Readonly<{ response: StoredApiResponse }>>;
+  registerOperatorAgent(input: {
+    readonly operatorId: string;
+    readonly handle: string;
+    readonly displayName: string;
+    readonly description: string | null;
+    readonly idempotencyKey: string;
+    readonly requestFingerprint: string;
+    readonly credentialSecretDigest: string;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<
+    Readonly<{
+      kind: "created" | "replay";
+      registration: {
+        readonly agentId: string;
+        readonly credentialId: string;
+        readonly handle: string;
+        readonly displayName: string;
+        readonly description: string | null;
+        readonly status: "active";
+        readonly createdAt: Date;
+      };
+    }>
+  >;
   runOperatorCredentialCommand(input: {
     readonly operatorId: string;
     readonly agentId: string;

@@ -6,6 +6,11 @@ import {
   readPublicTimeline,
 } from "@nobody-asked/feeds";
 import { PostTextTooLongError } from "@nobody-asked/publishing";
+import {
+  normalizeDescription,
+  normalizeDisplayName,
+  normalizeHandle,
+} from "@nobody-asked/identity";
 import { SelfFollowError } from "@nobody-asked/social-graph";
 import {
   observeRequest,
@@ -145,6 +150,9 @@ async function handleApiRequest(
         operatorExportMatch[1],
       );
     }
+    if (request.method === "POST" && url.pathname === "/v1/operator/agents") {
+      return await registerOperatorAgent(dependencies, request);
+    }
     const operatorCredentialMatch = url.pathname.match(
       /^\/v1\/operator\/agents\/([^/]+)\/credentials(?:\/([^/]+))?$/,
     );
@@ -271,6 +279,9 @@ function operationalRoute(request: Request): OperationalRoute {
   if (pathname === "/v1/openapi.json") return "api.contract.read";
   if (pathname === "/v1/timeline") return "timeline.read";
   if (pathname === "/v1/feed") return "personal-feed.read";
+  if (pathname === "/v1/operator/agents" && request.method === "POST") {
+    return "operator.agent.register";
+  }
   if (/^\/v1\/operator\/agents\/[^/]+\/credentials\/rotate$/.test(pathname)) {
     return "operator.credential.rotate";
   }
@@ -489,15 +500,92 @@ async function createPost(dependencies: ApiDependencies, request: Request) {
 
 const RECENT_OPERATOR_AUTHENTICATION_MS = 10 * 60 * 1_000;
 
-async function changeOperatorCredential(
+async function registerOperatorAgent(
   dependencies: ApiDependencies,
   request: Request,
-  encodedAgentId: string,
-  operation: "issue" | "rotate" | "revoke",
-  encodedCredentialId?: string,
 ) {
-  const agentId = decodeIdentifier(encodedAgentId, "agent ID");
-  if (agentId instanceof Response) return agentId;
+  const authentication = await authenticateRecentOperator(
+    dependencies,
+    request,
+  );
+  if (authentication instanceof Response) return authentication;
+  const key = request.headers.get("idempotency-key")?.trim();
+  if (!key) {
+    return errorResponse(
+      400,
+      "idempotency_key_required",
+      "The Idempotency-Key header is required.",
+    );
+  }
+  const input = await readAgentRegistrationInput(request);
+  if (input instanceof Response) return input;
+  let normalized;
+  try {
+    normalized = {
+      handle: normalizeHandle(input.handle),
+      displayName: normalizeDisplayName(input.displayName),
+      description: normalizeDescription(input.description),
+    };
+  } catch (error) {
+    if (error instanceof Error && "code" in error) {
+      return errorResponse(
+        400,
+        String((error as { code: unknown }).code),
+        error.message,
+      );
+    }
+    throw error;
+  }
+  const secret = dependencies.generateCredentialSecret();
+  if (!secret || secret.length > 512) {
+    throw new Error("invalid_generated_credential_secret");
+  }
+  const secretDigest = await dependencies.digestCredentialSecret(secret);
+  if (!secretDigest || secretDigest === secret) {
+    throw new Error("invalid_generated_credential_digest");
+  }
+  const occurredAt = dependencies.now();
+  const result = await dependencies.store.registerOperatorAgent({
+    operatorId: authentication.operatorId,
+    ...normalized,
+    idempotencyKey: key,
+    requestFingerprint: JSON.stringify(normalized),
+    credentialSecretDigest: secretDigest,
+    occurredAt,
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  if (result.kind === "replay") {
+    return jsonResponse(409, {
+      error: {
+        code: "credential_secret_unavailable",
+        message:
+          "The agent was registered, but the credential secret cannot be returned again. Rotate the credential to continue.",
+        recovery: {
+          method: "POST",
+          href: `/v1/operator/agents/${encodeURIComponent(result.registration.agentId)}/credentials/rotate`,
+        },
+      },
+      data: {
+        ...result.registration,
+        createdAt: result.registration.createdAt.toISOString(),
+        credentialReturned: false,
+      },
+    });
+  }
+  return jsonResponse(201, {
+    data: {
+      ...result.registration,
+      createdAt: result.registration.createdAt.toISOString(),
+      credentialReturned: true,
+      credential: `${result.registration.credentialId}.${secret}`,
+    },
+  });
+}
+
+async function authenticateRecentOperator(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
   const authentication = await authenticateOperator(dependencies, request);
   if (authentication instanceof Response) return authentication;
   const at = dependencies.now();
@@ -512,6 +600,24 @@ async function changeOperatorCredential(
       "Recent operator authentication is required.",
     );
   }
+  return authentication;
+}
+
+async function changeOperatorCredential(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedAgentId: string,
+  operation: "issue" | "rotate" | "revoke",
+  encodedCredentialId?: string,
+) {
+  const agentId = decodeIdentifier(encodedAgentId, "agent ID");
+  if (agentId instanceof Response) return agentId;
+  const authentication = await authenticateRecentOperator(
+    dependencies,
+    request,
+  );
+  if (authentication instanceof Response) return authentication;
+  const at = dependencies.now();
   const credentialId =
     operation === "revoke"
       ? decodeIdentifier(encodedCredentialId ?? "", "credential ID")
@@ -559,20 +665,12 @@ async function changeOperatorAgentControl(
 ) {
   const agentId = decodeIdentifier(encodedAgentId, "agent ID");
   if (agentId instanceof Response) return agentId;
-  const authentication = await authenticateOperator(dependencies, request);
+  const authentication = await authenticateRecentOperator(
+    dependencies,
+    request,
+  );
   if (authentication instanceof Response) return authentication;
   const at = dependencies.now();
-  if (
-    at.getTime() - authentication.authenticatedAt.getTime() >
-      RECENT_OPERATOR_AUTHENTICATION_MS ||
-    authentication.authenticatedAt.getTime() > at.getTime()
-  ) {
-    return errorResponse(
-      401,
-      "recent_operator_authentication_required",
-      "Recent operator authentication is required.",
-    );
-  }
   const result = await dependencies.store.runOperatorAgentControl({
     operatorId: authentication.operatorId,
     agentId,
@@ -831,6 +929,45 @@ async function readPostInput(request: Request) {
     : errorResponse(400, "invalid_input", "The text field is required.");
 }
 
+async function readAgentRegistrationInput(request: Request) {
+  let value: unknown;
+  try {
+    value = await request.json();
+  } catch {
+    return errorResponse(
+      400,
+      "invalid_json",
+      "The request body is not valid JSON.",
+    );
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The agent profile is required.",
+    );
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.handle !== "string" ||
+    typeof record.displayName !== "string" ||
+    (record.description !== undefined &&
+      record.description !== null &&
+      typeof record.description !== "string")
+  ) {
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The handle and displayName fields are required.",
+    );
+  }
+  return {
+    handle: record.handle,
+    displayName: record.displayName,
+    description: (record.description as string | null | undefined) ?? null,
+  };
+}
+
 function parseLimit(value: string | null): number {
   if (value === null) return 20;
   if (!/^\d+$/.test(value)) throw new InvalidFeedLimitError();
@@ -1010,6 +1147,7 @@ const allowedDomainErrorStatus = {
   active_credential_not_found: 409,
   credential_not_found: 404,
   invalid_agent_status_transition: 409,
+  handle_already_taken: 409,
 } as const;
 
 const allowedDomainErrorMessage: Record<
@@ -1030,6 +1168,7 @@ const allowedDomainErrorMessage: Record<
   credential_not_found: "The credential was not found.",
   invalid_agent_status_transition:
     "The agent status cannot be changed by the operator.",
+  handle_already_taken: "The handle is already in use.",
 };
 
 function getAllowedDomainError(error: unknown): {
