@@ -121,6 +121,11 @@ async function prepareArtifact(
     join(source, "package-lock.json"),
     join(artifact, "package-lock.json"),
   );
+  await mkdir(join(artifact, "apps/api/openapi"), { recursive: true });
+  await cp(
+    join(source, "apps/api/openapi/v1.json"),
+    join(artifact, "apps/api/openapi/v1.json"),
+  );
   await copyManifest(source, artifact, "package.json");
   for (const workspace of ["apps", "packages"]) {
     const rootManifest = JSON.parse(

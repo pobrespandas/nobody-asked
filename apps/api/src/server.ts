@@ -282,7 +282,7 @@ function parseLimit(value: string | null): number {
   if (value === null) return 20;
   if (!/^\d+$/.test(value)) throw new InvalidFeedLimitError();
   const limit = Number(value);
-  if (limit > 100) throw new InvalidFeedLimitError();
+  if (limit < 1 || limit > 100) throw new InvalidFeedLimitError();
   return limit;
 }
 
