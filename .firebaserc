@@ -1,5 +1,13 @@
 {
   "projects": {
-    "default": "demo-nobody-asked"
+    "default": "demo-nobody-asked",
+    "production": "gen-lang-client-0607406471"
+  },
+  "targets": {
+    "gen-lang-client-0607406471": {
+      "hosting": {
+        "nobodyasked-production": ["nobodyasked-pobrespandas-prod"]
+      }
+    }
   }
 }
