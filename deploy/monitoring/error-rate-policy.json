@@ -1,0 +1,34 @@
+{
+  "displayName": "Nobody Asked API server error rate",
+  "combiner": "OR",
+  "enabled": true,
+  "userLabels": {
+    "environment": "production",
+    "service": "api"
+  },
+  "documentation": {
+    "content": "Inspect fixed-route structured logs and Cloud Run request logs. Follow docs/operations/deployment-incident-runbook.md. No notification channel is configured.",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "Any sustained API 5xx request rate",
+      "conditionThreshold": {
+        "filter": "resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"nobody-asked-api\" AND metric.type=\"run.googleapis.com/request_count\" AND metric.label.response_code_class=\"5xx\"",
+        "comparison": "COMPARISON_GT",
+        "thresholdValue": 0,
+        "duration": "60s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "300s",
+            "perSeriesAligner": "ALIGN_RATE",
+            "crossSeriesReducer": "REDUCE_SUM",
+            "groupByFields": ["resource.label.service_name"]
+          }
+        ],
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "notificationChannels": []
+}

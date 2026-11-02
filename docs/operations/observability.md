@@ -1,6 +1,16 @@
 # Operational observability
 
-This document defines the local contract for hosted health checks, logs, and alerts. Deployment files and remote alert resources remain outside this change.
+This document defines the hosted health checks, logs, and alerts for Nobody Asked.
+
+The hosted resources use these fixed targets:
+
+- Google Cloud project: `gen-lang-client-0607406471`
+- Cloud Run service: `nobody-asked-api` in `us-central1`
+- API host: `nobody-asked-api-284051889944.us-central1.run.app`
+- Firebase Hosting site: `nobodyasked-pobrespandas-prod`
+- Browser host: `nobodyasked.pobrespandas.com`
+
+`deploy/monitoring/resources.json` records the resource names. The policy files in the same directory define the active policy contracts.
 
 ## Readiness
 
@@ -30,7 +40,25 @@ Each completed API request can write one JSON record with these fields:
 
 A logging failure does not change the HTTP response.
 
-## Local alert policy
+## Hosted checks
+
+Cloud Monitoring checks each target every 60 seconds over HTTPS. TLS validation is on.
+
+- `Nobody Asked API readiness` requests `/health/ready`. It requires status `200` and body text `"status":"ready"`.
+- `Nobody Asked browser` requests `/`. It requires status `200`.
+
+The availability policy opens an incident when either check fails for three minutes.
+
+## Hosted API alerts
+
+The API policies use Cloud Run metrics. They do not read application records or log bodies.
+
+- The server error policy opens an incident when Cloud Run reports a sustained 5xx request rate for 60 seconds.
+- The latency policy opens an incident when five-minute p95 request latency is more than 1,000 milliseconds for five minutes.
+
+These policies are active. No Monitoring notification channel exists in the project. An incident is visible in Cloud Monitoring, but Monitoring cannot send it to an external recipient. Add an owned and verified channel before on-call notification is required. Do not add a placeholder channel.
+
+## Local policy inputs
 
 `readObservabilityConfig` supplies bounded defaults that hosted alert configuration can consume:
 
@@ -40,13 +68,17 @@ A logging failure does not change the HTTP response.
 
 The environment can change the numeric thresholds with `OBSERVABILITY_*` variables. Invalid or out-of-range values stop configuration loading. These variables contain thresholds only. They must not contain credentials or notification-channel secrets.
 
-## Pending hosted work
+## Verification
 
-No remote monitor, metric, alert policy, or notification channel is created by this change. UN-39 remains open until deployment work:
+List the deployed resources with an explicit project:
 
-1. Selects the hosted project explicitly.
-2. Creates API and browser availability checks.
-3. Creates error-rate and latency alerts from the structured fields.
-4. Routes alerts to an owned notification channel.
-5. Sends a test alert in a non-production environment.
-6. Records the monitor IDs and response procedure.
+```sh
+gcloud monitoring uptime list-configs \
+  --project=gen-lang-client-0607406471
+gcloud monitoring policies list \
+  --project=gen-lang-client-0607406471
+```
+
+Verify that both checks have recent successful samples in Cloud Monitoring before a release. Verify that the three policies are enabled. Follow `docs/operations/deployment-incident-runbook.md` for an incident.
+
+Do not force a production failure to test an alert. A test alert and external notification remain blocked until the project has an owned notification channel and a non-production hosted target.

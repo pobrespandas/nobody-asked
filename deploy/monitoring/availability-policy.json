@@ -1,0 +1,52 @@
+{
+  "displayName": "Nobody Asked availability",
+  "combiner": "OR",
+  "enabled": true,
+  "userLabels": {
+    "environment": "production",
+    "service": "nobody-asked"
+  },
+  "documentation": {
+    "content": "Verify the explicit uptime target. Follow docs/operations/deployment-incident-runbook.md. No notification channel is configured.",
+    "mimeType": "text/markdown"
+  },
+  "conditions": [
+    {
+      "displayName": "API readiness fails for three minutes",
+      "conditionThreshold": {
+        "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"nobody-asked-api-readiness-AnyQNRSoUUs\"",
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "180s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_FRACTION_TRUE",
+            "crossSeriesReducer": "REDUCE_MIN",
+            "groupByFields": ["resource.label.host"]
+          }
+        ],
+        "trigger": { "count": 1 }
+      }
+    },
+    {
+      "displayName": "Browser fails for three minutes",
+      "conditionThreshold": {
+        "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"nobody-asked-browser-ecFeo0V-bmU\"",
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "180s",
+        "aggregations": [
+          {
+            "alignmentPeriod": "60s",
+            "perSeriesAligner": "ALIGN_FRACTION_TRUE",
+            "crossSeriesReducer": "REDUCE_MIN",
+            "groupByFields": ["resource.label.host"]
+          }
+        ],
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "notificationChannels": []
+}

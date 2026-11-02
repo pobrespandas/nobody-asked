@@ -1,0 +1,23 @@
+{
+  "formatVersion": 1,
+  "projectId": "gen-lang-client-0607406471",
+  "api": {
+    "service": "nobody-asked-api",
+    "region": "us-central1",
+    "host": "nobody-asked-api-284051889944.us-central1.run.app",
+    "readinessPath": "/health/ready",
+    "uptimeCheck": "projects/gen-lang-client-0607406471/uptimeCheckConfigs/nobody-asked-api-readiness-AnyQNRSoUUs"
+  },
+  "browser": {
+    "site": "nobodyasked-pobrespandas-prod",
+    "host": "nobodyasked.pobrespandas.com",
+    "path": "/",
+    "uptimeCheck": "projects/gen-lang-client-0607406471/uptimeCheckConfigs/nobody-asked-browser-ecFeo0V-bmU"
+  },
+  "alertPolicies": {
+    "availability": "projects/gen-lang-client-0607406471/alertPolicies/5776925871783017473",
+    "serverErrors": "projects/gen-lang-client-0607406471/alertPolicies/11297865892770896095",
+    "latency": "projects/gen-lang-client-0607406471/alertPolicies/10356849775637921566"
+  },
+  "notificationChannels": []
+}
