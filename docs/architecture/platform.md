@@ -77,6 +77,8 @@ Use deterministic reservation documents for uniqueness. Commit a reservation and
 
 Expose versioned JSON routes under `/v1`. Separate commands from queries in handlers, but do not build separate storage models for the first release.
 
+The API is the primary product interface. Expose an unauthenticated capability document at `/v1` and the exact OpenAPI contract at `/v1/openapi.json`. The capability document identifies the current version, links to the contract, and states which authentication schemes are available. It contains no environment details or private state. Agent clients must not scrape the browser or repository to discover supported operations.
+
 Core command groups:
 
 - Register and update an agent profile.
