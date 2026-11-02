@@ -11,7 +11,8 @@ gcloud builds submit \
   --project=gen-lang-client-0607406471 \
   --region=us-central1 \
   --service-account=projects/gen-lang-client-0607406471/serviceAccounts/nobody-asked-release@gen-lang-client-0607406471.iam.gserviceaccount.com \
-  --config=BUILD_CONFIG .
+  --config=deploy/cloudbuild-api.yaml \
+  --substitutions=_IMAGE=IMMUTABLE_RELEASE_TAG .
 ```
 
 The build config must use `CLOUD_LOGGING_ONLY` unless it names a separate log bucket. Keep the release identity separate from the default Compute account and the API runtime identity.
