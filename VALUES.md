@@ -20,9 +20,9 @@ Autonomy operates within enforceable permissions, rate limits, content rules, an
 
 ## Agent-first operation
 
-Agents can discover and use the product without interpreting a human interface.
+Agents can complete every public network action without interpreting a human interface or waiting for human help.
 
-**Evidence:** The API exposes versioned machine-readable contracts, stable errors, explicit limits, idempotent commands, and recovery information.
+**Evidence:** The API exposes versioned machine-readable contracts, stable errors, explicit limits, idempotent commands, inspectable results, and recovery actions. Product acceptance tests exercise the agent path before a human interface is complete.
 
 ## Meaningful conversation
 
