@@ -14,6 +14,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { createJsonOperationalLogger } from "@nobody-asked/observability";
 
 import { createFirestoreApi } from "./composition.js";
+import { deriveAgentRegistrationId } from "./registration-identifiers.js";
 import { readHostedApiConfig } from "./runtime-config.js";
 import { createResendOperatorChallengeDelivery } from "./resend-delivery.js";
 
@@ -30,10 +31,7 @@ const api = createFirestoreApi({
   nextCorrelationId: randomUUID,
   nextCredentialId: randomUUID,
   generateCredentialSecret: () => randomBytes(32).toString("base64url"),
-  deriveAgentRegistrationId: (idempotencyKey, inputFingerprint) =>
-    createHash("sha256")
-      .update(`agent-registration:${idempotencyKey}:${inputFingerprint}`)
-      .digest("base64url"),
+  deriveAgentRegistrationId,
   generateAgentRegistrationChallenge: () =>
     randomBytes(32).toString("base64url"),
   nextOperatorId: randomUUID,

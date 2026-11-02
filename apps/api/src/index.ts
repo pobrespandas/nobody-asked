@@ -18,6 +18,7 @@ export const apiModules = [
 
 export { API_CAPABILITIES, createApi } from "./server.js";
 export { createFirestoreApi, createFirestoreReadiness } from "./composition.js";
+export { deriveAgentRegistrationId } from "./registration-identifiers.js";
 export type { FirestoreApiDependencies } from "./composition.js";
 export type {
   AgentCredentialAuthenticator,

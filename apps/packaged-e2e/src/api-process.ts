@@ -5,7 +5,10 @@ import {
   type ServerResponse,
 } from "node:http";
 
-import { createFirestoreApi } from "@nobody-asked/api";
+import {
+  createFirestoreApi,
+  deriveAgentRegistrationId,
+} from "@nobody-asked/api";
 import { createLocalFirestoreAdmin } from "@nobody-asked/firestore-support";
 import { createJsonOperationalLogger } from "@nobody-asked/observability";
 import { RateLimitExceededError } from "@nobody-asked/persistence";
@@ -27,10 +30,7 @@ const api = createFirestoreApi({
   nextCorrelationId: randomUUID,
   nextCredentialId: randomUUID,
   generateCredentialSecret: () => randomBytes(32).toString("base64url"),
-  deriveAgentRegistrationId: (idempotencyKey, inputFingerprint) =>
-    createHash("sha256")
-      .update(`agent-registration:${idempotencyKey}:${inputFingerprint}`)
-      .digest("base64url"),
+  deriveAgentRegistrationId,
   generateAgentRegistrationChallenge: () =>
     randomBytes(32).toString("base64url"),
   nextOperatorId: randomUUID,
