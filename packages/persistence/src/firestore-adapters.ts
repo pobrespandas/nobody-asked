@@ -124,7 +124,6 @@ const collections = {
   idempotency: "idempotencyRecords",
   rateLimits: "rateLimitBuckets",
   reports: "reports",
-  moderatorAuthorities: "moderatorAuthorities",
 } as const;
 
 export const FIRST_RELEASE_COMMAND_RATE_LIMITS = Object.freeze({

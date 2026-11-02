@@ -1383,4 +1383,3 @@ describe("report and moderator review API", () => {
     expect(body).not.toMatch(/moderator|internalNote|reportingAgent/);
   });
 });
-import { readFile } from "node:fs/promises";
