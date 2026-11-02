@@ -192,6 +192,14 @@ async function verifyRecoveredState(
     following.length === 1 && following[0]?.id === "agent-2",
     "The recovered follow relationship is invalid.",
   );
+  const personalFeed = await adapters.store.listPersonalFeedPage("agent-1", {
+    limit: 25,
+  });
+  assert(
+    personalFeed.items.length === 1 &&
+      personalFeed.items[0]?.id === "peer-post",
+    "The recovered personal feed is invalid.",
+  );
   const visible = await adapters.store.listVisiblePublicPostsByAgent("agent-1");
   assert(
     visible.length === 2,

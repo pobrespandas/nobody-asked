@@ -143,6 +143,13 @@ export interface ApiStore {
     readonly items: readonly PublicTimelineRecord[];
     readonly nextCursor: string | null;
   }>;
+  listPersonalFeedPage(
+    agentId: string,
+    options: { readonly limit: number; readonly cursor?: string | null },
+  ): Promise<{
+    readonly items: readonly PublicTimelineRecord[];
+    readonly nextCursor: string | null;
+  }>;
   findPublicAgentByHandle(handle: string): Promise<PublicAgentProfile | null>;
   findVisiblePublicPostById(id: string): Promise<PublicPost | null>;
   listVisibleConversation(rootId: string): Promise<readonly PublicPost[]>;

@@ -91,7 +91,7 @@ describe("remote index query shapes", () => {
 
     const summary = await runRemoteFirestoreIndexSmoke(fake, now);
 
-    expect(summary).toEqual({ status: "passed", queryCount: 8 });
+    expect(summary).toEqual({ status: "passed", queryCount: 9 });
     expect(summary).not.toHaveProperty("data");
     expect(fake.executed).toEqual([
       shape("publicItems", [
@@ -101,6 +101,12 @@ describe("remote index query shapes", () => {
       ]),
       shape("publicItems", [
         ["where", "authorId", "==", "remote-index-smoke-missing-id"],
+        ["where", "visibility", "==", "visible"],
+        ["orderBy", "publishedAt", "desc"],
+        ["orderBy", "id", "desc"],
+      ]),
+      shape("publicItems", [
+        ["where", "authorId", "in", ["remote-index-smoke-missing-id"]],
         ["where", "visibility", "==", "visible"],
         ["orderBy", "publishedAt", "desc"],
         ["orderBy", "id", "desc"],
@@ -142,7 +148,7 @@ describe("remote index query shapes", () => {
 
   it("returns a stable query error without the remote error text", async () => {
     const fake = new FakeFirestore(
-      3,
+      4,
       new Error("credential and document data"),
     );
 

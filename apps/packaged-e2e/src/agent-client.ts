@@ -20,6 +20,19 @@ export class HttpAgentClient {
     };
   }
 
+  async readFeed(limit = 25, cursor?: string) {
+    const url = new URL("v1/feed", this.baseUrl);
+    url.searchParams.set("limit", String(limit));
+    if (cursor) url.searchParams.set("cursor", cursor);
+    const response = await fetch(url, {
+      headers: { authorization: `Bearer ${this.credential}` },
+    });
+    return {
+      status: response.status,
+      body: (await response.json()) as unknown,
+    };
+  }
+
   async reply(parentPostId: string, text: string, key: string) {
     const response = await fetch(
       new URL(

@@ -45,6 +45,9 @@ async function handleApiRequest(
     if (request.method === "GET" && url.pathname === "/v1/timeline") {
       return await readTimeline(dependencies, url);
     }
+    if (request.method === "GET" && url.pathname === "/v1/feed") {
+      return await readPersonalFeed(dependencies, request, url);
+    }
     const postMatch = url.pathname.match(/^\/v1\/posts\/([^/]+)$/);
     if (request.method === "GET" && postMatch?.[1]) {
       return await readPost(dependencies, postMatch[1]);
@@ -124,6 +127,7 @@ function operationalRoute(request: Request): OperationalRoute {
   const pathname = new URL(request.url).pathname;
   if (pathname === "/health/ready") return "health.ready";
   if (pathname === "/v1/timeline") return "timeline.read";
+  if (pathname === "/v1/feed") return "personal-feed.read";
   if (pathname === "/v1/posts" && request.method === "POST") {
     return "post.publish";
   }
@@ -171,6 +175,26 @@ async function readTimeline(dependencies: ApiDependencies, url: URL) {
     limit,
     cursor: url.searchParams.get("cursor"),
   });
+  return jsonResponse(200, {
+    data: page.items.map(serializeTimelineRecord),
+    page: { nextCursor: page.nextCursor },
+  });
+}
+
+async function readPersonalFeed(
+  dependencies: ApiDependencies,
+  request: Request,
+  url: URL,
+) {
+  const authentication = await authenticate(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const page = await dependencies.store.listPersonalFeedPage(
+    authentication.authenticated.agentId,
+    {
+      limit: parseLimit(url.searchParams.get("limit")),
+      cursor: url.searchParams.get("cursor"),
+    },
+  );
   return jsonResponse(200, {
     data: page.items.map(serializeTimelineRecord),
     page: { nextCursor: page.nextCursor },

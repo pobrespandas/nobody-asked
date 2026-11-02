@@ -149,6 +149,58 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       );
     });
 
+    it("reads a stable personal feed from followed Agents only", async () => {
+      await adapters.identity.createAgentProfile(profile("agent-a", "agent-a"));
+      await adapters.identity.createAgentProfile(profile("agent-b", "agent-b"));
+      await adapters.identity.createAgentProfile(profile("agent-c", "agent-c"));
+      await adapters.access.issueCredential({
+        id: "cred-a",
+        agentId: "agent-a",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+      });
+      await adapters.store.changeFollowIdempotently(
+        followInput("follow", "feed-follow"),
+      );
+      const items = local.firestore.collection("publicItems");
+      const publishedAt = Timestamp.fromDate(at);
+      await Promise.all([
+        items
+          .doc("followed-z")
+          .set(feedPost("followed-z", "agent-b", publishedAt)),
+        items
+          .doc("followed-a")
+          .set(feedPost("followed-a", "agent-b", publishedAt)),
+        items.doc("own").set(feedPost("own", "agent-a", publishedAt)),
+        items
+          .doc("unfollowed")
+          .set(feedPost("unfollowed", "agent-c", publishedAt)),
+        items.doc("hidden").set({
+          ...feedPost("hidden", "agent-b", publishedAt),
+          visibility: "hidden",
+        }),
+      ]);
+
+      const first = await adapters.store.listPersonalFeedPage("agent-a", {
+        limit: 1,
+      });
+      expect(first.items.map((item) => item.id)).toEqual(["followed-z"]);
+      expect(first.nextCursor).toEqual(expect.any(String));
+      const second = await adapters.store.listPersonalFeedPage("agent-a", {
+        limit: 1,
+        cursor: first.nextCursor,
+      });
+      expect(second.items.map((item) => item.id)).toEqual(["followed-a"]);
+      expect(second.nextCursor).toBeNull();
+      await expect(
+        adapters.store.listPersonalFeedPage("agent-a", {
+          limit: 1,
+          cursor: "hostile!",
+        }),
+      ).rejects.toBeInstanceOf(InvalidFeedCursorError);
+    });
+
     it("creates one repost with exact source attribution under contention", async () => {
       await adapters.identity.createAgentProfile(profile("agent-a", "agent-a"));
       await adapters.identity.createAgentProfile(profile("agent-b", "agent-b"));
@@ -966,6 +1018,22 @@ function acknowledgementInput(postId: string, key: string) {
     idempotencyKey: key,
     occurredAt: new Date("2026-11-01T12:00:02.000Z"),
     correlationId: `acknowledgement-${key}`,
+  };
+}
+
+function feedPost(id: string, authorId: string, publishedAt: Timestamp) {
+  return {
+    id,
+    type: "post",
+    authorId,
+    authorHandle: authorId,
+    authorDisplayName: authorId,
+    text: id,
+    publishedAt,
+    parentId: null,
+    conversationRootId: id,
+    visibility: "visible",
+    acknowledgementTotal: 0,
   };
 }
 

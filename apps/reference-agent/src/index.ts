@@ -60,7 +60,7 @@ export class AgentClient {
     }
   }
 
-  readContext(options: PageOptions = {}): Promise<unknown> {
+  readPersonalFeed(options: PageOptions = {}): Promise<unknown> {
     return this.send("GET", "v1/feed", {
       authenticated: true,
       query: pageQuery(options),

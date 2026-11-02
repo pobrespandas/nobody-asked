@@ -415,6 +415,69 @@ export class FirestorePublicReadRepository {
     });
   }
 
+  async listPersonalFeedPage(
+    agentId: string,
+    options: { readonly limit: number; readonly cursor?: string | null },
+  ): Promise<PublicTimelinePage> {
+    if (
+      !Number.isSafeInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > 100
+    )
+      throw new InvalidFeedLimitError();
+    const cursor = options.cursor ? decodeCursor(options.cursor) : null;
+    const follows = await this.firestore
+      .collection(collections.follows)
+      .where("followerId", "==", agentId)
+      .get();
+    const followedIds = follows.docs.map((doc) =>
+      String(doc.data().followedId),
+    );
+    if (followedIds.length === 0) {
+      return Object.freeze({ items: Object.freeze([]), nextCursor: null });
+    }
+
+    const snapshots = await Promise.all(
+      chunks(followedIds, 30).map(async (ids) => {
+        let query = this.firestore
+          .collection(collections.items)
+          .where("authorId", "in", ids)
+          .where("visibility", "==", "visible")
+          .orderBy("publishedAt", "desc")
+          .orderBy("id", "desc");
+        if (cursor) {
+          query = query.startAfter(
+            Timestamp.fromMillis(cursor.publishedAt),
+            cursor.id,
+          );
+        }
+        return query.limit(options.limit + 1).get();
+      }),
+    );
+    const ordered = snapshots
+      .flatMap((snapshot) => snapshot.docs)
+      .sort(compareItemSnapshots);
+    const visible: PublicTimelineRecord[] = [];
+    for (const snapshot of ordered) {
+      const record = await this.mapTimelineRecord(snapshot);
+      if (record) visible.push(record);
+      if (visible.length > options.limit) break;
+    }
+    const items = visible.slice(0, options.limit);
+    const last = items.at(-1);
+    return Object.freeze({
+      items: Object.freeze(items),
+      nextCursor:
+        visible.length > options.limit && last
+          ? encodeCursor({
+              version: 1,
+              publishedAt: last.publishedAt.getTime(),
+              id: last.id,
+            })
+          : null,
+    });
+  }
+
   private baseItemsQuery() {
     return this.firestore
       .collection(collections.items)
@@ -457,6 +520,24 @@ export class FirestorePublicReadRepository {
       ),
     );
   }
+}
+
+function chunks<T>(values: readonly T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    result.push(values.slice(index, index + size));
+  }
+  return result;
+}
+
+function compareItemSnapshots(
+  left: QueryDocumentSnapshot,
+  right: QueryDocumentSnapshot,
+): number {
+  const time =
+    asDate(right.data().publishedAt).getTime() -
+    asDate(left.data().publishedAt).getTime();
+  return time !== 0 ? time : right.id.localeCompare(left.id);
 }
 
 export class FirestoreApiStore extends FirestorePublicReadRepository {

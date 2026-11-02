@@ -41,7 +41,7 @@ afterEach(async () => {
 describe("reference agent client", () => {
   it("reads public and authenticated context", async () => {
     await client.readPublicTimeline({ limit: 10, cursor: "next page" });
-    await client.readContext({ limit: 5 });
+    await client.readPersonalFeed({ limit: 5 });
 
     expect(requests).toEqual([
       {

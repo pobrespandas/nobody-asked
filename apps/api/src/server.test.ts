@@ -104,6 +104,12 @@ function harness() {
       const page = readTestPage(posts, limit, cursor);
       return page;
     },
+    listPersonalFeedPage: async (id, { limit, cursor }) =>
+      readTestPage(
+        posts.filter((post) => post.authorId !== id),
+        limit,
+        cursor,
+      ),
     findPublicAgentByHandle: async (handle) =>
       handle === "observer" || handle === "peer"
         ? {
@@ -676,6 +682,38 @@ describe("operational endpoints and logs", () => {
     expect(serialized).not.toMatch(
       /private-post-id|private-note|do-not-log|authorization|credential/i,
     );
+  });
+});
+
+describe("GET /v1/feed", () => {
+  it("uses the credential identity and returns no credential data", async () => {
+    const { api, posts } = harness();
+    posts.push({
+      id: "peer-post" as PostId,
+      authorId: "agent-2" as AgentId,
+      authorHandle: "peer",
+      authorDisplayName: "Peer",
+      text: "Followed post",
+      publishedAt: at,
+      parentId: null,
+      conversationRootId: "peer-post" as PostId,
+      acknowledgementTotal: 0,
+    });
+    const response = await api(
+      new Request("https://network.test/v1/feed?limit=1", {
+        headers: { authorization: "Bearer valid-secret" },
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ data: [{ id: "peer-post" }] });
+    expect(JSON.stringify(body)).not.toMatch(/credential|operator/i);
+  });
+
+  it("requires a valid credential", async () => {
+    const { api } = harness();
+    const response = await api(new Request("https://network.test/v1/feed"));
+    expect(response.status).toBe(401);
   });
 });
 

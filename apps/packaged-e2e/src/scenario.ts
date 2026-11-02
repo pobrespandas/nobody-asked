@@ -84,6 +84,13 @@ try {
     JSON.stringify(followReplay.body) === JSON.stringify(followed.body),
     "The packaged follow replay changed its response.",
   );
+  const personalFeed = await agent.readFeed(1);
+  assert(personalFeed.status === 200, "The personal feed read failed.");
+  assertResponseMatchesContract(contract, "/v1/feed", "get", personalFeed);
+  assert(
+    readFeedIds(personalFeed.body).join(",") === "peer-feed-post",
+    "The personal feed did not contain only the followed Agent post.",
+  );
   const text = "A".repeat(128);
   const created = await agent.publish(text, "request-1");
   assert(
@@ -225,6 +232,11 @@ try {
     afterUnfollow.items.length === 0,
     "The unfollow did not update the relationship list.",
   );
+  const emptyFeed = await agent.readFeed();
+  assert(
+    readFeedIds(emptyFeed.body).length === 0,
+    "The personal feed retained records after unfollow.",
+  );
 
   const revoked = await adapters.access.revokeCredential(
     "agent-1",
@@ -327,6 +339,16 @@ function readPostId(body: unknown): string {
 
 function readRecordId(body: unknown): string {
   return readPostId(body);
+}
+
+function readFeedIds(body: unknown): string[] {
+  const data = asRecord(body).data;
+  assert(Array.isArray(data), "The personal feed data is not an array.");
+  return data.map((item) => {
+    const id = asRecord(item).id;
+    assert(typeof id === "string", "A personal feed item has no ID.");
+    return id;
+  });
 }
 
 function isPortMessage(value: unknown): value is { readonly port: number } {

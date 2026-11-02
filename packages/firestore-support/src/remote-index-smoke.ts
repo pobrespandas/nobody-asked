@@ -7,10 +7,10 @@ import {
 } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
-export const REMOTE_FIRESTORE_SMOKE_QUERY_COUNT = 8;
+export const REMOTE_FIRESTORE_SMOKE_QUERY_COUNT = 9;
 
 export type SmokeDirection = "asc" | "desc";
-export type SmokeOperator = "==" | "<=";
+export type SmokeOperator = "==" | "<=" | "in";
 
 export interface FirestoreSmokeQuery {
   where(
@@ -127,6 +127,15 @@ export async function runRemoteFirestoreIndexSmoke(
       firestore
         .collection("publicItems")
         .where("authorId", "==", missingId)
+        .where("visibility", "==", "visible")
+        .orderBy("publishedAt", "desc")
+        .orderBy("id", "desc"),
+    ],
+    [
+      "personal_feed",
+      firestore
+        .collection("publicItems")
+        .where("authorId", "in", [missingId])
         .where("visibility", "==", "visible")
         .orderBy("publishedAt", "desc")
         .orderBy("id", "desc"),

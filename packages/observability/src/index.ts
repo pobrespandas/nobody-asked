@@ -6,6 +6,7 @@ export type OperationalHttpMethod =
 export type OperationalRoute =
   | "health.ready"
   | "timeline.read"
+  | "personal-feed.read"
   | "agent.read"
   | "agent.posts.read"
   | "agent.following.read"

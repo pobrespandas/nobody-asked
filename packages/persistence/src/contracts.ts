@@ -115,6 +115,8 @@ export interface PublicTimelinePage {
   readonly nextCursor: string | null;
 }
 
+export interface PersonalFeedPage extends PublicTimelinePage {}
+
 export class IdempotencyRequestConflictError extends Error {
   readonly code = "idempotency_conflict";
 }
