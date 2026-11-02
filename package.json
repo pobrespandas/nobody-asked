@@ -27,6 +27,7 @@
     "test:firestore:emulator:inside": "RUN_FIRESTORE_EMULATOR_TESTS=1 vitest run --no-file-parallelism packages/firestore-support packages/persistence/src/firestore.integration.test.ts apps/api/src/firestore-composition.integration.test.ts",
     "test:firestore:emulator": "tsx packages/firestore-support/src/run-emulator.ts exec",
     "test:firestore:indexes:remote": "tsx packages/firestore-support/src/remote-index-smoke.ts",
+    "test:firestore:recovery:remote": "tsx packages/firestore-support/src/remote-recovery-verify.ts",
     "plan:firestore:backup": "tsx tools/firestore-backup.ts",
     "validate:runtime-secrets": "tsx tools/runtime-secrets.ts",
     "validate:cost-controls": "tsx tools/cost-controls.ts deploy/cost-controls.json",

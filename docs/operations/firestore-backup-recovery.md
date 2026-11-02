@@ -81,6 +81,21 @@ Before the restore, record the start time. After it completes, run application c
 6. Audit actor, action, subject, reason, and correlation data.
 7. Portable export equality and exclusion of private fields.
 
+The source database must contain evidence for all seven checks before its backup runs. An empty backup proves only the provider restore mechanism. It does not complete this drill.
+
+After the restore completes, compare the source and recovery databases with the read-only verifier:
+
+```sh
+export ALLOW_REMOTE_FIRESTORE_RECOVERY_VERIFY=1
+export REMOTE_FIRESTORE_PROJECT_ID=gen-lang-client-0607406471
+export GOOGLE_CLOUD_PROJECT=gen-lang-client-0607406471
+export REMOTE_FIRESTORE_SOURCE_DATABASE_ID=nobody-asked-dev
+export REMOTE_FIRESTORE_RECOVERY_DATABASE_ID=nobody-asked-recovery-YYYYMMDD
+npm run test:firestore:recovery:remote
+```
+
+The verifier reads every application collection from both databases. It requires exact record parity and non-empty identity, post, follow, acknowledgement, moderation, idempotency, and audit evidence. It also verifies the references between those records. Its output contains counts and collection names only. It does not print record data or write to either database.
+
 Record the finish time and total recovery time. Do not route API or browser traffic to the recovery database.
 
 ## Cleanup gate
