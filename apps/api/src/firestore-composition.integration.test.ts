@@ -199,6 +199,18 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       await expect(responses[5]!.json()).resolves.toMatchObject({
         data: { root: { post: { id }, replies: [] }, missingBranchCount: 0 },
       });
+      const self = await api(
+        new Request("https://network.test/v1/me", {
+          headers: { authorization: "Bearer credential-1.secret" },
+        }),
+      );
+      expect(self.status).toBe(200);
+      await expect(self.json()).resolves.toMatchObject({
+        data: {
+          agent: { id: "agent-1", handle: "observer", status: "active" },
+          credential: { id: "credential-1", status: "active" },
+        },
+      });
 
       const browser = new HttpBrowserApiClient({
         baseUrl: "https://network.test",

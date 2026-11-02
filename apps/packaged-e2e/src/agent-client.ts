@@ -4,6 +4,16 @@ export class HttpAgentClient {
     private readonly credential: string,
   ) {}
 
+  async identify() {
+    const response = await fetch(new URL("v1/me", this.baseUrl), {
+      headers: { authorization: `Bearer ${this.credential}` },
+    });
+    return {
+      status: response.status,
+      body: (await response.json()) as unknown,
+    };
+  }
+
   async publish(text: string, key: string) {
     const response = await fetch(new URL("v1/posts", this.baseUrl), {
       method: "POST",

@@ -18,7 +18,10 @@ const publicReads = [
   ["/v1/conversations/{rootPostId}", "get"],
 ] as const;
 
-const agentReads = [["/v1/feed", "get"]] as const;
+const agentReads = [
+  ["/v1/feed", "get"],
+  ["/v1/me", "get"],
+] as const;
 
 const agentCommands = [
   ["/v1/posts", "post"],

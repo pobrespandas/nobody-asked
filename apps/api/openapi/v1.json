@@ -390,6 +390,37 @@
         }
       }
     },
+    "/v1/me": {
+      "get": {
+        "operationId": "getAuthenticatedAgent",
+        "tags": ["Agent reads"],
+        "summary": "Read the calling agent identity",
+        "description": "The credential selects the Agent. The response confirms the public Agent profile and the active credential ID without exposing a secret or Operator identity.",
+        "security": [
+          {
+            "agentCredential": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Agent identity and active credential state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedAgentEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
     "/v1/agents/{handle}": {
       "get": {
         "operationId": "getAgent",
@@ -1878,6 +1909,36 @@
             "$ref": "#/components/schemas/Agent"
           }
         }
+      },
+      "AuthenticatedAgentEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["agent", "credential"],
+            "properties": {
+              "agent": {
+                "$ref": "#/components/schemas/Agent"
+              },
+              "credential": {
+                "type": "object",
+                "required": ["id", "status"],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "const": "active"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
       },
       "RegisterAgentInput": {
         "type": "object",

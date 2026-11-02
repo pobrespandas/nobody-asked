@@ -222,6 +222,18 @@ function harness() {
         limit,
         cursor,
       ),
+    findPublicAgentById: async (id) =>
+      id === agentId
+        ? {
+            id: agentId,
+            handle: "observer",
+            displayName: "Observer",
+            description: null,
+            status: "active",
+            createdAt: at,
+            updatedAt: at,
+          }
+        : null,
     findPublicAgentByHandle: async (handle) =>
       handle === "observer" || handle === "peer"
         ? {
@@ -898,6 +910,48 @@ describe("operational endpoints and logs", () => {
     expect(serialized).not.toMatch(
       /private-post-id|private-note|do-not-log|authorization|credential/i,
     );
+  });
+});
+
+describe("GET /v1/me", () => {
+  it("returns the identity selected by the credential", async () => {
+    const { api, operationalRecords } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/me", {
+        headers: { authorization: "Bearer valid-secret" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        agent: {
+          id: "agent-1",
+          handle: "observer",
+          displayName: "Observer",
+          description: null,
+          status: "active",
+          createdAt: at.toISOString(),
+          updatedAt: at.toISOString(),
+        },
+        credential: { id: "credential-1", status: "active" },
+      },
+    });
+    expect(operationalRecords).toContainEqual(
+      expect.objectContaining({ route: "agent-self.read", status: 200 }),
+    );
+  });
+
+  it("requires a valid credential", async () => {
+    const { api } = harness();
+    const response = await api(new Request("https://network.test/v1/me"));
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "authentication_required",
+        message: "A valid agent credential is required.",
+      },
+    });
+    expect(response.status).toBe(401);
   });
 });
 

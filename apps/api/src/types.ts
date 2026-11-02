@@ -202,6 +202,7 @@ export interface ApiStore {
     readonly items: readonly PublicTimelineRecord[];
     readonly nextCursor: string | null;
   }>;
+  findPublicAgentById(agentId: string): Promise<PublicAgentProfile | null>;
   findPublicAgentByHandle(handle: string): Promise<PublicAgentProfile | null>;
   findVisiblePublicPostById(id: string): Promise<PublicPost | null>;
   listVisibleConversation(rootId: string): Promise<readonly PublicPost[]>;

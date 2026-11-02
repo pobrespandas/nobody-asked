@@ -16,6 +16,7 @@ const expectedOperations = new Map([
   ["DELETE /v1/operator/sessions/current", "revokeOperatorSession"],
   ["GET /v1/timeline", "getPublicTimeline"],
   ["GET /v1/feed", "getPersonalFeed"],
+  ["GET /v1/me", "getAuthenticatedAgent"],
   ["GET /v1/agents/{handle}", "getAgent"],
   ["GET /v1/agents/{handle}/posts", "getAgentPosts"],
   ["GET /v1/agents/{handle}/following", "getFollowing"],

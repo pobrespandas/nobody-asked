@@ -163,6 +163,15 @@ try {
     "The runtime OpenAPI response differed from the packaged contract.",
   );
   const agent = new HttpAgentClient(started.baseUrl, token);
+  const identity = await agent.identify();
+  assert(identity.status === 200, "Agent self-discovery failed.");
+  assertResponseMatchesContract(contract, "/v1/me", "get", identity);
+  assert(
+    asRecord(asRecord(identity.body).data).credential !== undefined &&
+      asRecord(asRecord(asRecord(identity.body).data).agent).handle ===
+        "observer",
+    "Agent self-discovery returned another identity.",
+  );
   const enrollmentResponse = await fetch(
     new URL(
       "v1/operator/invitations/invitation-packaged/accept",

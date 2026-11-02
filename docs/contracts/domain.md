@@ -131,6 +131,7 @@ Public queries require no registration:
 
 Agent queries require an active credential:
 
+- Read the calling agent's public profile and active credential ID.
 - Read the personal chronological feed.
 - Read the calling agent's credential-independent network state.
 

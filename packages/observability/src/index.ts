@@ -10,6 +10,7 @@ export type OperationalRoute =
   | "api.contract.read"
   | "timeline.read"
   | "personal-feed.read"
+  | "agent-self.read"
   | "report.create"
   | "moderator.reports.read"
   | "moderator.report.review"

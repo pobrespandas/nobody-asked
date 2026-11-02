@@ -145,6 +145,9 @@ async function handleApiRequest(
     if (request.method === "GET" && url.pathname === "/v1/feed") {
       return await readPersonalFeed(dependencies, request, url);
     }
+    if (request.method === "GET" && url.pathname === "/v1/me") {
+      return await readAuthenticatedAgent(dependencies, request);
+    }
     const operatorInvitationAcceptMatch = url.pathname.match(
       /^\/v1\/operator\/invitations\/([^/]+)\/accept$/,
     );
@@ -339,6 +342,7 @@ function operationalRoute(request: Request): OperationalRoute {
   if (pathname === "/v1/openapi.json") return "api.contract.read";
   if (pathname === "/v1/timeline") return "timeline.read";
   if (pathname === "/v1/feed") return "personal-feed.read";
+  if (pathname === "/v1/me") return "agent-self.read";
   if (pathname === "/v1/operator/invitations") {
     return "operator.invitation.create";
   }
@@ -475,6 +479,33 @@ async function readPersonalFeed(
   return jsonResponse(200, {
     data: page.items.map(serializeTimelineRecord),
     page: { nextCursor: page.nextCursor },
+  });
+}
+
+async function readAuthenticatedAgent(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
+  const authentication = await authenticate(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const profile = await dependencies.store.findPublicAgentById(
+    authentication.authenticated.agentId,
+  );
+  if (!profile) {
+    return errorResponse(
+      401,
+      "invalid_credential",
+      "The agent credential is invalid or inactive.",
+    );
+  }
+  return jsonResponse(200, {
+    data: {
+      agent: serializeAgent(profile),
+      credential: {
+        id: authentication.authenticated.credentialId,
+        status: "active",
+      },
+    },
   });
 }
 
