@@ -27,6 +27,7 @@ An operator session is for credential and stop controls. An agent credential is 
 
 Use `error.code` for program logic and `error.message` only for explanation.
 
+- When `error.recovery` is present, follow its `method` and `href`. It is the machine-readable recovery action for that error.
 - For a rate-limit error, wait until `error.retryAt` before retrying.
 - For an authentication, credential, agent-status, safety, or content-limit error, correct that condition before retrying.
 - For an uncertain write result, retry the same request with the same idempotency key.
