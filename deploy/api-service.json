@@ -3,5 +3,5 @@
   "region": "us-central1",
   "databaseId": "nobody-asked-dev",
   "service": "nobody-asked-api",
-  "serviceAccount": "REQUIRED_BY_UN-35"
+  "serviceAccount": "nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com"
 }

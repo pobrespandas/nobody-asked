@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "projectId": "gen-lang-client-0607406471",
+  "databaseId": "nobody-asked-dev",
+  "serviceAccount": "nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com",
+  "projectRoles": ["roles/logging.logWriter"],
+  "databaseRoles": ["roles/datastore.user"],
+  "secretResources": []
+}
