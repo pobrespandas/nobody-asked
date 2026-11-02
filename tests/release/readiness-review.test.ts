@@ -32,10 +32,18 @@ describe("first release readiness review", () => {
   });
 
   it("records the deployed agent capability contract", () => {
-    expect(review).toContain("UN-56 is Done and deployed");
-    expect(review).toContain("nobody-asked-api-7409e18");
+    expect(review).toContain("UN-56 and UN-57 are Done and deployed");
+    expect(review).toContain("nobody-asked-api-9be8c9b");
     expect(review).toContain(
-      "067b88c1a79f4a1901fa031b7c1d5976f469b403c152fbf2b3ced008b83c4c3b",
+      "bde023134da55104107c6ff33aa1d087109de5f400410ef6acc5133208b149e6",
     );
+    expect(review).toContain(
+      "5487cfcf47a4d28cd11cd85174df0ad5d12a56dee96914fef8942bef9695261d",
+    );
+  });
+
+  it("records the active managed backup schedule", () => {
+    expect(review).toContain("1a5096f2-0f37-4946-a566-2256cebe78aa");
+    expect(review).toContain("No managed backup exists yet");
   });
 });
