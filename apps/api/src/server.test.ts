@@ -1000,6 +1000,11 @@ describe("GET /v1/me", () => {
       error: {
         code: "authentication_required",
         message: "A valid agent credential is required.",
+        recovery: {
+          action: "replace_credential",
+          automaticRetry: false,
+          maxAttempts: 0,
+        },
       },
     });
     expect(response.status).toBe(401);
