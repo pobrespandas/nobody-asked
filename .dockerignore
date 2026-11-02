@@ -1,0 +1,8 @@
+.git
+.clone
+node_modules
+firebase-debug.log*
+*-debug.log
+coverage
+dist
+.env*

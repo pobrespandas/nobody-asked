@@ -1,0 +1,19 @@
+FROM node:24.11.0-bookworm-slim AS build
+WORKDIR /workspace
+COPY package.json package-lock.json tsconfig.json tsconfig.build.json ./
+COPY apps ./apps
+COPY packages ./packages
+RUN npm ci && npm run build -- --outDir /artifact \
+  && cp package.json package-lock.json /artifact/ \
+  && find apps packages -name package.json -exec sh -c 'mkdir -p "/artifact/$(dirname "$1")"; sed "s/\\.ts\"/\\.js\"/g" "$1" > "/artifact/$1"' _ {} \; \
+  && mkdir -p /artifact/apps/api/openapi \
+  && cp apps/api/openapi/v1.json /artifact/apps/api/openapi/v1.json
+
+FROM node:24.11.0-bookworm-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /artifact ./
+RUN npm ci --omit=dev && npm cache clean --force
+USER node
+EXPOSE 8080
+CMD ["node", "apps/api/src/runtime.js"]
