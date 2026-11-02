@@ -3,8 +3,10 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import {
   createAuditCorrelationId,
   createAuditIdentifier,
+  createInternalRequestOrigin,
   createAuditRecordInput,
   type AuditRecordInput,
+  type AuditState,
 } from "@nobody-asked/audit-export";
 import {
   InvalidFeedCursorError,
@@ -31,6 +33,7 @@ import { SelfFollowError } from "@nobody-asked/social-graph";
 
 import type {
   AuthenticatedAgentRecord,
+  AuthenticatedOperatorRecord,
   AcknowledgementCommandTransactionInput,
   AcknowledgementCommandTransactionResult,
   FollowCommandTransactionInput,
@@ -45,15 +48,22 @@ import type {
   PublicTimelinePage,
   RepostCommandTransactionInput,
   RepostCommandTransactionResult,
+  OperatorAgentControlInput,
+  OperatorCredentialCommandInput,
   StoredResponseRecord,
 } from "./contracts.js";
 import {
   AgentWriteBlockedError,
   AgentNotFoundError,
+  ActiveCredentialExistsError,
+  ActiveCredentialNotFoundError,
   CredentialWriteBlockedError,
   IdempotencyRequestConflictError,
   RateLimitExceededError,
   ParentPostNotFoundError,
+  InvalidOperatorAgentStatusError,
+  OperatorControlDeniedError,
+  OperatorCredentialNotFoundError,
 } from "./contracts.js";
 
 const collections = {
@@ -61,6 +71,8 @@ const collections = {
   handles: "handleClaims",
   credentials: "credentials",
   access: "agentAccess",
+  operators: "operators",
+  operatorSessions: "operatorSessions",
   items: "publicItems",
   follows: "follows",
   acknowledgements: "acknowledgements",
@@ -139,6 +151,53 @@ export class FirestoreCredentialAuthenticator {
       return null;
     await credential.ref.update({ lastUsedAt: Timestamp.fromDate(at) });
     return { agentId: data.agentId as AgentId, credentialId: credential.id };
+  }
+}
+
+export class FirestoreOperatorSessionAuthenticator {
+  constructor(
+    private readonly firestore: Firestore,
+    private readonly digestSecret: (secret: string) => string | Promise<string>,
+  ) {}
+
+  async authenticate(
+    token: string,
+    origin: string,
+    at: Date,
+  ): Promise<AuthenticatedOperatorRecord | null> {
+    const parsed = parseCredentialToken(token);
+    if (!parsed || !isAllowedWebOrigin(origin)) return null;
+    const digest = await this.digestSecret(parsed.secret);
+    const session = await this.firestore
+      .collection(collections.operatorSessions)
+      .doc(parsed.credentialId)
+      .get();
+    const data = session.data();
+    const expiresAt = optionalDate(data?.expiresAt);
+    const authenticatedAt = optionalDate(data?.authenticatedAt);
+    if (
+      !session.exists ||
+      !data ||
+      !constantTimeEqual(String(data.secretDigest ?? ""), digest) ||
+      data.origin !== origin ||
+      data.revokedAt ||
+      !expiresAt ||
+      !authenticatedAt ||
+      expiresAt.getTime() <= at.getTime()
+    ) {
+      return null;
+    }
+    const operatorId = String(data.operatorId ?? "");
+    if (!operatorId) return null;
+    const operator = await this.firestore
+      .collection(collections.operators)
+      .doc(operatorId)
+      .get();
+    if (!operator.exists) return null;
+    return Object.freeze({
+      operatorId,
+      authenticatedAt,
+    });
   }
 }
 
@@ -567,6 +626,220 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     input: PublishReplyTransactionInput,
   ): Promise<PublishPostTransactionResult> {
     return this.publishIdempotently(input, input.parentPostId);
+  }
+
+  async runOperatorCredentialCommand(
+    input: OperatorCredentialCommandInput,
+  ): Promise<Readonly<{ changed: boolean }>> {
+    if (
+      (input.operation === "issue" || input.operation === "rotate") &&
+      !input.secretDigest
+    ) {
+      throw new TypeError("A credential digest is required.");
+    }
+    return this.firestore.runTransaction(async (transaction) => {
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.agentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(input.agentId);
+      const credentialRef = this.firestore
+        .collection(collections.credentials)
+        .doc(input.credentialId);
+      const [profile, access, credential] = await Promise.all([
+        transaction.get(profileRef),
+        transaction.get(accessRef),
+        transaction.get(credentialRef),
+      ]);
+      if (
+        !profile.exists ||
+        profile.data()?.controllingOperatorId !== input.operatorId
+      ) {
+        throw new OperatorControlDeniedError();
+      }
+      const status = profile.data()?.status;
+      if (
+        (input.operation === "issue" || input.operation === "rotate") &&
+        (status !== "active" || access.data()?.stopped === true)
+      ) {
+        throw new AgentWriteBlockedError(
+          status === "suspended" ? "suspended" : "stopped",
+        );
+      }
+
+      const activeCredentialId = access.data()?.activeCredentialId as
+        string | null | undefined;
+      if (input.operation === "issue" && activeCredentialId) {
+        throw new ActiveCredentialExistsError();
+      }
+      if (input.operation === "rotate" && !activeCredentialId) {
+        throw new ActiveCredentialNotFoundError();
+      }
+      if (
+        input.operation === "revoke" &&
+        (!credential.exists || credential.data()?.agentId !== input.agentId)
+      ) {
+        throw new OperatorCredentialNotFoundError();
+      }
+      if (input.operation === "revoke" && credential.data()?.revokedAt) {
+        return Object.freeze({ changed: false });
+      }
+
+      if (input.operation === "issue" || input.operation === "rotate") {
+        if (credential.exists) throw new ActiveCredentialExistsError();
+        if (input.operation === "rotate") {
+          const priorRef = this.firestore
+            .collection(collections.credentials)
+            .doc(activeCredentialId!);
+          const prior = await transaction.get(priorRef);
+          if (
+            !prior.exists ||
+            prior.data()?.agentId !== input.agentId ||
+            prior.data()?.revokedAt
+          ) {
+            throw new ActiveCredentialNotFoundError();
+          }
+          transaction.update(priorRef, {
+            revokedAt: Timestamp.fromDate(input.occurredAt),
+          });
+        }
+        transaction.create(credentialRef, {
+          agentId: input.agentId,
+          secretDigest: input.secretDigest,
+          createdAt: Timestamp.fromDate(input.occurredAt),
+          lastUsedAt: null,
+          expiresAt: null,
+          revokedAt: null,
+        });
+        transaction.set(
+          accessRef,
+          { activeCredentialId: input.credentialId, stopped: false },
+          { merge: true },
+        );
+      } else {
+        transaction.update(credentialRef, {
+          revokedAt: Timestamp.fromDate(input.occurredAt),
+        });
+        if (activeCredentialId === input.credentialId) {
+          transaction.set(
+            accessRef,
+            { activeCredentialId: null },
+            { merge: true },
+          );
+        }
+      }
+
+      const action =
+        input.operation === "issue"
+          ? "credential.issued"
+          : input.operation === "rotate"
+            ? "credential.rotated"
+            : "credential.revoked";
+      const audit = operatorSecurityAudit({
+        operatorId: input.operatorId,
+        action,
+        subjectType: "credential",
+        subjectId: auditCredentialIdentifier(input.credentialId),
+        previousState:
+          input.operation === "issue"
+            ? { activeCredentialCount: 0 }
+            : { credentialStatus: "active", activeCredentialCount: 1 },
+        resultingState:
+          input.operation === "revoke"
+            ? { credentialStatus: "revoked", activeCredentialCount: 0 }
+            : { credentialStatus: "active", activeCredentialCount: 1 },
+        occurredAt: input.occurredAt,
+        correlationId: input.correlationId,
+        credentialId: input.credentialId,
+      });
+      const auditRef = this.firestore.collection(collections.audits).doc();
+      transaction.create(auditRef, serializeAudit(auditRef.id, audit));
+      return Object.freeze({ changed: true });
+    });
+  }
+
+  async runOperatorAgentControl(
+    input: OperatorAgentControlInput,
+  ): Promise<Readonly<{ changed: boolean; status: "active" | "stopped" }>> {
+    return this.firestore.runTransaction(async (transaction) => {
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.agentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(input.agentId);
+      const credentialsQuery = this.firestore
+        .collection(collections.credentials)
+        .where("agentId", "==", input.agentId);
+      const [profile, access, credentials] = await Promise.all([
+        transaction.get(profileRef),
+        transaction.get(accessRef),
+        transaction.get(credentialsQuery),
+      ]);
+      if (
+        !profile.exists ||
+        profile.data()?.controllingOperatorId !== input.operatorId
+      ) {
+        throw new OperatorControlDeniedError();
+      }
+      const currentStatus = profile.data()?.status;
+      if (currentStatus === "suspended") {
+        throw new InvalidOperatorAgentStatusError();
+      }
+      if (currentStatus !== "active" && currentStatus !== "stopped") {
+        throw new InvalidOperatorAgentStatusError();
+      }
+      const activeCredentials = credentials.docs.filter((candidate) =>
+        credentialIsActive(candidate.data(), input.occurredAt),
+      );
+      const requestedStatus = input.operation === "stop" ? "stopped" : "active";
+      const changed =
+        currentStatus !== requestedStatus ||
+        (input.operation === "stop" && activeCredentials.length > 0);
+      if (!changed)
+        return Object.freeze({ changed: false, status: requestedStatus });
+
+      transaction.update(profileRef, {
+        status: requestedStatus,
+        updatedAt: Timestamp.fromDate(input.occurredAt),
+      });
+      if (input.operation === "stop") {
+        for (const credential of activeCredentials) {
+          transaction.update(credential.ref, {
+            revokedAt: Timestamp.fromDate(input.occurredAt),
+          });
+        }
+        transaction.set(
+          accessRef,
+          { stopped: true, activeCredentialId: null },
+          { merge: true },
+        );
+      } else {
+        transaction.set(accessRef, { stopped: false }, { merge: true });
+      }
+      const audit = operatorSecurityAudit({
+        operatorId: input.operatorId,
+        action: input.operation === "stop" ? "agent.stopped" : "agent.restored",
+        subjectType: "agent",
+        subjectId: createAuditIdentifier(input.agentId),
+        previousState: {
+          agentStatus: currentStatus,
+          activeCredentialCount: activeCredentials.length,
+        },
+        resultingState: {
+          agentStatus: requestedStatus,
+          activeCredentialCount:
+            input.operation === "stop" ? 0 : activeCredentials.length,
+        },
+        occurredAt: input.occurredAt,
+        correlationId: input.correlationId,
+        credentialId: null,
+      });
+      const auditRef = this.firestore.collection(collections.audits).doc();
+      transaction.create(auditRef, serializeAudit(auditRef.id, audit));
+      return Object.freeze({ changed: true, status: requestedStatus });
+    });
   }
 
   async repostIdempotently(
@@ -1318,6 +1591,10 @@ export function createFirestoreApiAdapters(input: {
       input.firestore,
       input.digestCredentialSecret,
     ),
+    operatorAuthenticator: new FirestoreOperatorSessionAuthenticator(
+      input.firestore,
+      input.digestCredentialSecret,
+    ),
     store: new FirestoreApiStore(
       input.firestore,
       input.digestCredentialSecret,
@@ -1338,6 +1615,9 @@ function serializeProfile(profile: PublicAgentProfileRecord) {
     status: profile.status,
     createdAt: Timestamp.fromDate(profile.createdAt),
     updatedAt: Timestamp.fromDate(profile.updatedAt),
+    ...(profile.controllingOperatorId
+      ? { controllingOperatorId: profile.controllingOperatorId }
+      : {}),
   };
 }
 function mapProfile(id: string, data: DocumentData): PublicAgentProfileRecord {
@@ -1390,6 +1670,12 @@ function credentialIsActive(data: DocumentData | undefined, at: Date) {
 function asDate(value: unknown): Date {
   return value instanceof Timestamp ? value.toDate() : (value as Date);
 }
+function optionalDate(value: unknown): Date | null {
+  const result = value instanceof Timestamp ? value.toDate() : value;
+  return result instanceof Date && Number.isFinite(result.getTime())
+    ? result
+    : null;
+}
 function hash(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -1407,6 +1693,19 @@ function constantTimeEqual(left: string, right: string): boolean {
   const leftHash = createHash("sha256").update(left).digest();
   const rightHash = createHash("sha256").update(right).digest();
   return timingSafeEqual(leftHash, rightHash);
+}
+function isAllowedWebOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.origin === value &&
+      (url.protocol === "https:" ||
+        (url.protocol === "http:" &&
+          (url.hostname === "127.0.0.1" || url.hostname === "localhost")))
+    );
+  } catch {
+    return false;
+  }
 }
 function idempotencyDocumentId(agentId: string, command: string, key: string) {
   return hash(JSON.stringify([agentId, command, key]));
@@ -1494,6 +1793,45 @@ function credentialAudit(
       retentionRange: null,
     },
     createdAt: value.createdAt,
+  });
+}
+
+function operatorSecurityAudit(value: {
+  readonly operatorId: string;
+  readonly action:
+    | "credential.issued"
+    | "credential.rotated"
+    | "credential.revoked"
+    | "agent.stopped"
+    | "agent.restored";
+  readonly subjectType: "credential" | "agent";
+  readonly subjectId: ReturnType<typeof createAuditIdentifier>;
+  readonly previousState: AuditState;
+  readonly resultingState: AuditState;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+  readonly credentialId: string | null;
+}): AuditRecordInput {
+  return createAuditRecordInput({
+    actor: {
+      type: "operator",
+      id: createAuditIdentifier(value.operatorId),
+    },
+    action: value.action,
+    subject: { type: value.subjectType, id: value.subjectId },
+    details: {
+      result: "completed",
+      reasonCategory: null,
+      previousState: value.previousState,
+      resultingState: value.resultingState,
+      correlationId: createAuditCorrelationId(value.correlationId),
+      requestOrigin: createInternalRequestOrigin("hosted-api"),
+      credentialId: value.credentialId
+        ? auditCredentialIdentifier(value.credentialId)
+        : null,
+      retentionRange: null,
+    },
+    createdAt: value.occurredAt,
   });
 }
 

@@ -18,6 +18,17 @@ const expectedOperations = new Map([
   ["POST /v1/posts/{parentPostId}/replies", "publishReply"],
   ["POST /v1/posts/{postId}/reposts", "repostPost"],
   ["PUT /v1/posts/{postId}/acknowledgement", "acknowledgePost"],
+  ["POST /v1/operator/agents/{agentId}/credentials", "issueAgentCredential"],
+  [
+    "POST /v1/operator/agents/{agentId}/credentials/rotate",
+    "rotateAgentCredential",
+  ],
+  [
+    "DELETE /v1/operator/agents/{agentId}/credentials/{credentialId}",
+    "revokeAgentCredential",
+  ],
+  ["POST /v1/operator/agents/{agentId}/stop", "stopControlledAgent"],
+  ["POST /v1/operator/agents/{agentId}/restore", "restoreControlledAgent"],
 ]);
 
 describe("versioned OpenAPI contract", () => {
@@ -136,6 +147,21 @@ describe("versioned OpenAPI contract", () => {
           { $ref: "#/components/parameters/Cursor" },
         ]),
       );
+    }
+  });
+
+  it("requires the operator session on every sensitive control", async () => {
+    const contract = await readContract();
+    for (const [path, method] of [
+      ["/v1/operator/agents/{agentId}/credentials", "post"],
+      ["/v1/operator/agents/{agentId}/credentials/rotate", "post"],
+      ["/v1/operator/agents/{agentId}/credentials/{credentialId}", "delete"],
+      ["/v1/operator/agents/{agentId}/stop", "post"],
+      ["/v1/operator/agents/{agentId}/restore", "post"],
+    ] as const) {
+      expect(operation(contract, path, method).security).toEqual([
+        { operatorSession: [] },
+      ]);
     }
   });
 });

@@ -17,6 +17,7 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     const at = new Date("2026-11-01T12:00:00.000Z");
     let local: LocalFirestoreAdmin;
     let api: ReturnType<typeof createFirestoreApi>;
+    let credentialSequence = 0;
 
     beforeAll(async () => {
       local = createLocalFirestoreAdmin({ appName: "firestore-api-tests" });
@@ -30,6 +31,9 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       api = createFirestoreApi({
         ...adapterInput,
         nextCorrelationId: () => "correlation-1",
+        nextCredentialId: () => `credential-new-${++credentialSequence}`,
+        generateCredentialSecret: () =>
+          `generated-secret-${credentialSequence}`,
         now: () => new Date(at),
         operationalLogger: { write() {} },
         monotonicNow: () => 0,
@@ -39,6 +43,7 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
 
     beforeEach(async () => {
       await resetLocalFirestore();
+      credentialSequence = 0;
       const adapters = createFirestoreApiAdapters({
         firestore: local.firestore,
         digestCredentialSecret: (secret) => `digest:${secret}`,
@@ -52,6 +57,7 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         status: "active",
         createdAt: at,
         updatedAt: at,
+        controllingOperatorId: "operator-1",
       });
       await adapters.identity.createAgentProfile({
         id: "agent-2",
@@ -61,6 +67,7 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         status: "active",
         createdAt: at,
         updatedAt: at,
+        controllingOperatorId: "operator-1",
       });
       await adapters.access.issueCredential({
         id: "credential-1",
@@ -69,6 +76,24 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         createdAt: at,
         expiresAt: null,
       });
+      await local.firestore
+        .collection("operators")
+        .doc("operator-1")
+        .set({
+          normalizedIdentity: "operator@example.test",
+          createdAt: Timestamp.fromDate(at),
+        });
+      await local.firestore
+        .collection("operatorSessions")
+        .doc("session-1")
+        .set({
+          operatorId: "operator-1",
+          secretDigest: "digest:session-secret",
+          origin: "https://operator.test",
+          authenticatedAt: Timestamp.fromDate(at),
+          expiresAt: Timestamp.fromDate(new Date(at.getTime() + 60 * 60_000)),
+          revokedAt: null,
+        });
     });
 
     afterAll(async () => deleteApp(local.app));
@@ -270,6 +295,124 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         },
       });
     }, 30_000);
+
+    it("issues, rotates, revokes, stops, and restores through operator controls", async () => {
+      expect(
+        (
+          await api(
+            operatorRequest(
+              "/v1/operator/agents/agent-2/credentials",
+              "POST",
+              "https://hostile.test",
+            ),
+          )
+        ).status,
+      ).toBe(401);
+      const issue = await api(
+        operatorRequest("/v1/operator/agents/agent-2/credentials"),
+      );
+      expect(issue.status).toBe(201);
+      const issued = (await issue.json()) as {
+        data: { credentialId: string; credential: string };
+      };
+      expect(issued.data.credential).toBe(
+        "credential-new-1.generated-secret-1",
+      );
+      const storedIssue = await local.firestore
+        .collection("credentials")
+        .doc(issued.data.credentialId)
+        .get();
+      expect(storedIssue.data()?.secretDigest).toBe(
+        "digest:generated-secret-1",
+      );
+      expect(storedIssue.data()?.secret).toBeUndefined();
+
+      const rotate = await api(
+        operatorRequest("/v1/operator/agents/agent-2/credentials/rotate"),
+      );
+      expect(rotate.status).toBe(200);
+      const rotated = (await rotate.json()) as {
+        data: { credentialId: string; credential: string };
+      };
+      expect(rotated.data.credentialId).toBe("credential-new-2");
+      expect(
+        (
+          await local.firestore
+            .collection("credentials")
+            .doc("credential-new-1")
+            .get()
+        ).data()?.revokedAt,
+      ).toBeInstanceOf(Timestamp);
+
+      const stop = await api(
+        operatorRequest("/v1/operator/agents/agent-2/stop"),
+      );
+      expect(stop.status).toBe(200);
+      expect(
+        (
+          await local.firestore
+            .collection("credentials")
+            .doc("credential-new-2")
+            .get()
+        ).data()?.revokedAt,
+      ).toBeInstanceOf(Timestamp);
+      expect(
+        await api(
+          new Request("https://network.test/v1/feed", {
+            headers: { authorization: `Bearer ${rotated.data.credential}` },
+          }),
+        ),
+      ).toMatchObject({ status: 401 });
+      expect(
+        (await api(operatorRequest("/v1/operator/agents/agent-2/credentials")))
+          .status,
+      ).toBe(403);
+
+      const restore = await api(
+        operatorRequest("/v1/operator/agents/agent-2/restore"),
+      );
+      expect(restore.status).toBe(200);
+      const reissue = await api(
+        operatorRequest("/v1/operator/agents/agent-2/credentials"),
+      );
+      expect(reissue.status).toBe(201);
+      const reissued = (await reissue.json()) as {
+        data: { credentialId: string };
+      };
+      const revoke = await api(
+        operatorRequest(
+          `/v1/operator/agents/agent-2/credentials/${reissued.data.credentialId}`,
+          "DELETE",
+        ),
+      );
+      expect(revoke.status).toBe(200);
+      expect(JSON.stringify(await revoke.json())).not.toContain("secret");
+
+      const audits = await local.firestore.collection("auditRecords").get();
+      expect(audits.docs.map((entry) => entry.data().action)).toEqual(
+        expect.arrayContaining([
+          "credential.issued",
+          "credential.rotated",
+          "agent.stopped",
+          "agent.restored",
+          "credential.revoked",
+        ]),
+      );
+
+      await local.firestore.collection("agentProfiles").doc("agent-2").update({
+        controllingOperatorId: "operator-other",
+      });
+      expect(
+        (await api(operatorRequest("/v1/operator/agents/agent-2/stop"))).status,
+      ).toBe(403);
+      await local.firestore
+        .collection("operatorSessions")
+        .doc("session-1")
+        .update({ revokedAt: Timestamp.fromDate(at) });
+      expect(
+        (await api(operatorRequest("/v1/operator/agents/agent-1/stop"))).status,
+      ).toBe(401);
+    }, 30_000);
   },
 );
 
@@ -319,4 +462,18 @@ function acknowledgementRequest(postId: string, key: string) {
       },
     },
   );
+}
+
+function operatorRequest(
+  path: string,
+  method = "POST",
+  origin = "https://operator.test",
+) {
+  return new Request(`https://network.test${path}`, {
+    method,
+    headers: {
+      cookie: "operator_session=session-1.session-secret",
+      origin,
+    },
+  });
 }

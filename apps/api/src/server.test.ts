@@ -78,6 +78,14 @@ function harness() {
       },
     }),
   );
+  const runOperatorCredentialCommand = vi.fn(async () => ({ changed: true }));
+  const runOperatorAgentControl = vi.fn(
+    async (input: Parameters<ApiStore["runOperatorAgentControl"]>[0]) => ({
+      changed: true,
+      status:
+        input.operation === "stop" ? ("stopped" as const) : ("active" as const),
+    }),
+  );
   const transaction: ApiTransaction = {
     findIdempotencyRecord: async (actor, route, key) =>
       records.get(`${actor}:${route}:${key}`) ?? null,
@@ -133,6 +141,8 @@ function harness() {
     changeFollowIdempotently: changeFollow,
     repostIdempotently,
     acknowledgeIdempotently,
+    runOperatorCredentialCommand,
+    runOperatorAgentControl,
     publishPostIdempotently: async (input) => {
       const existing = await transaction.findIdempotencyRecord(
         input.authenticatedAgentId,
@@ -228,7 +238,20 @@ function harness() {
           : null,
       ),
     },
+    operatorAuthenticator: {
+      authenticate: vi.fn(async (secret, origin) =>
+        secret === "session-1.secret" && origin === "https://operator.test"
+          ? {
+              operatorId: "operator-1",
+              authenticatedAt: new Date(at.getTime() - 60_000),
+            }
+          : null,
+      ),
+    },
     store,
+    nextCredentialId: () => "credential-new",
+    generateCredentialSecret: () => "generated-secret",
+    digestCredentialSecret: (secret) => `digest:${secret}`,
     nextCorrelationId: () => "correlation-1",
     now: () => new Date(at),
     readiness: { check: readiness },
@@ -248,6 +271,8 @@ function harness() {
     changeFollow,
     repostIdempotently,
     acknowledgeIdempotently,
+    runOperatorCredentialCommand,
+    runOperatorAgentControl,
   };
 }
 
@@ -787,5 +812,100 @@ describe("public reads", () => {
         error: { code: "invalid_feed_limit" },
       });
     }
+  });
+});
+
+describe("hosted operator controls", () => {
+  const request = (path: string, method = "POST") =>
+    new Request(`https://network.test${path}`, {
+      method,
+      headers: {
+        cookie: "operator_session=session-1.secret",
+        origin: "https://operator.test",
+      },
+    });
+
+  it("issues a one-time credential for the authenticated operator", async () => {
+    const { api, runOperatorCredentialCommand } = harness();
+    const response = await api(
+      request("/v1/operator/agents/agent-1/credentials"),
+    );
+
+    expect(response.status).toBe(201);
+    expect(runOperatorCredentialCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operatorId: "operator-1",
+        agentId: "agent-1",
+        operation: "issue",
+        credentialId: "credential-new",
+        secretDigest: "digest:generated-secret",
+      }),
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        credentialId: "credential-new",
+        credential: "credential-new.generated-secret",
+      },
+    });
+  });
+
+  it("revokes without returning a credential secret", async () => {
+    const { api, runOperatorCredentialCommand } = harness();
+    const response = await api(
+      request("/v1/operator/agents/agent-1/credentials/credential-1", "DELETE"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(runOperatorCredentialCommand).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "revoke",
+        credentialId: "credential-1",
+      }),
+    );
+    expect(JSON.stringify(await response.json())).not.toContain("secret");
+  });
+
+  it("requires the session cookie, allowed origin, and recent authentication", async () => {
+    const first = harness();
+    expect(
+      (
+        await first.api(
+          new Request("https://network.test/v1/operator/agents/agent-1/stop", {
+            method: "POST",
+          }),
+        )
+      ).status,
+    ).toBe(401);
+
+    const second = harness();
+    const wrongOrigin = request("/v1/operator/agents/agent-1/stop");
+    wrongOrigin.headers.set("origin", "https://hostile.test");
+    expect((await second.api(wrongOrigin)).status).toBe(401);
+
+    const third = harness();
+    vi.mocked(
+      third.dependencies.operatorAuthenticator.authenticate,
+    ).mockResolvedValue({
+      operatorId: "operator-1",
+      authenticatedAt: new Date(at.getTime() - 10 * 60_000 - 1),
+    });
+    const stale = await third.api(request("/v1/operator/agents/agent-1/stop"));
+    expect(stale.status).toBe(401);
+    await expect(stale.json()).resolves.toMatchObject({
+      error: { code: "recent_operator_authentication_required" },
+    });
+  });
+
+  it("stops and restores the controlled agent", async () => {
+    const { api, runOperatorAgentControl } = harness();
+    expect(
+      (await api(request("/v1/operator/agents/agent-1/stop"))).status,
+    ).toBe(200);
+    expect(
+      (await api(request("/v1/operator/agents/agent-1/restore"))).status,
+    ).toBe(200);
+    expect(
+      runOperatorAgentControl.mock.calls.map(([input]) => input.operation),
+    ).toEqual(["stop", "restore"]);
   });
 });

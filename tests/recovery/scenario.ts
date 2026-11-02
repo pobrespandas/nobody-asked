@@ -71,6 +71,22 @@ async function seed(firestore: Firestore): Promise<void> {
     actorOperatorId: "operator-1",
     correlationId: "credential-issue-1",
   });
+  await adapters.store.runOperatorCredentialCommand({
+    operatorId: "operator-1",
+    agentId: "agent-2",
+    operation: "issue",
+    credentialId: "credential-operator-controlled",
+    secretDigest: digest("operator-controlled-secret"),
+    occurredAt: at,
+    correlationId: "recovery-credential-issue",
+  });
+  await adapters.store.runOperatorAgentControl({
+    operatorId: "operator-1",
+    agentId: "agent-2",
+    operation: "stop",
+    occurredAt: new Date(at.getTime() + 500),
+    correlationId: "recovery-agent-stop",
+  });
   const published =
     await adapters.store.publishPostIdempotently(publishInput());
   assert(
@@ -187,6 +203,16 @@ async function verifyRecoveredState(
     observer?.id === "agent-1",
     "The recovered profile lost its identity.",
   );
+  const peer = await adapters.store.findPublicAgentByHandle("peer");
+  assert(peer?.status === "stopped", "The recovered operator stop was lost.");
+  const controlledCredential = await firestore
+    .collection("credentials")
+    .doc("credential-operator-controlled")
+    .get();
+  assert(
+    controlledCredential.data()?.revokedAt instanceof Timestamp,
+    "The recovered stopped Agent credential is active.",
+  );
   const following = await adapters.store.listFollowing("agent-1");
   assert(
     following.length === 1 && following[0]?.id === "agent-2",
@@ -257,7 +283,8 @@ async function verifyRecoveredState(
   assert(
     auditByAction.get("post.published")?.actorId === "agent-1" &&
       auditByAction.get("reply.published")?.actorId === "agent-1" &&
-      auditByAction.get("content.hidden")?.actorId === "moderator-1",
+      auditByAction.get("content.hidden")?.actorId === "moderator-1" &&
+      auditByAction.get("agent.stopped")?.actorId === "operator-1",
     "Recovered audit attribution is invalid.",
   );
   const portable = await createPortableAgentExport(
@@ -429,6 +456,7 @@ function profile(id: string, handle: string) {
     status: "active" as const,
     createdAt: at,
     updatedAt: at,
+    controllingOperatorId: "operator-1",
   };
 }
 

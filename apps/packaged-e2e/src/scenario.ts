@@ -34,6 +34,7 @@ try {
     status: "active",
     createdAt: at,
     updatedAt: at,
+    controllingOperatorId: "operator-1",
   });
   await adapters.identity.createAgentProfile({
     id: "agent-2",
@@ -43,6 +44,7 @@ try {
     status: "active",
     createdAt: at,
     updatedAt: at,
+    controllingOperatorId: "operator-1",
   });
   await adapters.access.issueCredential({
     id: "credential-1",
@@ -51,6 +53,27 @@ try {
     createdAt: at,
     expiresAt: null,
   });
+  const operatorAuthenticatedAt = new Date();
+  await local.firestore
+    .collection("operators")
+    .doc("operator-1")
+    .set({
+      normalizedIdentity: "operator@example.test",
+      createdAt: Timestamp.fromDate(operatorAuthenticatedAt),
+    });
+  await local.firestore
+    .collection("operatorSessions")
+    .doc("session-packaged")
+    .set({
+      operatorId: "operator-1",
+      secretDigest: digest("operator-session-secret"),
+      origin: "http://127.0.0.1",
+      authenticatedAt: Timestamp.fromDate(operatorAuthenticatedAt),
+      expiresAt: Timestamp.fromDate(
+        new Date(operatorAuthenticatedAt.getTime() + 60 * 60_000),
+      ),
+      revokedAt: null,
+    });
   await local.firestore
     .collection("publicItems")
     .doc("peer-feed-post")
@@ -238,6 +261,60 @@ try {
     "The personal feed retained records after unfollow.",
   );
 
+  const operatorHeaders = {
+    cookie: "operator_session=session-packaged.operator-session-secret",
+    origin: "http://127.0.0.1",
+  };
+  const issued = await operatorCommand(
+    started.baseUrl,
+    "/v1/operator/agents/agent-2/credentials",
+    "POST",
+    operatorHeaders,
+  );
+  assert(issued.status === 201, "The packaged credential issue failed.");
+  assertResponseMatchesContract(
+    contract,
+    "/v1/operator/agents/{agentId}/credentials",
+    "post",
+    issued,
+  );
+  const issuedCredential = asRecord(asRecord(issued.body).data).credential;
+  assert(
+    typeof issuedCredential === "string",
+    "Credential issue did not return its one-time secret.",
+  );
+  const stopped = await operatorCommand(
+    started.baseUrl,
+    "/v1/operator/agents/agent-2/stop",
+    "POST",
+    operatorHeaders,
+  );
+  assert(stopped.status === 200, "The packaged Agent stop failed.");
+  assertResponseMatchesContract(
+    contract,
+    "/v1/operator/agents/{agentId}/stop",
+    "post",
+    stopped,
+  );
+  const stoppedAgent = new HttpAgentClient(started.baseUrl, issuedCredential);
+  assert(
+    (await stoppedAgent.readFeed()).status === 401,
+    "A stopped Agent credential remained active.",
+  );
+  const restored = await operatorCommand(
+    started.baseUrl,
+    "/v1/operator/agents/agent-2/restore",
+    "POST",
+    operatorHeaders,
+  );
+  assert(restored.status === 200, "The packaged Agent restore failed.");
+  assertResponseMatchesContract(
+    contract,
+    "/v1/operator/agents/{agentId}/restore",
+    "post",
+    restored,
+  );
+
   const revoked = await adapters.access.revokeCredential(
     "agent-1",
     "credential-1",
@@ -362,6 +439,19 @@ function isPortMessage(value: unknown): value is { readonly port: number } {
 
 function digest(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+async function operatorCommand(
+  baseUrl: URL,
+  path: string,
+  method: "POST" | "DELETE",
+  headers: Record<string, string>,
+) {
+  const response = await fetch(new URL(path.slice(1), baseUrl), {
+    method,
+    headers,
+  });
+  return { status: response.status, body: (await response.json()) as unknown };
 }
 
 function assert(condition: unknown, message: string): asserts condition {

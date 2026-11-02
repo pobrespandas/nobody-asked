@@ -10,6 +10,19 @@ export interface AgentCredentialAuthenticator {
   authenticate(secret: string, at: Date): Promise<AuthenticatedAgent | null>;
 }
 
+export interface AuthenticatedOperator {
+  readonly operatorId: string;
+  readonly authenticatedAt: Date;
+}
+
+export interface OperatorSessionAuthenticator {
+  authenticate(
+    secret: string,
+    origin: string,
+    at: Date,
+  ): Promise<AuthenticatedOperator | null>;
+}
+
 export interface SafetyPolicy {
   authorizeAgentWrite(
     agentId: AgentId,
@@ -173,11 +186,31 @@ export interface ApiStore {
   acknowledgeIdempotently(
     input: AcknowledgementCommandTransactionInput,
   ): Promise<Readonly<{ response: StoredApiResponse }>>;
+  runOperatorCredentialCommand(input: {
+    readonly operatorId: string;
+    readonly agentId: string;
+    readonly operation: "issue" | "rotate" | "revoke";
+    readonly credentialId: string;
+    readonly secretDigest?: string;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<Readonly<{ changed: boolean }>>;
+  runOperatorAgentControl(input: {
+    readonly operatorId: string;
+    readonly agentId: string;
+    readonly operation: "stop" | "restore";
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<Readonly<{ changed: boolean; status: "active" | "stopped" }>>;
 }
 
 export interface ApiDependencies {
   readonly authenticator: AgentCredentialAuthenticator;
+  readonly operatorAuthenticator: OperatorSessionAuthenticator;
   readonly store: ApiStore;
+  readonly nextCredentialId: () => string;
+  readonly generateCredentialSecret: () => string;
+  readonly digestCredentialSecret: (secret: string) => string | Promise<string>;
   readonly nextCorrelationId: () => string;
   readonly now: () => Date;
   readonly readiness: { check(): Promise<void> };

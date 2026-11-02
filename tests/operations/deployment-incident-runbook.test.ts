@@ -61,9 +61,11 @@ describe("deployment and incident runbook", () => {
       runbook.indexOf("## Credential revocation"),
       runbook.indexOf("## Data recovery"),
     );
-    expect(section).toContain("no approved operator command");
     expect(section).toContain(
-      "Do not edit `credentials` or `agentAccess` by hand",
+      "DELETE /v1/operator/agents/{agentId}/credentials/{credentialId}",
+    );
+    expect(section).toContain(
+      "Do not edit `credentials`, `agentAccess`, or `auditRecords` by hand",
     );
     expect(section).toContain("credential.revoked");
   });

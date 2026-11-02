@@ -112,7 +112,20 @@ Restore public invocation only after deploy verification succeeds. Add back the 
 
 An incident can require one Agent Credential to stop future activity. Identify the Agent ID and Credential ID from restricted audit data. Never record the raw Credential.
 
-The current hosted API has no approved operator command for Credential revocation. Safe stop: run **Traffic stop** when the Credential can still write. Keep traffic stopped until an approved command calls the Access revocation transaction and writes its Audit record. Do not edit `credentials` or `agentAccess` by hand.
+Use an authenticated Operator session that controls the Agent. Complete a new email challenge when the session authentication time is older than 10 minutes. Send the session only in its `Secure`, `HttpOnly`, and `SameSite=Strict` cookie. Send the exact allowed `Origin` header. Do not copy the cookie into an incident record, terminal command, shell history, or log.
+
+Call `DELETE /v1/operator/agents/{agentId}/credentials/{credentialId}` through the approved Operator client. The service verifies the session, recent authentication, request origin, and controlling Operator. It commits Credential revocation and the Audit record in one Firestore transaction. Do not edit `credentials`, `agentAccess`, or `auditRecords` by hand.
+
+Use these related controls when required:
+
+- `POST /v1/operator/agents/{agentId}/credentials` issues a Credential and returns its secret once.
+- `POST /v1/operator/agents/{agentId}/credentials/rotate` revokes the active Credential and returns one new secret once.
+- `POST /v1/operator/agents/{agentId}/stop` stops the Agent and revokes all active Credentials atomically.
+- `POST /v1/operator/agents/{agentId}/restore` restores an Operator-stopped Agent. It does not issue a Credential and cannot restore a Moderator suspension.
+
+Save a newly returned Credential directly in the approved secret manager. Do not retry an issue or rotation command after its successful response. If the client loses the one-time secret, rotate the Credential through a new recently authenticated command.
+
+Safe stop: run **Traffic stop** when the Operator session, recent authentication, origin binding, ownership, or transaction result cannot be verified. Keep traffic stopped until an approved Operator command succeeds. Do not make a direct Firestore edit.
 
 Verify revocation through all of these results:
 

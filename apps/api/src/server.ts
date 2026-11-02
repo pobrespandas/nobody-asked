@@ -48,6 +48,50 @@ async function handleApiRequest(
     if (request.method === "GET" && url.pathname === "/v1/feed") {
       return await readPersonalFeed(dependencies, request, url);
     }
+    const operatorCredentialMatch = url.pathname.match(
+      /^\/v1\/operator\/agents\/([^/]+)\/credentials(?:\/([^/]+))?$/,
+    );
+    if (operatorCredentialMatch?.[1]) {
+      if (request.method === "POST" && !operatorCredentialMatch[2]) {
+        return await changeOperatorCredential(
+          dependencies,
+          request,
+          operatorCredentialMatch[1],
+          "issue",
+        );
+      }
+      if (
+        request.method === "POST" &&
+        operatorCredentialMatch[2] === "rotate"
+      ) {
+        return await changeOperatorCredential(
+          dependencies,
+          request,
+          operatorCredentialMatch[1],
+          "rotate",
+        );
+      }
+      if (request.method === "DELETE" && operatorCredentialMatch[2]) {
+        return await changeOperatorCredential(
+          dependencies,
+          request,
+          operatorCredentialMatch[1],
+          "revoke",
+          operatorCredentialMatch[2],
+        );
+      }
+    }
+    const operatorControlMatch = url.pathname.match(
+      /^\/v1\/operator\/agents\/([^/]+)\/(stop|restore)$/,
+    );
+    if (request.method === "POST" && operatorControlMatch?.[1]) {
+      return await changeOperatorAgentControl(
+        dependencies,
+        request,
+        operatorControlMatch[1],
+        operatorControlMatch[2] as "stop" | "restore",
+      );
+    }
     const postMatch = url.pathname.match(/^\/v1\/posts\/([^/]+)$/);
     if (request.method === "GET" && postMatch?.[1]) {
       return await readPost(dependencies, postMatch[1]);
@@ -128,6 +172,21 @@ function operationalRoute(request: Request): OperationalRoute {
   if (pathname === "/health/ready") return "health.ready";
   if (pathname === "/v1/timeline") return "timeline.read";
   if (pathname === "/v1/feed") return "personal-feed.read";
+  if (/^\/v1\/operator\/agents\/[^/]+\/credentials\/rotate$/.test(pathname)) {
+    return "operator.credential.rotate";
+  }
+  if (/^\/v1\/operator\/agents\/[^/]+\/credentials\/[^/]+$/.test(pathname)) {
+    return "operator.credential.revoke";
+  }
+  if (/^\/v1\/operator\/agents\/[^/]+\/credentials$/.test(pathname)) {
+    return "operator.credential.issue";
+  }
+  if (/^\/v1\/operator\/agents\/[^/]+\/stop$/.test(pathname)) {
+    return "operator.agent.stop";
+  }
+  if (/^\/v1\/operator\/agents\/[^/]+\/restore$/.test(pathname)) {
+    return "operator.agent.restore";
+  }
   if (pathname === "/v1/posts" && request.method === "POST") {
     return "post.publish";
   }
@@ -304,6 +363,155 @@ async function createPost(dependencies: ApiDependencies, request: Request) {
     correlationId: dependencies.nextCorrelationId(),
   });
   return jsonResponse(result.response.status, result.response.body);
+}
+
+const RECENT_OPERATOR_AUTHENTICATION_MS = 10 * 60 * 1_000;
+
+async function changeOperatorCredential(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedAgentId: string,
+  operation: "issue" | "rotate" | "revoke",
+  encodedCredentialId?: string,
+) {
+  const agentId = decodeIdentifier(encodedAgentId, "agent ID");
+  if (agentId instanceof Response) return agentId;
+  const authentication = await authenticateOperator(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const at = dependencies.now();
+  if (
+    at.getTime() - authentication.authenticatedAt.getTime() >
+      RECENT_OPERATOR_AUTHENTICATION_MS ||
+    authentication.authenticatedAt.getTime() > at.getTime()
+  ) {
+    return errorResponse(
+      401,
+      "recent_operator_authentication_required",
+      "Recent operator authentication is required.",
+    );
+  }
+  const credentialId =
+    operation === "revoke"
+      ? decodeIdentifier(encodedCredentialId ?? "", "credential ID")
+      : dependencies.nextCredentialId();
+  if (credentialId instanceof Response) return credentialId;
+  const secret =
+    operation === "revoke" ? null : dependencies.generateCredentialSecret();
+  if (secret !== null && (!secret || secret.length > 512)) {
+    throw new Error("invalid_generated_credential_secret");
+  }
+  const secretDigest =
+    secret === null ? null : await dependencies.digestCredentialSecret(secret);
+  if (secret !== null && (!secretDigest || secretDigest === secret)) {
+    throw new Error("invalid_generated_credential_digest");
+  }
+  const result = await dependencies.store.runOperatorCredentialCommand({
+    operatorId: authentication.operatorId,
+    agentId,
+    operation,
+    credentialId,
+    ...(secretDigest === null ? {} : { secretDigest }),
+    occurredAt: at,
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return jsonResponse(operation === "issue" ? 201 : 200, {
+    data: {
+      agentId,
+      credentialId,
+      changed: result.changed,
+      ...(secret === null
+        ? {}
+        : {
+            credential: `${credentialId}.${secret}`,
+            createdAt: at.toISOString(),
+          }),
+    },
+  });
+}
+
+async function changeOperatorAgentControl(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedAgentId: string,
+  operation: "stop" | "restore",
+) {
+  const agentId = decodeIdentifier(encodedAgentId, "agent ID");
+  if (agentId instanceof Response) return agentId;
+  const authentication = await authenticateOperator(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const at = dependencies.now();
+  if (
+    at.getTime() - authentication.authenticatedAt.getTime() >
+      RECENT_OPERATOR_AUTHENTICATION_MS ||
+    authentication.authenticatedAt.getTime() > at.getTime()
+  ) {
+    return errorResponse(
+      401,
+      "recent_operator_authentication_required",
+      "Recent operator authentication is required.",
+    );
+  }
+  const result = await dependencies.store.runOperatorAgentControl({
+    operatorId: authentication.operatorId,
+    agentId,
+    operation,
+    occurredAt: at,
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return jsonResponse(200, { data: { agentId, ...result } });
+}
+
+async function authenticateOperator(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
+  const origin = request.headers.get("origin") ?? "";
+  const session = readCookie(request.headers.get("cookie"), "operator_session");
+  if (!origin || !session) {
+    return errorResponse(
+      401,
+      "operator_authentication_required",
+      "A valid operator session is required.",
+    );
+  }
+  const authenticated = await dependencies.operatorAuthenticator.authenticate(
+    session,
+    origin,
+    dependencies.now(),
+  );
+  return (
+    authenticated ??
+    errorResponse(
+      401,
+      "operator_authentication_required",
+      "A valid operator session is required.",
+    )
+  );
+}
+
+function readCookie(header: string | null, name: string): string | null {
+  if (!header || header.length > 4096) return null;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 1) continue;
+    if (part.slice(0, separator).trim() === name) {
+      const value = part.slice(separator + 1).trim();
+      return value && value.length <= 1024 ? value : null;
+    }
+  }
+  return null;
+}
+
+function decodeIdentifier(encoded: string, label: string) {
+  try {
+    const value = decodeURIComponent(encoded);
+    if (!/^[a-z0-9]+(?:[-_:][a-z0-9]+)*$/.test(value) || value.length > 128) {
+      throw new Error("invalid_identifier");
+    }
+    return value;
+  } catch {
+    return errorResponse(400, "invalid_input", `The ${label} is invalid.`);
+  }
 }
 
 async function createReply(
@@ -658,6 +866,11 @@ const allowedDomainErrorStatus = {
   invalid_credential: 401,
   post_not_found: 404,
   agent_not_found: 404,
+  operator_control_denied: 403,
+  active_credential_exists: 409,
+  active_credential_not_found: 409,
+  credential_not_found: 404,
+  invalid_agent_status_transition: 409,
 } as const;
 
 const allowedDomainErrorMessage: Record<
@@ -672,6 +885,12 @@ const allowedDomainErrorMessage: Record<
   invalid_credential: "The agent credential is invalid or inactive.",
   post_not_found: "The post was not found.",
   agent_not_found: "The agent was not found.",
+  operator_control_denied: "The operator cannot control this agent.",
+  active_credential_exists: "The agent already has an active credential.",
+  active_credential_not_found: "The agent has no active credential to rotate.",
+  credential_not_found: "The credential was not found.",
+  invalid_agent_status_transition:
+    "The agent status cannot be changed by the operator.",
 };
 
 function getAllowedDomainError(error: unknown): {

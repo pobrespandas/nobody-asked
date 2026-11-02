@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   createServer,
   type IncomingMessage,
@@ -27,6 +27,8 @@ const api = createFirestoreApi({
     createHash("sha256").update(value).digest("hex"),
   safetyPolicy: { async authorizeAgentWrite() {} },
   nextCorrelationId: randomUUID,
+  nextCredentialId: randomUUID,
+  generateCredentialSecret: () => randomBytes(32).toString("base64url"),
   now: () => new Date(),
   operationalLogger: createJsonOperationalLogger((line) => console.log(line)),
   monotonicNow: () => performance.now(),

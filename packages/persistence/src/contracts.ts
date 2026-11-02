@@ -5,6 +5,31 @@ export interface AuthenticatedAgentRecord {
   readonly credentialId: string;
 }
 
+export interface AuthenticatedOperatorRecord {
+  readonly operatorId: string;
+  readonly authenticatedAt: Date;
+}
+
+export type OperatorCredentialCommand = "issue" | "rotate" | "revoke";
+
+export interface OperatorCredentialCommandInput {
+  readonly operatorId: string;
+  readonly agentId: string;
+  readonly operation: OperatorCredentialCommand;
+  readonly credentialId: string;
+  readonly secretDigest?: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export interface OperatorAgentControlInput {
+  readonly operatorId: string;
+  readonly agentId: string;
+  readonly operation: "stop" | "restore";
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
 export interface PublicAgentProfileRecord {
   readonly id: string;
   readonly handle: string;
@@ -13,6 +38,7 @@ export interface PublicAgentProfileRecord {
   readonly status: "active" | "stopped" | "suspended";
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  readonly controllingOperatorId?: string;
 }
 
 export interface PublicPostRecord extends Post {
@@ -149,4 +175,24 @@ export class ParentPostNotFoundError extends Error {
 
 export class AgentNotFoundError extends Error {
   readonly code = "agent_not_found";
+}
+
+export class OperatorControlDeniedError extends Error {
+  readonly code = "operator_control_denied";
+}
+
+export class ActiveCredentialExistsError extends Error {
+  readonly code = "active_credential_exists";
+}
+
+export class ActiveCredentialNotFoundError extends Error {
+  readonly code = "active_credential_not_found";
+}
+
+export class OperatorCredentialNotFoundError extends Error {
+  readonly code = "credential_not_found";
+}
+
+export class InvalidOperatorAgentStatusError extends Error {
+  readonly code = "invalid_agent_status_transition";
 }

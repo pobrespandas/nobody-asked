@@ -19,6 +19,11 @@ export type OperationalRoute =
   | "reply.publish"
   | "repost.publish"
   | "acknowledgement.create"
+  | "operator.credential.issue"
+  | "operator.credential.rotate"
+  | "operator.credential.revoke"
+  | "operator.agent.stop"
+  | "operator.agent.restore"
   | "unmatched";
 
 export interface OperationalRequestRecord {
