@@ -2,6 +2,8 @@ export interface HostedApiConfig {
   readonly projectId: string;
   readonly databaseId: string;
   readonly port: number;
+  readonly resendApiKey: string;
+  readonly operatorChallengeFromEmail: string;
 }
 
 export function readHostedApiConfig(
@@ -46,7 +48,21 @@ export function readHostedApiConfig(
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error("PORT must be an integer from 1 through 65535.");
   }
-  return Object.freeze({ projectId, databaseId, port });
+  const resendApiKey = required(environment.RESEND_API_KEY, "RESEND_API_KEY");
+  const operatorChallengeFromEmail = required(
+    environment.OPERATOR_CHALLENGE_FROM_EMAIL,
+    "OPERATOR_CHALLENGE_FROM_EMAIL",
+  );
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(operatorChallengeFromEmail)) {
+    throw new Error("OPERATOR_CHALLENGE_FROM_EMAIL must be an email address.");
+  }
+  return Object.freeze({
+    projectId,
+    databaseId,
+    port,
+    resendApiKey,
+    operatorChallengeFromEmail: operatorChallengeFromEmail.toLowerCase(),
+  });
 }
 
 function required(value: string | undefined, name: string): string {

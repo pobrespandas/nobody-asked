@@ -7,7 +7,9 @@ const config: ApiDeployment = {
   databaseId: "nobody-asked-dev",
   service: "nobody-asked-api",
   serviceAccount:
-    "nobody-asked-api@gen-lang-client-0607406471.iam.gserviceaccount.com",
+    "nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com",
+  operatorChallengeFromEmail: "access@nobodyasked.pobrespandas.com",
+  resendApiKeySecret: "resend-api-key:7",
 };
 const digest = `us-central1-docker.pkg.dev/example/api/api@sha256:${"a".repeat(64)}`;
 
@@ -18,6 +20,11 @@ describe("API deployment command", () => {
     expect(args).toContain("--region");
     expect(args).toContain("--service-account");
     expect(args).toContain("--no-allow-unauthenticated");
+    expect(args).toContain("--set-secrets");
+    expect(args).toContain("RESEND_API_KEY=resend-api-key:7");
+    expect(args.join(" ")).toContain(
+      "OPERATOR_CHALLENGE_FROM_EMAIL=access@nobodyasked.pobrespandas.com",
+    );
     expect(args.join(" ")).not.toContain("config get");
   });
 
@@ -29,6 +36,8 @@ describe("API deployment command", () => {
       digest,
     ],
     [config, "us-central1-docker.pkg.dev/example/api/api:latest"],
+    [{ ...config, operatorChallengeFromEmail: "invalid" }, digest],
+    [{ ...config, resendApiKeySecret: "resend-api-key:latest" }, digest],
   ])("rejects unsafe deployment input", (input, image) => {
     expect(() => createDeployArguments(input, image, "v0001")).toThrow();
   });

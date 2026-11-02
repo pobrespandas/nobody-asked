@@ -4,6 +4,8 @@ export interface ApiDeployment {
   readonly databaseId: string;
   readonly service: string;
   readonly serviceAccount: string;
+  readonly operatorChallengeFromEmail: string;
+  readonly resendApiKeySecret: string;
 }
 
 export function createDeployArguments(
@@ -28,7 +30,9 @@ export function createDeployArguments(
     input.serviceAccount,
     "--no-allow-unauthenticated",
     "--set-env-vars",
-    `NOBODY_ASKED_GCP_PROJECT_ID=${input.projectId},FIRESTORE_DATABASE_ID=${input.databaseId}`,
+    `NOBODY_ASKED_GCP_PROJECT_ID=${input.projectId},FIRESTORE_DATABASE_ID=${input.databaseId},OPERATOR_CHALLENGE_FROM_EMAIL=${input.operatorChallengeFromEmail}`,
+    "--set-secrets",
+    `RESEND_API_KEY=${input.resendApiKeySecret}`,
     "--quiet",
   ];
 }
@@ -42,6 +46,12 @@ function validate(input: ApiDeployment, image: string, revision: string): void {
     throw new Error("projectId is outside this product boundary.");
   if (input.databaseId === "(default)")
     throw new Error("databaseId must name a non-default database.");
+  if (
+    !/^[^\s@,=]+@[^\s@,=]+\.[^\s@,=]+$/.test(input.operatorChallengeFromEmail)
+  )
+    throw new Error("operatorChallengeFromEmail must be an email address.");
+  if (!/^[a-z][a-z0-9-]*:[1-9][0-9]*$/.test(input.resendApiKeySecret))
+    throw new Error("resendApiKeySecret must name a numeric secret version.");
   if (
     !input.serviceAccount.endsWith(
       `@${input.projectId}.iam.gserviceaccount.com`,

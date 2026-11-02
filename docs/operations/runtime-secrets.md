@@ -10,7 +10,9 @@ projects/PROJECT_ID/secrets/SECRET_ID/versions/VERSION_NUMBER
 
 The runtime service account uses Application Default Credentials. Grant `roles/secretmanager.secretAccessor` on each named secret. Use a secret-level grant. Do not create or mount a service account key.
 
-The current API runtime does not require an application secret. Its project and Firestore database identifiers are non-secret configuration. Add a binding only when an application contract defines the secret and its environment variable.
+The hosted API requires `RESEND_API_KEY`. The key authorizes delivery of operator challenges. Store it in the `resend-api-key` secret. Bind an exact numeric version to the runtime environment variable. Do not expose the value in configuration, logs, issue comments, or deployment arguments.
+
+`OPERATOR_CHALLENGE_FROM_EMAIL` is non-secret configuration. It must contain a sender address from a domain that Resend has verified. The deployment contract passes it as an environment variable.
 
 When the runtime has a defined secret, use this reference shape:
 
@@ -21,14 +23,14 @@ When the runtime has a defined secret, use this reference shape:
   "runtimeServiceAccount": "nobody-asked-api@nobody-asked-staging.iam.gserviceaccount.com",
   "bindings": [
     {
-      "environmentVariable": "RUNTIME_TEST_SECRET",
-      "secretVersion": "projects/nobody-asked-staging/secrets/runtime-test-secret/versions/7"
+      "environmentVariable": "RESEND_API_KEY",
+      "secretVersion": "projects/nobody-asked-staging/secrets/resend-api-key/versions/7"
     }
   ]
 }
 ```
 
-The names are test examples. They do not define a runtime secret. Store the environment-specific configuration in the approved deployment system after the runtime contract defines a real binding.
+The project and version are examples. The environment-specific configuration must use the selected project and an existing numeric version.
 
 Run the local validator before deployment:
 
@@ -74,7 +76,7 @@ Use a numeric version for rotation and rollback. It makes the deployed configura
 
 ## External completion
 
-Local validation does not prove remote IAM or access. Before UN-36 can be Done, an operator must identify a required runtime secret, create or select it, grant the runtime identity access at secret scope, deploy a numeric version binding, verify access in the hosted revision, and record evidence without secret values. If the first hosted runtime remains secret-free, record that reviewed result and close this issue without creating an unused secret.
+Local validation does not prove remote IAM, Resend access, or sender verification. Before the delivery work can be Done, an operator must create or select `resend-api-key`, grant the runtime identity access at secret scope, verify the sender domain in Resend, deploy a numeric version binding, and complete one challenge flow. Record the Cloud Run revision, secret version number, and delivery result. Record no secret value or challenge value.
 
 ## Constitutional decision test
 

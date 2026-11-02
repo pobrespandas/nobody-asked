@@ -35,9 +35,12 @@ Create the deploy arguments with `createDeployArguments` in `apps/api/src/deploy
 --project gen-lang-client-0607406471
 --region us-central1
 --service-account nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com
---set-env-vars NOBODY_ASKED_GCP_PROJECT_ID=gen-lang-client-0607406471,FIRESTORE_DATABASE_ID=nobody-asked-dev
+--set-env-vars NOBODY_ASKED_GCP_PROJECT_ID=gen-lang-client-0607406471,FIRESTORE_DATABASE_ID=nobody-asked-dev,OPERATOR_CHALLENGE_FROM_EMAIL=access@nobodyasked.pobrespandas.com
+--set-secrets RESEND_API_KEY=resend-api-key:NUMERIC_VERSION
 --no-allow-unauthenticated
 ```
+
+Do not deploy until the selected numeric secret version exists and Resend has verified the sender domain.
 
 Deploy the revision without production traffic first when the release process supports a staged revision. Verify the revision URL with authorized access:
 
