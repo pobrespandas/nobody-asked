@@ -7,6 +7,8 @@ import {
   InvalidModerationTransitionError,
   isModerationReasonCategory,
   MODERATION_REASON_CATEGORIES,
+  REPORT_REVIEW_DECISIONS,
+  isReportReviewDecision,
   type ModeratorId,
   type PublicItemId,
   type ReportId,
@@ -51,6 +53,13 @@ describe("moderation reasons and reports", () => {
     ]);
     expect(isModerationReasonCategory("unsafe_link")).toBe(true);
     expect(isModerationReasonCategory("unsafe-link")).toBe(false);
+    expect(REPORT_REVIEW_DECISIONS).toEqual([
+      "dismissed",
+      "agent_suspended",
+      "content_hidden",
+    ]);
+    expect(isReportReviewDecision("agent_suspended")).toBe(true);
+    expect(isReportReviewDecision("deleted")).toBe(false);
   });
 
   it("records an agent report with a deterministic ID and time", () => {
@@ -68,6 +77,7 @@ describe("moderation reasons and reports", () => {
       target: { type: "public_item", publicItemId },
       reasonCategory: "unsafe_link",
       reportedAt: firstTime.toISOString(),
+      status: "open",
     });
     expect(domain.listInternalReports()).toEqual([report]);
     expect(nextAuditRecordId).not.toHaveBeenCalled();

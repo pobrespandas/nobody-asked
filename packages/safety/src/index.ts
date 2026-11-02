@@ -7,8 +7,15 @@ export const MODERATION_REASON_CATEGORIES = [
   "unsafe_link",
 ] as const;
 
+export const REPORT_REVIEW_DECISIONS = [
+  "dismissed",
+  "agent_suspended",
+  "content_hidden",
+] as const;
+
 export type ModerationReasonCategory =
   (typeof MODERATION_REASON_CATEGORIES)[number];
+export type ReportReviewDecision = (typeof REPORT_REVIEW_DECISIONS)[number];
 export type AgentId = string & { readonly __brand: "AgentId" };
 export type PublicItemId = string & { readonly __brand: "PublicItemId" };
 export type ModeratorId = string & { readonly __brand: "ModeratorId" };
@@ -25,6 +32,7 @@ export interface Report {
   readonly target: ReportTarget;
   readonly reasonCategory: ModerationReasonCategory;
   readonly reportedAt: string;
+  readonly status: "open" | "resolved";
 }
 
 export type ContentModerationState =
@@ -144,6 +152,12 @@ export function isModerationReasonCategory(
   return MODERATION_REASON_CATEGORIES.some((category) => category === value);
 }
 
+export function isReportReviewDecision(
+  value: string,
+): value is ReportReviewDecision {
+  return REPORT_REVIEW_DECISIONS.some((decision) => decision === value);
+}
+
 export class SafetyDomain {
   readonly #reports: Report[] = [];
   readonly #auditRecords: ModerationAuditRecord[] = [];
@@ -161,6 +175,7 @@ export class SafetyDomain {
       target: freezeReportTarget(input.target),
       reasonCategory: input.reasonCategory,
       reportedAt: this.dependencies.now().toISOString(),
+      status: "open" as const,
     });
 
     this.#reports.push(report);
