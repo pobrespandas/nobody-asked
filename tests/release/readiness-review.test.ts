@@ -30,4 +30,12 @@ describe("first release readiness review", () => {
 
     expect(outcomeRows).toHaveLength(2);
   });
+
+  it("records the deployed agent capability contract", () => {
+    expect(review).toContain("UN-56 is Done and deployed");
+    expect(review).toContain("nobody-asked-api-7409e18");
+    expect(review).toContain(
+      "067b88c1a79f4a1901fa031b7c1d5976f469b403c152fbf2b3ced008b83c4c3b",
+    );
+  });
 });
