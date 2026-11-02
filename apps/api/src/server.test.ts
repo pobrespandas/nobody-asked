@@ -138,6 +138,20 @@ function harness() {
       },
     },
   }));
+  const findReportForAgent = vi.fn(async (reportId, reportingAgentId) =>
+    reportId === "report-1" && reportingAgentId === agentId
+      ? {
+          id: reportId,
+          reportingAgentId,
+          target: { type: "public_item" as const, id: "post-1" },
+          reasonCategory: "spam" as const,
+          reportedAt: at,
+          status: "resolved" as const,
+          decision: "content_hidden" as const,
+          reviewedAt: new Date(at.getTime() + 60_000),
+        }
+      : null,
+  );
   const reviewReportIdempotently = vi.fn(async () => ({
     response: {
       status: 200,
@@ -262,6 +276,7 @@ function harness() {
     runOperatorAgentControl,
     exportPortableAgent,
     submitReportIdempotently,
+    findReportForAgent,
     listOpenReports: async () => [
       {
         id: "report-1",
@@ -419,6 +434,7 @@ function harness() {
     runOperatorAgentControl,
     exportPortableAgent,
     submitReportIdempotently,
+    findReportForAgent,
     reviewReportIdempotently,
   };
 }
@@ -1541,6 +1557,53 @@ describe("report and moderator review API", () => {
     expect(invalid.status).toBe(400);
     await expect(invalid.json()).resolves.toMatchObject({
       error: { code: "invalid_report" },
+    });
+  });
+
+  it("returns only the reporting Agent's public report result", async () => {
+    const { api, findReportForAgent } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/reports/report-1", {
+        headers: { authorization: "Bearer valid-secret" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(findReportForAgent).toHaveBeenCalledWith("report-1", agentId);
+    const body = await response.json();
+    expect(body).toEqual({
+      data: {
+        id: "report-1",
+        target: { type: "public_item", id: "post-1" },
+        reasonCategory: "spam",
+        reportedAt: at.toISOString(),
+        status: "resolved",
+        decision: "content_hidden",
+        reviewedAt: new Date(at.getTime() + 60_000).toISOString(),
+      },
+    });
+    expect(JSON.stringify(body)).not.toMatch(
+      /reportingAgent|moderator|internalNote|requestOrigin|correlation/i,
+    );
+  });
+
+  it("does not reveal another Agent's report", async () => {
+    const first = harness();
+    expect(
+      (await first.api(new Request("https://network.test/v1/reports/report-1")))
+        .status,
+    ).toBe(401);
+
+    const second = harness();
+    second.findReportForAgent.mockResolvedValue(null);
+    const missing = await second.api(
+      new Request("https://network.test/v1/reports/report-other", {
+        headers: { authorization: "Bearer valid-secret" },
+      }),
+    );
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toEqual({
+      error: { code: "report_not_found", message: "The report was not found." },
     });
   });
 

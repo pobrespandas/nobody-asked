@@ -1869,6 +1869,23 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     });
   }
 
+  async findReportForAgent(
+    reportId: string,
+    reportingAgentId: AgentId,
+  ): Promise<ReportRecord | null> {
+    const snapshot = await this.firestore
+      .collection(collections.reports)
+      .doc(reportId)
+      .get();
+    if (
+      !snapshot.exists ||
+      snapshot.data()?.reportingAgentId !== reportingAgentId
+    ) {
+      return null;
+    }
+    return mapReport(snapshot);
+  }
+
   async listOpenReports(operatorId: string): Promise<readonly ReportRecord[]> {
     const authority = await this.firestore
       .collection(collections.moderatorAuthorities)

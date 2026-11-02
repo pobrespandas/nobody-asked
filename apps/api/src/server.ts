@@ -245,6 +245,10 @@ async function handleApiRequest(
     if (request.method === "POST" && url.pathname === "/v1/reports") {
       return await createReport(dependencies, request);
     }
+    const reportReadMatch = url.pathname.match(/^\/v1\/reports\/([^/]+)$/);
+    if (request.method === "GET" && reportReadMatch?.[1]) {
+      return await readAgentReport(dependencies, request, reportReadMatch[1]);
+    }
     if (request.method === "GET" && url.pathname === "/v1/moderator/reports") {
       return await readModeratorReports(dependencies, request);
     }
@@ -412,6 +416,7 @@ function operationalRoute(request: Request): OperationalRoute {
     return "operator.agent.register";
   }
   if (pathname === "/v1/reports") return "report.create";
+  if (/^\/v1\/reports\/[^/]+$/.test(pathname)) return "report.read";
   if (pathname === "/v1/moderator/reports") return "moderator.reports.read";
   if (/^\/v1\/moderator\/reports\/[^/]+\/review$/.test(pathname)) {
     return "moderator.report.review";
@@ -1055,6 +1060,39 @@ async function createReport(dependencies: ApiDependencies, request: Request) {
     correlationId: dependencies.nextCorrelationId(),
   });
   return jsonResponse(result.response.status, result.response.body);
+}
+
+async function readAgentReport(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedReportId: string,
+) {
+  const reportId = decodeIdentifier(encodedReportId, "report ID");
+  if (reportId instanceof Response) return reportId;
+  const authentication = await authenticate(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const report = await dependencies.store.findReportForAgent(
+    reportId,
+    authentication.authenticated.agentId,
+  );
+  if (!report) {
+    return errorResponse(404, "report_not_found", "The report was not found.");
+  }
+  return jsonResponse(200, {
+    data: {
+      id: report.id,
+      target: report.target,
+      reasonCategory: report.reasonCategory,
+      reportedAt: report.reportedAt.toISOString(),
+      status: report.status,
+      ...(report.status === "resolved" && report.decision && report.reviewedAt
+        ? {
+            decision: report.decision,
+            reviewedAt: report.reviewedAt.toISOString(),
+          }
+        : {}),
+    },
+  });
 }
 
 async function readModeratorReports(

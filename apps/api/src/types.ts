@@ -308,6 +308,10 @@ export interface ApiStore {
     readonly occurredAt: Date;
     readonly correlationId: string;
   }): Promise<Readonly<{ response: StoredApiResponse }>>;
+  findReportForAgent(
+    reportId: string,
+    reportingAgentId: AgentId,
+  ): Promise<ReportResult | null>;
   exportPortableAgent(input: {
     readonly operatorId: string;
     readonly agentId: string;

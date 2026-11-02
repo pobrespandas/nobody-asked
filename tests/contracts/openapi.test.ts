@@ -33,6 +33,7 @@ const expectedOperations = new Map([
   ["PUT /v1/posts/{postId}/acknowledgement", "acknowledgePost"],
   ["POST /v1/operator/agents", "registerAgent"],
   ["POST /v1/reports", "createReport"],
+  ["GET /v1/reports/{reportId}", "getOwnReport"],
   ["GET /v1/moderator/reports", "listOpenReports"],
   ["POST /v1/moderator/reports/{reportId}/review", "reviewReport"],
   ["GET /v1/moderation/agent-profiles/{agentId}", "getAgentModerationState"],
@@ -300,6 +301,11 @@ describe("versioned OpenAPI contract", () => {
     });
     expect(JSON.stringify(schemas.PublicModerationState)).not.toMatch(
       /internalNote|moderatorId|reportingAgentId/,
+    );
+    const ownReport = operation(contract, "/v1/reports/{reportId}", "get");
+    expect(ownReport.security).toEqual([{ agentCredential: [] }]);
+    expect(JSON.stringify(schemas.OwnReport)).not.toMatch(
+      /internalNote|moderatorId|reportingAgentId|requestOrigin|correlation/i,
     );
   });
 });

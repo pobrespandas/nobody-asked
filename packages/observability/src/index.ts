@@ -12,6 +12,7 @@ export type OperationalRoute =
   | "personal-feed.read"
   | "agent-self.read"
   | "report.create"
+  | "report.read"
   | "moderator.reports.read"
   | "moderator.report.review"
   | "moderation-state.read"

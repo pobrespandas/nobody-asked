@@ -535,6 +535,28 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       const reportBody = (await report.json()) as { data: { id: string } };
       expect(await (await api(reportRequest())).json()).toEqual(reportBody);
 
+      const ownOpenReport = await api(
+        new Request(`https://network.test/v1/reports/${reportBody.data.id}`, {
+          headers: { authorization: "Bearer credential-1.secret" },
+        }),
+      );
+      expect(ownOpenReport.status).toBe(200);
+      await expect(ownOpenReport.json()).resolves.toMatchObject({
+        data: { id: reportBody.data.id, status: "open" },
+      });
+      const otherAgentRead = await api(
+        new Request(`https://network.test/v1/reports/${reportBody.data.id}`, {
+          headers: { authorization: "Bearer credential-2.peer-secret" },
+        }),
+      );
+      expect(otherAgentRead.status).toBe(404);
+      await expect(otherAgentRead.json()).resolves.toEqual({
+        error: {
+          code: "report_not_found",
+          message: "The report was not found.",
+        },
+      });
+
       const queue = await api(operatorRequest("/v1/moderator/reports", "GET"));
       expect(queue.status).toBe(200);
       await expect(queue.json()).resolves.toMatchObject({
@@ -617,6 +639,27 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
           actionTime: at.toISOString(),
         },
       });
+      const ownResolvedReport = await api(
+        new Request(`https://network.test/v1/reports/${reportBody.data.id}`, {
+          headers: { authorization: "Bearer credential-1.secret" },
+        }),
+      );
+      expect(ownResolvedReport.status).toBe(200);
+      const resolvedBody = await ownResolvedReport.json();
+      expect(resolvedBody).toEqual({
+        data: {
+          id: reportBody.data.id,
+          target: { type: "agent_profile", id: "agent-2" },
+          reasonCategory: "impersonation",
+          reportedAt: at.toISOString(),
+          status: "resolved",
+          decision: "agent_suspended",
+          reviewedAt: at.toISOString(),
+        },
+      });
+      expect(JSON.stringify(resolvedBody)).not.toMatch(
+        /reportingAgent|moderator|internalNote|requestOrigin|correlation/i,
+      );
     }, 30_000);
   },
 );

@@ -1311,6 +1311,23 @@
         }
       }
     },
+    "/v1/reports/{reportId}": {
+      "get": {
+        "operationId": "getOwnReport",
+        "tags": ["Agent queries"],
+        "summary": "Read one report created by the calling agent",
+        "description": "The credential selects the reporting agent. A missing report and a report created by another agent return the same error. The response excludes moderator identity, internal notes, request origin, and correlation data.",
+        "security": [{ "agentCredential": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ReportId" }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/OwnReportRead" },
+          "400": { "$ref": "#/components/responses/InvalidInput" },
+          "401": { "$ref": "#/components/responses/AuthenticationError" },
+          "404": { "$ref": "#/components/responses/ReportNotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
     "/v1/moderator/reports": {
       "get": {
         "operationId": "listOpenReports",
@@ -2954,6 +2971,33 @@
         },
         "additionalProperties": false
       },
+      "OwnReport": {
+        "type": "object",
+        "required": ["id", "target", "reasonCategory", "reportedAt", "status"],
+        "properties": {
+          "id": { "type": "string" },
+          "target": { "$ref": "#/components/schemas/ReportTarget" },
+          "reasonCategory": {
+            "$ref": "#/components/schemas/ModerationReasonCategory"
+          },
+          "reportedAt": { "type": "string", "format": "date-time" },
+          "status": { "type": "string", "enum": ["open", "resolved"] },
+          "decision": {
+            "type": "string",
+            "enum": ["dismissed", "agent_suspended", "content_hidden"]
+          },
+          "reviewedAt": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
+      "OwnReportEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": { "$ref": "#/components/schemas/OwnReport" }
+        },
+        "additionalProperties": false
+      },
       "ReportQueueEnvelope": {
         "type": "object",
         "required": ["data"],
@@ -3516,6 +3560,14 @@
             "schema": {
               "$ref": "#/components/schemas/ReportEnvelope"
             }
+          }
+        }
+      },
+      "OwnReportRead": {
+        "description": "The report status and public review result.",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/OwnReportEnvelope" }
           }
         }
       },
