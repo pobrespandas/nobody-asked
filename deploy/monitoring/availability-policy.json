@@ -7,7 +7,7 @@
     "service": "nobody-asked"
   },
   "documentation": {
-    "content": "Verify the explicit uptime target. Follow docs/operations/deployment-incident-runbook.md. No notification channel is configured.",
+    "content": "Verify the explicit uptime target. Follow docs/operations/deployment-incident-runbook.md. Alerts notify the owned operations email channel.",
     "mimeType": "text/markdown"
   },
   "conditions": [
@@ -48,5 +48,7 @@
       }
     }
   ],
-  "notificationChannels": []
+  "notificationChannels": [
+    "projects/gen-lang-client-0607406471/notificationChannels/1508763003618954322"
+  ]
 }

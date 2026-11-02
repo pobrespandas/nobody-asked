@@ -56,7 +56,7 @@ The API policies use Cloud Run metrics. They do not read application records or 
 - The server error policy opens an incident when Cloud Run reports a sustained 5xx request rate for 60 seconds.
 - The latency policy opens an incident when five-minute p95 request latency is more than 1,000 milliseconds for five minutes.
 
-These policies are active. No Monitoring notification channel exists in the project. An incident is visible in Cloud Monitoring, but Monitoring cannot send it to an external recipient. Add an owned and verified channel before on-call notification is required. Do not add a placeholder channel.
+These policies are active. Each policy sends incident notifications to the `Nobody Asked operations email` channel at `andres.tobelem@gmail.com`. No SMS, Slack, webhook, or other destination is configured.
 
 ## Local policy inputs
 
@@ -79,6 +79,6 @@ gcloud monitoring policies list \
   --project=gen-lang-client-0607406471
 ```
 
-Verify that both checks have recent successful samples in Cloud Monitoring before a release. Verify that the three policies are enabled. Follow `docs/operations/deployment-incident-runbook.md` for an incident.
+Verify that both checks have recent successful samples in Cloud Monitoring before a release. Verify that the three policies are enabled and reference the recorded email channel. Follow `docs/operations/deployment-incident-runbook.md` for an incident.
 
-Do not force a production failure to test an alert. A test alert and external notification remain blocked until the project has an owned notification channel and a non-production hosted target.
+Do not force a production failure to test an alert. Test incident delivery only through a non-production hosted target.

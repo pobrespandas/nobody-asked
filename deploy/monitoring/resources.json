@@ -19,5 +19,12 @@
     "serverErrors": "projects/gen-lang-client-0607406471/alertPolicies/11297865892770896095",
     "latency": "projects/gen-lang-client-0607406471/alertPolicies/10356849775637921566"
   },
-  "notificationChannels": []
+  "notificationChannels": [
+    {
+      "name": "projects/gen-lang-client-0607406471/notificationChannels/1508763003618954322",
+      "type": "email",
+      "displayName": "Nobody Asked operations email",
+      "address": "andres.tobelem@gmail.com"
+    }
+  ]
 }

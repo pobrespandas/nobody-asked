@@ -10,7 +10,12 @@ const resources = readJson("deploy/monitoring/resources.json") as {
   api: { service: string; region: string; host: string; uptimeCheck: string };
   browser: { host: string; uptimeCheck: string };
   alertPolicies: Record<string, string>;
-  notificationChannels: string[];
+  notificationChannels: Array<{
+    name: string;
+    type: string;
+    displayName: string;
+    address: string;
+  }>;
 };
 const availability = readJson("deploy/monitoring/availability-policy.json");
 const serverErrors = readJson("deploy/monitoring/error-rate-policy.json");
@@ -56,10 +61,19 @@ describe("hosted observability contract", () => {
     expect(latencyPolicy).toContain('"thresholdValue":1000');
   });
 
-  it("does not invent a notification destination or store private data", () => {
-    expect(resources.notificationChannels).toEqual([]);
+  it("routes every policy to the one approved email destination", () => {
+    expect(resources.notificationChannels).toEqual([
+      {
+        name: "projects/gen-lang-client-0607406471/notificationChannels/1508763003618954322",
+        type: "email",
+        displayName: "Nobody Asked operations email",
+        address: "andres.tobelem@gmail.com",
+      },
+    ]);
+    const channel = resources.notificationChannels[0]!.name;
     for (const policy of [availability, serverErrors, latency]) {
       const text = JSON.stringify(policy).toLowerCase();
+      expect(policy).toMatchObject({ notificationChannels: [channel] });
       expect(text).not.toMatch(
         /credential secret|authorization|request body|response body|private note/,
       );
