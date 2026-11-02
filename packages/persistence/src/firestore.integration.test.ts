@@ -18,6 +18,10 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
   "Firestore persistence integration",
   () => {
     const at = new Date("2026-11-01T12:00:00.000Z");
+    const registrationKeys = generateKeyPairSync("ed25519");
+    const recoveryPublicKey = registrationKeys.publicKey.export({
+      format: "jwk",
+    }) as Ed25519PublicJwk;
     let local: LocalFirestoreAdmin;
     let adapters: ReturnType<typeof createFirestoreApiAdapters>;
 
@@ -41,6 +45,242 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     });
     beforeEach(async () => resetLocalFirestore());
     afterAll(async () => deleteApp(local.app));
+
+    function autonomousAdapters() {
+      return createFirestoreApiAdapters({
+        firestore: local.firestore,
+        digestCredentialSecret: (secret) =>
+          createHash("sha256").update(secret).digest("base64url"),
+        safetyPolicy: { async authorizeAgentWrite() {} },
+      });
+    }
+
+    function autonomousRegistration(
+      registrationId: string,
+      handle = "autonomous_agent",
+    ) {
+      const challenge = `challenge-${registrationId}`;
+      const inputFingerprint = `fingerprint-${registrationId}`;
+      const attempt = createAgentRegistrationAttempt({
+        id: registrationId,
+        inputFingerprint,
+        recoveryPublicKey,
+        challenge,
+        createdAt: at,
+      });
+      const signature = sign(
+        null,
+        Buffer.from(registrationProofMessage(attempt), "utf8"),
+        registrationKeys.privateKey,
+      ).toString("base64url");
+      return {
+        start: {
+          registrationId,
+          handle,
+          displayName: "Autonomous Agent",
+          description: "Registers without an Operator.",
+          inputFingerprint,
+          recoveryPublicKey,
+          challenge,
+          createdAt: at,
+        },
+        complete: {
+          registrationId,
+          challenge,
+          signature,
+          credentialSecretDigest: `credential-digest-${registrationId}`,
+          occurredAt: new Date(at.getTime() + 1_000),
+          correlationId: `correlation-${registrationId}`,
+        },
+      };
+    }
+
+    it("creates one autonomous Agent identity atomically without raw secrets", async () => {
+      const secure = autonomousAdapters();
+      const proof = autonomousRegistration("registration-1");
+      const firstStart = await secure.store.startAgentRegistration(proof.start);
+      const replayStart = await secure.store.startAgentRegistration(
+        proof.start,
+      );
+      expect(firstStart.created).toBe(true);
+      expect(replayStart).toEqual({
+        created: false,
+        expiresAt: firstStart.expiresAt,
+      });
+      await expect(
+        secure.store.startAgentRegistration({
+          ...proof.start,
+          inputFingerprint: "different-fingerprint",
+        }),
+      ).rejects.toMatchObject({ code: "idempotency_conflict" });
+
+      const result = await secure.store.completeAgentRegistration(
+        proof.complete,
+      );
+      expect(result.kind).toBe("created");
+      const allCollections = await Promise.all(
+        [
+          "agentRegistrations",
+          "handleClaims",
+          "agentProfiles",
+          "agentAccess",
+          "credentials",
+          "agentRecoveryKeys",
+          "idempotencyRecords",
+          "auditRecords",
+        ].map((name) => local.firestore.collection(name).get()),
+      );
+      const stored = JSON.stringify(
+        allCollections.flatMap((snapshot) =>
+          snapshot.docs.map((document) => document.data()),
+        ),
+      );
+      const privateJwk = registrationKeys.privateKey.export({ format: "jwk" });
+      expect(stored).not.toContain(proof.start.challenge);
+      expect(stored).not.toContain(proof.complete.signature);
+      expect(stored).not.toContain("credential-raw-registration-1");
+      expect(stored).not.toContain(String(privateJwk.d));
+      expect(stored).not.toContain('"d"');
+
+      const profile = await local.firestore
+        .collection("agentProfiles")
+        .doc(result.registration.agentId)
+        .get();
+      expect(profile.data()).toMatchObject({
+        handle: "autonomous_agent",
+        status: "active",
+      });
+      expect(profile.data()).not.toHaveProperty("controllingOperatorId");
+      const audits = await local.firestore.collection("auditRecords").get();
+      expect(
+        audits.docs.map((document) => ({
+          action: document.data().action,
+          actorType: document.data().actorType,
+          actorId: document.data().actorId,
+        })),
+      ).toEqual(
+        expect.arrayContaining([
+          {
+            action: "agent.registered",
+            actorType: "agent",
+            actorId: result.registration.agentId,
+          },
+          {
+            action: "credential.issued",
+            actorType: "agent",
+            actorId: result.registration.agentId,
+          },
+        ]),
+      );
+    });
+
+    it("returns one created result and one stable replay under contention", async () => {
+      const secure = autonomousAdapters();
+      const proof = autonomousRegistration("registration-race", "race_agent");
+      await secure.store.startAgentRegistration(proof.start);
+
+      const results = await Promise.all([
+        secure.store.completeAgentRegistration(proof.complete),
+        secure.store.completeAgentRegistration(proof.complete),
+      ]);
+
+      expect(results.map((result) => result.kind).sort()).toEqual([
+        "created",
+        "replay",
+      ]);
+      expect(results[0].registration).toEqual(results[1].registration);
+      const lateReplay = await secure.store.completeAgentRegistration({
+        ...proof.complete,
+        occurredAt: new Date(at.getTime() + 20 * 60_000),
+      });
+      expect(lateReplay).toEqual({
+        kind: "replay",
+        registration: results[0].registration,
+      });
+      expect(
+        (await local.firestore.collection("agentProfiles").get()).size,
+      ).toBe(1);
+      expect((await local.firestore.collection("credentials").get()).size).toBe(
+        1,
+      );
+      expect(
+        (await local.firestore.collection("auditRecords").get()).size,
+      ).toBe(2);
+    });
+
+    it("allows only one concurrent registration to reserve a handle", async () => {
+      const secure = autonomousAdapters();
+      const first = autonomousRegistration(
+        "registration-handle-1",
+        "same_handle",
+      );
+      const second = autonomousRegistration(
+        "registration-handle-2",
+        "same_handle",
+      );
+      await Promise.all([
+        secure.store.startAgentRegistration(first.start),
+        secure.store.startAgentRegistration(second.start),
+      ]);
+
+      const results = await Promise.allSettled([
+        secure.store.completeAgentRegistration(first.complete),
+        secure.store.completeAgentRegistration(second.complete),
+      ]);
+
+      expect(
+        results.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(1);
+      expect(
+        results.find((result) => result.status === "rejected")?.reason,
+      ).toMatchObject({ code: "handle_already_taken" });
+      expect(
+        (await local.firestore.collection("agentProfiles").get()).size,
+      ).toBe(1);
+      expect((await local.firestore.collection("credentials").get()).size).toBe(
+        1,
+      );
+      const attempts = await local.firestore
+        .collection("agentRegistrations")
+        .get();
+      expect(
+        attempts.docs.filter((document) => document.data().consumedAt),
+      ).toHaveLength(1);
+    });
+
+    it("rolls back every identity write when Agent proof is invalid", async () => {
+      const secure = autonomousAdapters();
+      const proof = autonomousRegistration(
+        "registration-invalid",
+        "invalid_agent",
+      );
+      await secure.store.startAgentRegistration(proof.start);
+
+      await expect(
+        secure.store.completeAgentRegistration({
+          ...proof.complete,
+          signature: Buffer.alloc(64).toString("base64url"),
+        }),
+      ).rejects.toBeInstanceOf(AgentProofRejectedError);
+      for (const collection of [
+        "handleClaims",
+        "agentProfiles",
+        "agentAccess",
+        "credentials",
+        "agentRecoveryKeys",
+        "idempotencyRecords",
+        "auditRecords",
+      ]) {
+        expect((await local.firestore.collection(collection).get()).empty).toBe(
+          true,
+        );
+      }
+      const attempt = await local.firestore
+        .collection("agentRegistrations")
+        .doc(proof.start.registrationId)
+        .get();
+      expect(attempt.data()?.consumedAt).toBeNull();
+    });
 
     it("enrolls one invited operator with one revocable 12-hour session", async () => {
       await local.firestore
@@ -1216,3 +1456,11 @@ function feedPost(id: string, authorId: string, publishedAt: Timestamp) {
 function readResponseId(response: { readonly body: unknown }): string {
   return (response.body as { data: { id: string } }).data.id;
 }
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+
+import {
+  AgentProofRejectedError,
+  createAgentRegistrationAttempt,
+  registrationProofMessage,
+  type Ed25519PublicJwk,
+} from "@nobody-asked/access";

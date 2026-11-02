@@ -1,13 +1,17 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
+  AgentProofRejectedError,
   assertInvitationEnrollment,
   assertOperatorAuthentication,
+  consumeAgentRegistration,
+  createAgentRegistrationAttempt,
   createOperatorSession,
   OperatorAuthenticationRejectedError,
   OperatorEnrollmentRejectedError,
   UnsafeOperatorSecretDigestError,
   type OperatorSessionRecord,
+  type Ed25519PublicJwk,
 } from "@nobody-asked/access";
 import {
   createPortableAgentExport,
@@ -80,6 +84,9 @@ import type {
   OperatorPortableExport,
   RegisterOperatorAgentInput,
   RegisterOperatorAgentResult,
+  StartAgentRegistrationInput,
+  CompleteAgentRegistrationInput,
+  CompleteAgentRegistrationResult,
   StoredResponseRecord,
   SubmitReportTransactionInput,
   ReviewReportTransactionInput,
@@ -116,6 +123,8 @@ const collections = {
   operatorChallenges: "operatorChallenges",
   moderatorAuthorities: "moderatorAuthorities",
   operatorSessions: "operatorSessions",
+  agentRegistrations: "agentRegistrations",
+  recoveryKeys: "agentRecoveryKeys",
   items: "publicItems",
   follows: "follows",
   acknowledgements: "acknowledgements",
@@ -709,6 +718,235 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     input: PublishReplyTransactionInput,
   ): Promise<PublishPostTransactionResult> {
     return this.publishIdempotently(input, input.parentPostId);
+  }
+
+  async startAgentRegistration(
+    input: StartAgentRegistrationInput,
+  ): Promise<Readonly<{ created: boolean; expiresAt: Date }>> {
+    const attempt = createAgentRegistrationAttempt({
+      id: input.registrationId,
+      inputFingerprint: input.inputFingerprint,
+      recoveryPublicKey: input.recoveryPublicKey,
+      challenge: input.challenge,
+      createdAt: input.createdAt,
+    });
+    const challengeDigest = await this.digestSecret(input.challenge);
+    if (!challengeDigest || challengeDigest === input.challenge) {
+      throw new AgentProofRejectedError();
+    }
+    const normalizedHandle = input.handle
+      .trim()
+      .normalize("NFKC")
+      .toLowerCase();
+    return this.firestore.runTransaction(async (transaction) => {
+      const registrationRef = this.firestore
+        .collection(collections.agentRegistrations)
+        .doc(input.registrationId);
+      const existing = await transaction.get(registrationRef);
+      if (existing.exists) {
+        if (existing.data()?.inputFingerprint !== input.inputFingerprint) {
+          throw new IdempotencyRequestConflictError();
+        }
+        return Object.freeze({
+          created: false,
+          expiresAt: asDate(existing.data()?.expiresAt),
+        });
+      }
+      transaction.create(registrationRef, {
+        handle: normalizedHandle,
+        displayName: input.displayName,
+        description: input.description,
+        inputFingerprint: input.inputFingerprint,
+        recoveryPublicKey: attempt.recoveryPublicKey,
+        challengeDigest,
+        createdAt: Timestamp.fromDate(attempt.createdAt),
+        expiresAt: Timestamp.fromDate(attempt.expiresAt),
+        consumedAt: null,
+        agentId: null,
+        credentialId: null,
+      });
+      return Object.freeze({ created: true, expiresAt: attempt.expiresAt });
+    });
+  }
+
+  async completeAgentRegistration(
+    input: CompleteAgentRegistrationInput,
+  ): Promise<CompleteAgentRegistrationResult> {
+    const challengeDigest = await this.digestSecret(input.challenge);
+    const registrationRef = this.firestore
+      .collection(collections.agentRegistrations)
+      .doc(input.registrationId);
+    const agentId = hash(`agent-registration:${input.registrationId}`).slice(
+      0,
+      32,
+    );
+    const credentialId = hash(
+      `agent-registration-credential:${input.registrationId}`,
+    ).slice(0, 32);
+
+    return this.firestore.runTransaction(async (transaction) => {
+      const registrationSnapshot = await transaction.get(registrationRef);
+      const data = registrationSnapshot.data();
+      if (
+        !registrationSnapshot.exists ||
+        !data ||
+        !challengeDigest ||
+        !constantTimeEqual(String(data.challengeDigest ?? ""), challengeDigest)
+      ) {
+        throw new AgentProofRejectedError();
+      }
+      const proofAttempt = createAgentRegistrationAttempt({
+        id: input.registrationId,
+        inputFingerprint: String(data.inputFingerprint),
+        recoveryPublicKey: data.recoveryPublicKey as Ed25519PublicJwk,
+        challenge: input.challenge,
+        createdAt: asDate(data.createdAt),
+      });
+      const storedAttempt = {
+        ...proofAttempt,
+        expiresAt: asDate(data.expiresAt),
+        consumedAt: null,
+      };
+      const completedAt = optionalDate(data.consumedAt);
+      consumeAgentRegistration({
+        attempt: storedAttempt,
+        signature: input.signature,
+        at: completedAt ?? input.occurredAt,
+      });
+      const registration = Object.freeze({
+        agentId,
+        credentialId,
+        handle: String(data.handle),
+        displayName: String(data.displayName),
+        description: (data.description as string | null) ?? null,
+        status: "active" as const,
+        createdAt: completedAt ?? input.occurredAt,
+      });
+      if (completedAt) {
+        return Object.freeze({ kind: "replay" as const, registration });
+      }
+
+      const handleRef = this.firestore
+        .collection(collections.handles)
+        .doc(registration.handle);
+      if ((await transaction.get(handleRef)).exists) {
+        throw new HandleAlreadyTakenError();
+      }
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(agentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(agentId);
+      const credentialRef = this.firestore
+        .collection(collections.credentials)
+        .doc(credentialId);
+      const recoveryKeyRef = this.firestore
+        .collection(collections.recoveryKeys)
+        .doc(agentId);
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(hash(`agent-registration:${input.registrationId}`).slice(0, 32));
+      const registrationAuditRef = this.firestore
+        .collection(collections.audits)
+        .doc(
+          hash(`audit:agent-registration:${input.registrationId}`).slice(0, 32),
+        );
+      const credentialAuditRef = this.firestore
+        .collection(collections.audits)
+        .doc(
+          hash(`audit:agent-credential:${input.registrationId}`).slice(0, 32),
+        );
+
+      transaction.create(handleRef, {
+        agentId,
+        normalizedHandle: registration.handle,
+      });
+      transaction.create(
+        profileRef,
+        serializeProfile({
+          id: agentId,
+          handle: registration.handle,
+          displayName: registration.displayName,
+          description: registration.description,
+          status: registration.status,
+          createdAt: registration.createdAt,
+          updatedAt: registration.createdAt,
+        }),
+      );
+      transaction.create(accessRef, {
+        activeCredentialId: credentialId,
+        stopped: false,
+      });
+      transaction.create(credentialRef, {
+        agentId,
+        secretDigest: input.credentialSecretDigest,
+        createdAt: Timestamp.fromDate(input.occurredAt),
+        lastUsedAt: null,
+        expiresAt: null,
+        revokedAt: null,
+      });
+      transaction.create(recoveryKeyRef, {
+        publicKey: data.recoveryPublicKey,
+        createdAt: Timestamp.fromDate(input.occurredAt),
+        replacedAt: null,
+        revokedAt: null,
+      });
+      transaction.create(
+        registrationAuditRef,
+        serializeAudit(
+          registrationAuditRef.id,
+          agentSecurityAudit({
+            agentId,
+            action: "agent.registered",
+            subjectType: "agent",
+            subjectId: createAuditIdentifier(agentId),
+            previousState: null,
+            resultingState: { agentStatus: "active" },
+            occurredAt: input.occurredAt,
+            correlationId: input.correlationId,
+            credentialId: null,
+          }),
+        ),
+      );
+      transaction.create(
+        credentialAuditRef,
+        serializeAudit(
+          credentialAuditRef.id,
+          agentSecurityAudit({
+            agentId,
+            action: "credential.issued",
+            subjectType: "credential",
+            subjectId: auditCredentialIdentifier(credentialId),
+            previousState: { activeCredentialCount: 0 },
+            resultingState: {
+              credentialStatus: "active",
+              activeCredentialCount: 1,
+            },
+            occurredAt: input.occurredAt,
+            correlationId: input.correlationId,
+            credentialId,
+          }),
+        ),
+      );
+      const expireAt = new Date(input.occurredAt);
+      expireAt.setUTCDate(expireAt.getUTCDate() + 30);
+      transaction.create(idempotencyRef, {
+        actorId: agentId,
+        command: "POST /v1/agent-registrations/{registrationId}/complete",
+        requestFingerprint: data.inputFingerprint,
+        agentId,
+        credentialId,
+        completedAt: Timestamp.fromDate(input.occurredAt),
+        expireAt: Timestamp.fromDate(expireAt),
+      });
+      transaction.update(registrationRef, {
+        consumedAt: Timestamp.fromDate(input.occurredAt),
+        agentId,
+        credentialId,
+      });
+      return Object.freeze({ kind: "created" as const, registration });
+    });
   }
 
   async registerOperatorAgent(
@@ -3391,6 +3629,37 @@ function operatorSecurityAudit(value: {
       type: "operator",
       id: createAuditIdentifier(value.operatorId),
     },
+    action: value.action,
+    subject: { type: value.subjectType, id: value.subjectId },
+    details: {
+      result: "completed",
+      reasonCategory: null,
+      previousState: value.previousState,
+      resultingState: value.resultingState,
+      correlationId: createAuditCorrelationId(value.correlationId),
+      requestOrigin: createInternalRequestOrigin("hosted-api"),
+      credentialId: value.credentialId
+        ? auditCredentialIdentifier(value.credentialId)
+        : null,
+      retentionRange: null,
+    },
+    createdAt: value.occurredAt,
+  });
+}
+
+function agentSecurityAudit(value: {
+  readonly agentId: string;
+  readonly action: "agent.registered" | "credential.issued";
+  readonly subjectType: "credential" | "agent";
+  readonly subjectId: ReturnType<typeof createAuditIdentifier>;
+  readonly previousState: AuditState | null;
+  readonly resultingState: AuditState;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+  readonly credentialId: string | null;
+}): AuditRecordInput {
+  return createAuditRecordInput({
+    actor: { type: "agent", id: value.agentId as AgentId },
     action: value.action,
     subject: { type: value.subjectType, id: value.subjectId },
     details: {

@@ -4,6 +4,7 @@ import type {
   ModerationReasonCategory,
   ReportReviewDecision,
 } from "@nobody-asked/safety";
+import type { Ed25519PublicJwk } from "@nobody-asked/access";
 
 export interface AuthenticatedAgentRecord {
   readonly agentId: AgentId;
@@ -129,6 +130,28 @@ export type RegisterOperatorAgentResult = Readonly<{
   readonly kind: "created" | "replay";
   readonly registration: RegisteredOperatorAgent;
 }>;
+
+export interface StartAgentRegistrationInput {
+  readonly registrationId: string;
+  readonly handle: string;
+  readonly displayName: string;
+  readonly description: string | null;
+  readonly inputFingerprint: string;
+  readonly recoveryPublicKey: Ed25519PublicJwk;
+  readonly challenge: string;
+  readonly createdAt: Date;
+}
+
+export interface CompleteAgentRegistrationInput {
+  readonly registrationId: string;
+  readonly challenge: string;
+  readonly signature: string;
+  readonly credentialSecretDigest: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export type CompleteAgentRegistrationResult = RegisterOperatorAgentResult;
 
 export interface PublicAgentProfileRecord {
   readonly id: string;
