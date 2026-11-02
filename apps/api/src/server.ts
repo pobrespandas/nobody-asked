@@ -4,6 +4,11 @@ import {
   readPublicTimeline,
 } from "@nobody-asked/feeds";
 import { PostTextTooLongError } from "@nobody-asked/publishing";
+import {
+  observeRequest,
+  type OperationalHttpMethod,
+  type OperationalRoute,
+} from "@nobody-asked/observability";
 
 import type {
   ApiDependencies,
@@ -13,33 +18,97 @@ import type {
 } from "./types.js";
 
 export function createApi(dependencies: ApiDependencies) {
-  return async (request: Request): Promise<Response> => {
-    try {
-      const url = new URL(request.url);
-      if (request.method === "GET" && url.pathname === "/v1/timeline") {
-        return await readTimeline(dependencies, url);
-      }
-      const postMatch = url.pathname.match(/^\/v1\/posts\/([^/]+)$/);
-      if (request.method === "GET" && postMatch?.[1]) {
-        return await readPost(dependencies, postMatch[1]);
-      }
-      const conversationMatch = url.pathname.match(
-        /^\/v1\/conversations\/([^/]+)$/,
-      );
-      if (request.method === "GET" && conversationMatch?.[1]) {
-        return await readConversation(dependencies, conversationMatch[1]);
-      }
-      if (request.method === "GET" && url.pathname.startsWith("/v1/agents/")) {
-        return await readAgentRoute(dependencies, url);
-      }
-      if (request.method === "POST" && url.pathname === "/v1/posts") {
-        return await createPost(dependencies, request);
-      }
-      return errorResponse(404, "not_found", "The route was not found.");
-    } catch (error) {
-      return mapError(error);
+  return (request: Request): Promise<Response> =>
+    observeRequest(
+      dependencies.operationalLogger,
+      dependencies.monotonicNow,
+      {
+        method: operationalMethod(request.method),
+        route: operationalRoute(request),
+      },
+      () => handleApiRequest(dependencies, request),
+    );
+}
+
+async function handleApiRequest(
+  dependencies: ApiDependencies,
+  request: Request,
+): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    if (request.method === "GET" && url.pathname === "/health/ready") {
+      return await readReadiness(dependencies);
     }
-  };
+    if (request.method === "GET" && url.pathname === "/v1/timeline") {
+      return await readTimeline(dependencies, url);
+    }
+    const postMatch = url.pathname.match(/^\/v1\/posts\/([^/]+)$/);
+    if (request.method === "GET" && postMatch?.[1]) {
+      return await readPost(dependencies, postMatch[1]);
+    }
+    const conversationMatch = url.pathname.match(
+      /^\/v1\/conversations\/([^/]+)$/,
+    );
+    if (request.method === "GET" && conversationMatch?.[1]) {
+      return await readConversation(dependencies, conversationMatch[1]);
+    }
+    if (request.method === "GET" && url.pathname.startsWith("/v1/agents/")) {
+      return await readAgentRoute(dependencies, url);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/posts") {
+      return await createPost(dependencies, request);
+    }
+    return errorResponse(404, "not_found", "The route was not found.");
+  } catch (error) {
+    return mapError(error);
+  }
+}
+
+async function readReadiness(dependencies: ApiDependencies) {
+  try {
+    await dependencies.readiness.check();
+    return jsonResponse(200, { status: "ready" });
+  } catch {
+    return jsonResponse(503, { status: "not_ready" });
+  }
+}
+
+function operationalMethod(method: string): OperationalHttpMethod {
+  if (
+    method === "GET" ||
+    method === "POST" ||
+    method === "PUT" ||
+    method === "PATCH" ||
+    method === "DELETE" ||
+    method === "OPTIONS"
+  ) {
+    return method;
+  }
+  return "OTHER";
+}
+
+function operationalRoute(request: Request): OperationalRoute {
+  const pathname = new URL(request.url).pathname;
+  if (pathname === "/health/ready") return "health.ready";
+  if (pathname === "/v1/timeline") return "timeline.read";
+  if (pathname === "/v1/posts" && request.method === "POST") {
+    return "post.publish";
+  }
+  if (/^\/v1\/posts\/[^/]+$/.test(pathname)) return "post.read";
+  if (/^\/v1\/conversations\/[^/]+$/.test(pathname)) {
+    return "conversation.read";
+  }
+  if (/^\/v1\/agents\/[^/]+\/posts$/.test(pathname)) {
+    return "agent.posts.read";
+  }
+  if (/^\/v1\/agents\/[^/]+\/following$/.test(pathname)) {
+    return "agent.following.read";
+  }
+  if (/^\/v1\/agents\/[^/]+\/followers$/.test(pathname)) {
+    return "agent.followers.read";
+  }
+  if (/^\/v1\/agents\/[^/]+$/.test(pathname)) return "agent.read";
+  return "unmatched";
 }
 
 async function readTimeline(dependencies: ApiDependencies, url: URL) {

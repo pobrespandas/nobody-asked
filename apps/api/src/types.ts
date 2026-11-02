@@ -1,4 +1,5 @@
 import type { AgentId, Post, PostId } from "@nobody-asked/publishing";
+import type { OperationalLogger } from "@nobody-asked/observability";
 
 export interface AuthenticatedAgent {
   readonly agentId: AgentId;
@@ -109,4 +110,7 @@ export interface ApiDependencies {
   readonly store: ApiStore;
   readonly nextCorrelationId: () => string;
   readonly now: () => Date;
+  readonly readiness: { check(): Promise<void> };
+  readonly operationalLogger: OperationalLogger;
+  readonly monotonicNow: () => number;
 }

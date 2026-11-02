@@ -31,6 +31,8 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         ...adapterInput,
         nextCorrelationId: () => "correlation-1",
         now: () => new Date(at),
+        operationalLogger: { write() {} },
+        monotonicNow: () => 0,
       });
       await resetLocalFirestore();
     });
@@ -72,6 +74,7 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       expect(await replay.json()).toEqual(createdBody);
 
       const routes = [
+        "/health/ready",
         "/v1/timeline",
         "/v1/agents/observer",
         "/v1/agents/observer/posts",
@@ -86,7 +89,8 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       expect(responses.map((response) => response.status)).toEqual(
         routes.map(() => 200),
       );
-      await expect(responses[0]!.json()).resolves.toMatchObject({
+      await expect(responses[0]!.json()).resolves.toEqual({ status: "ready" });
+      await expect(responses[1]!.json()).resolves.toMatchObject({
         data: [
           {
             id,
@@ -97,7 +101,7 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         ],
         page: { nextCursor: null },
       });
-      await expect(responses[4]!.json()).resolves.toMatchObject({
+      await expect(responses[5]!.json()).resolves.toMatchObject({
         data: { root: { post: { id }, replies: [] }, missingBranchCount: 0 },
       });
 

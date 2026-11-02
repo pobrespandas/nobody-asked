@@ -24,6 +24,9 @@ function harness() {
   const records = new Map<string, IdempotencyRecord>();
   const calls: string[] = [];
   let sequence = 0;
+  let monotonicTime = 0;
+  const operationalRecords: unknown[] = [];
+  const readiness = vi.fn(async () => {});
   const safety = vi.fn(async () => calls.push("safety"));
   const transaction: ApiTransaction = {
     findIdempotencyRecord: async (actor, route, key) =>
@@ -131,8 +134,21 @@ function harness() {
     store,
     nextCorrelationId: () => "correlation-1",
     now: () => new Date(at),
+    readiness: { check: readiness },
+    operationalLogger: {
+      write: (record) => operationalRecords.push(record),
+    },
+    monotonicNow: () => monotonicTime++,
   };
-  return { api: createApi(dependencies), calls, dependencies, posts, safety };
+  return {
+    api: createApi(dependencies),
+    calls,
+    dependencies,
+    posts,
+    safety,
+    readiness,
+    operationalRecords,
+  };
 }
 
 function readTestPage(
@@ -288,6 +304,75 @@ describe("POST /v1/posts", () => {
   });
 });
 
+describe("operational endpoints and logs", () => {
+  it("reports readiness without reading application records", async () => {
+    const { api, readiness, dependencies } = harness();
+    const readSpies = [
+      vi.spyOn(dependencies.store, "listVisiblePublicPosts"),
+      vi.spyOn(dependencies.store, "listPublicTimelinePage"),
+      vi.spyOn(dependencies.store, "findPublicAgentByHandle"),
+      vi.spyOn(dependencies.store, "findVisiblePublicPostById"),
+    ];
+
+    const response = await api(
+      new Request("https://network.test/health/ready"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ status: "ready" });
+    expect(readiness).toHaveBeenCalledOnce();
+    for (const read of readSpies) expect(read).not.toHaveBeenCalled();
+  });
+
+  it("fails readiness closed without exposing the cause", async () => {
+    const { api, readiness, operationalRecords } = harness();
+    readiness.mockRejectedValue(
+      new Error("credential digest and private moderation note"),
+    );
+
+    const response = await api(
+      new Request("https://network.test/health/ready"),
+    );
+    const serialized = JSON.stringify(await response.json());
+
+    expect(response.status).toBe(503);
+    expect(serialized).toBe(JSON.stringify({ status: "not_ready" }));
+    expect(serialized).not.toMatch(/credential|moderation|digest/i);
+    expect(operationalRecords).toEqual([
+      {
+        severity: "ERROR",
+        event: "http.request.completed",
+        method: "GET",
+        route: "health.ready",
+        status: 503,
+        durationMs: 1,
+      },
+    ]);
+  });
+
+  it("logs only route templates and response facts", async () => {
+    const { api, operationalRecords } = harness();
+    const privateText = "do-not-log-this-post-body";
+    const credential = "do-not-log-this-credential";
+    await api(
+      new Request(
+        "https://network.test/v1/posts/private-post-id?internalNote=private-note",
+        {
+          headers: { authorization: `Bearer ${credential}` },
+        },
+      ),
+    );
+    await api(post(privateText));
+
+    const serialized = JSON.stringify(operationalRecords);
+    expect(serialized).toContain('"route":"post.read"');
+    expect(serialized).toContain('"route":"post.publish"');
+    expect(serialized).not.toMatch(
+      /private-post-id|private-note|do-not-log|authorization|credential/i,
+    );
+  });
+});
+
 describe("public reads", () => {
   it("returns a public profile without authentication", async () => {
     const { api } = harness();
@@ -333,5 +418,30 @@ describe("public reads", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "invalid_feed_cursor" },
     });
+  });
+
+  it("rejects a zero page limit on every public list", async () => {
+    const { api } = harness();
+    const paths = [
+      "/v1/timeline",
+      "/v1/agents/observer/posts",
+      "/v1/agents/observer/following",
+      "/v1/agents/observer/followers",
+    ];
+
+    const responses = await Promise.all(
+      paths.map((path) =>
+        api(new Request(`https://network.test${path}?limit=0`)),
+      ),
+    );
+
+    expect(responses.map((response) => response.status)).toEqual([
+      400, 400, 400, 400,
+    ]);
+    for (const response of responses) {
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "invalid_feed_limit" },
+      });
+    }
   });
 });

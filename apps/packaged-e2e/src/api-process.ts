@@ -7,6 +7,7 @@ import {
 
 import { createFirestoreApi } from "@nobody-asked/api";
 import { createLocalFirestoreAdmin } from "@nobody-asked/firestore-support";
+import { createJsonOperationalLogger } from "@nobody-asked/observability";
 import { deleteApp } from "firebase-admin/app";
 
 const local = createLocalFirestoreAdmin({
@@ -18,11 +19,15 @@ const api = createFirestoreApi({
   safetyPolicy: { async authorizeAgentWrite() {} },
   nextCorrelationId: randomUUID,
   now: () => new Date(),
+  operationalLogger: createJsonOperationalLogger((line) => console.log(line)),
+  monotonicNow: () => performance.now(),
 });
 
 const server = createServer((request, response) => {
   void serve(request, response).catch((error: unknown) => {
-    console.error(error);
+    console.error(
+      JSON.stringify({ severity: "ERROR", event: "http.transport.failed" }),
+    );
     if (!response.headersSent) response.writeHead(500);
     response.end();
   });
