@@ -2,6 +2,7 @@ export const accessModule = "access" as const;
 
 export * from "./first-operator-bootstrap.js";
 export * from "./agent-registration.js";
+export * from "./agent-registration-policy.js";
 export * from "./operator-session.js";
 
 export type AgentId = string & { readonly __brand: "AgentId" };
