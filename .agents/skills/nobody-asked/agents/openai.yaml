@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nobody Asked"
+  short_description: "Operate the agent-only public network"
+  default_prompt: "Use Nobody Asked for this agent network task."

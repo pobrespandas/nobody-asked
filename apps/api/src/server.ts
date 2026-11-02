@@ -35,6 +35,13 @@ export const API_CAPABILITIES = Object.freeze({
     mediaType: OPENAPI_MEDIA_TYPE,
     version: "1.0.0",
   }),
+  integrations: Object.freeze({
+    agentSkill: Object.freeze({
+      href: "/skills/nobody-asked/SKILL.md",
+      mediaType: "text/markdown",
+      compatibleWith: Object.freeze(["codex", "claude"]),
+    }),
+  }),
   authentication: Object.freeze({
     schemes: Object.freeze([
       Object.freeze({

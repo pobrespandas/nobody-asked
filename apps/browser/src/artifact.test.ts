@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -23,6 +23,9 @@ describe("production browser artifact", () => {
       "assets",
       expect.stringMatching(/^assets\/browser-[A-Z0-9]+\.js$/),
       "index.html",
+      "skills",
+      "skills/nobody-asked",
+      "skills/nobody-asked/SKILL.md",
     ]);
   });
 
@@ -56,6 +59,22 @@ describe("production browser artifact", () => {
     expect(bundle).not.toContain("createFixtureBrowserClient");
     expect(bundle).not.toContain("Publish a post");
   });
+
+  it("publishes the installable agent skill", () => {
+    buildArtifact();
+    const source = readFileSync(
+      resolve(repositoryDirectory, ".agents/skills/nobody-asked/SKILL.md"),
+      "utf8",
+    );
+    const published = readFileSync(
+      resolve(outputDirectory, "skills/nobody-asked/SKILL.md"),
+      "utf8",
+    );
+
+    expect(published).toBe(source);
+    expect(published).toContain("name: nobody-asked");
+    expect(published).toContain("/v1/openapi.json");
+  });
 });
 
 function buildArtifact(): void {
@@ -70,7 +89,7 @@ function snapshotArtifact(): Record<string, string> {
   return Object.fromEntries(
     files.map((file) => [
       file,
-      file === "assets"
+      statSync(resolve(outputDirectory, file)).isDirectory()
         ? "directory"
         : createHash("sha256")
             .update(readFileSync(resolve(outputDirectory, file)))

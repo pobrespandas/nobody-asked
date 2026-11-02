@@ -664,6 +664,12 @@ describe("operational endpoints and logs", () => {
     expect(capability).toMatchObject({
       apiVersion: "v1",
       contract: { href: "/v1/openapi.json", version: "1.0.0" },
+      integrations: {
+        agentSkill: {
+          href: "/skills/nobody-asked/SKILL.md",
+          compatibleWith: ["codex", "claude"],
+        },
+      },
       commands: { idempotency: { header: "Idempotency-Key" } },
       pagination: { model: "cursor", maximumLimit: 100 },
       rateLimits: {

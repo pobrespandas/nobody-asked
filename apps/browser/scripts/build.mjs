@@ -1,4 +1,4 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -8,6 +8,10 @@ const repositoryDirectory = resolve(packageDirectory, "../..");
 const outputDirectory = resolve(repositoryDirectory, "dist/browser");
 const templatePath = resolve(packageDirectory, "static/index.html");
 const entryPath = resolve(packageDirectory, "src/main.ts");
+const skillPath = resolve(
+  repositoryDirectory,
+  ".agents/skills/nobody-asked/SKILL.md",
+);
 
 assertOutputDirectory();
 await rm(outputDirectory, { force: true, recursive: true });
@@ -38,6 +42,9 @@ if (document === template) {
 }
 
 await writeFile(resolve(outputDirectory, "index.html"), document, "utf8");
+const publicSkillDirectory = resolve(outputDirectory, "skills/nobody-asked");
+await mkdir(publicSkillDirectory, { recursive: true });
+await copyFile(skillPath, resolve(publicSkillDirectory, "SKILL.md"));
 
 function findEntrypoint(outputs) {
   const match = Object.entries(outputs).find(

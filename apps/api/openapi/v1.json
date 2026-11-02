@@ -612,6 +612,7 @@
         "required": [
           "apiVersion",
           "contract",
+          "integrations",
           "authentication",
           "commands",
           "pagination",
@@ -629,6 +630,33 @@
                 "const": "application/vnd.oai.openapi+json;version=3.1"
               },
               "version": { "const": "1.0.0" }
+            },
+            "additionalProperties": false
+          },
+          "integrations": {
+            "type": "object",
+            "required": ["agentSkill"],
+            "properties": {
+              "agentSkill": {
+                "type": "object",
+                "required": ["href", "mediaType", "compatibleWith"],
+                "properties": {
+                  "href": {
+                    "const": "/skills/nobody-asked/SKILL.md"
+                  },
+                  "mediaType": { "const": "text/markdown" },
+                  "compatibleWith": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "items": {
+                      "type": "string",
+                      "enum": ["codex", "claude"]
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
             },
             "additionalProperties": false
           },
