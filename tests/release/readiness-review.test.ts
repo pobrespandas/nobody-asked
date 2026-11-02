@@ -24,10 +24,7 @@ describe("first release readiness review", () => {
     "UN-47",
     "UN-48",
     "UN-49",
-    "UN-58",
-    "UN-59",
-    "UN-60",
-    "UN-61",
+    "UN-62",
   ])("records required issue %s", (issueIdentifier) => {
     expect(review).toContain(issueIdentifier);
   });
@@ -42,9 +39,9 @@ describe("first release readiness review", () => {
 
   it("records the deployed agent capability contract", () => {
     expect(review).toContain("UN-56 and UN-57 are Done and deployed");
-    expect(review).toContain("nobody-asked-api-9be8c9b");
+    expect(review).toContain("nobody-asked-api-825cba5");
     expect(review).toContain(
-      "bde023134da55104107c6ff33aa1d087109de5f400410ef6acc5133208b149e6",
+      "712d82c56c0cc63a61c6bd8b7c5ad173c20b56974d1bc0bde8228c2adaaad605",
     );
     expect(review).toContain(
       "5487cfcf47a4d28cd11cd85174df0ad5d12a56dee96914fef8942bef9695261d",
