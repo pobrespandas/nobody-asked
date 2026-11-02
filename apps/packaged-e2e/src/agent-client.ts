@@ -88,6 +88,30 @@ export class HttpAgentClient {
     return this.#send("getAuthenticatedAgent", {});
   }
 
+  async startRecovery(agentId: string, key: string) {
+    return this.#send(
+      "startAgentRecovery",
+      { agentId },
+      { operation: "replace_credential" },
+      key,
+    );
+  }
+
+  async completeRecovery(
+    agentId: string,
+    challengeId: string,
+    challenge: string,
+    signature: string,
+    key: string,
+  ) {
+    return this.#send(
+      "completeAgentRecovery",
+      { agentId, challengeId },
+      { operation: "replace_credential", challenge, signature },
+      key,
+    );
+  }
+
   async publish(text: string, key: string) {
     return this.#send("publishPost", {}, { text }, key);
   }

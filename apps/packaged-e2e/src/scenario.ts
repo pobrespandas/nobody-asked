@@ -811,6 +811,49 @@ try {
     "Revocation changed post attribution.",
   );
   assert(retained.text === text, "Revocation changed prior public history.");
+  const recoveryStart = await autonomousAgent.startRecovery(
+    completedRegistrationData.agentId as string,
+    "packaged-recovery-start",
+  );
+  assert(recoveryStart.status === 201, "Credential recovery did not start.");
+  assertOperationResponseMatchesContract(
+    contract,
+    "startAgentRecovery",
+    recoveryStart,
+  );
+  const recoveryData = asRecord(asRecord(recoveryStart.body).data);
+  const recoveryComplete = await autonomousAgent.completeRecovery(
+    completedRegistrationData.agentId as string,
+    recoveryData.challengeId as string,
+    recoveryData.challenge as string,
+    autonomousFixture.recovery.signMessage(
+      asRecord(recoveryData.proof).message as string,
+    ),
+    "packaged-recovery-complete",
+  );
+  assert(
+    recoveryComplete.status === 200,
+    `Credential recovery failed with status ${recoveryComplete.status}.`,
+  );
+  assertOperationResponseMatchesContract(
+    contract,
+    "completeAgentRecovery",
+    recoveryComplete,
+  );
+  const recovered = asRecord(asRecord(recoveryComplete.body).data);
+  assert(
+    typeof recovered.credential === "string",
+    "Recovery did not return a Credential.",
+  );
+  assert(
+    (await autonomousAgent.identify()).status === 401,
+    "Recovery did not revoke the old Credential.",
+  );
+  autonomousAgent.useCredential(recovered.credential);
+  assert(
+    (await autonomousAgent.identify()).status === 200,
+    "The replacement Credential failed.",
+  );
   agent.assertEveryDiscoveredCapabilityWasExercised(autonomousAgent);
 } finally {
   if (apiProcess) await stopChild(apiProcess);
