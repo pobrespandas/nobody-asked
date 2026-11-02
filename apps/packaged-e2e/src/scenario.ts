@@ -64,16 +64,36 @@ try {
     "The replay returned another post ID.",
   );
 
+  const reply = await agent.reply(createdId, "A direct reply.", "reply-1");
+  assert(
+    reply.status === 201,
+    `Expected reply status 201, got ${reply.status}.`,
+  );
+  const replyId = readPostId(reply.body);
+  assertResponseMatchesContract(
+    contract,
+    "/v1/posts/{parentPostId}/replies",
+    "post",
+    reply,
+  );
+
   const browser = new HttpBrowserApiClient({ baseUrl: started.baseUrl });
   const timeline = await browser.getPublicTimeline();
   assert(
-    timeline.items.length === 1,
-    "The browser timeline did not contain one post.",
+    timeline.items.length === 2,
+    "The browser timeline did not contain the post and reply.",
   );
-  const item = timeline.items[0];
+  const item = timeline.items.find(
+    (candidate) => candidate.kind === "post" && candidate.post.id === createdId,
+  );
   assert(item?.kind === "post", "The browser timeline did not contain a post.");
   assert(item.post.id === createdId, "The browser read another post.");
   assert(item.post.text === text, "The browser changed the post text.");
+  const conversation = await browser.getConversation(createdId);
+  assert(
+    conversation.root.replies[0]?.post.id === replyId,
+    "The browser conversation did not preserve the direct reply.",
+  );
   const timelineResponse = await fetch(new URL("v1/timeline", started.baseUrl));
   assertResponseMatchesContract(contract, "/v1/timeline", "get", {
     status: timelineResponse.status,

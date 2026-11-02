@@ -37,6 +37,10 @@ export interface PublishPostTransactionInput {
   readonly correlationId: string;
 }
 
+export interface PublishReplyTransactionInput extends PublishPostTransactionInput {
+  readonly parentPostId: Post["id"];
+}
+
 export type PublishPostTransactionResult =
   | Readonly<{
       kind: "created";
@@ -47,6 +51,8 @@ export type PublishPostTransactionResult =
       kind: "replay";
       response: StoredResponseRecord;
     }>;
+
+export type PublishReplyTransactionResult = PublishPostTransactionResult;
 
 export interface PublicTimelinePage {
   readonly items: readonly PublicPostRecord[];
@@ -77,4 +83,8 @@ export class RateLimitExceededError extends Error {
     super("The action limit was reached.");
     this.name = "RateLimitExceededError";
   }
+}
+
+export class ParentPostNotFoundError extends Error {
+  readonly code = "post_not_found";
 }

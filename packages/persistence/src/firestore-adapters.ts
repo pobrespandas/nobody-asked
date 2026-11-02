@@ -33,6 +33,7 @@ import type {
   PublicPostRecord,
   PublishPostTransactionInput,
   PublishPostTransactionResult,
+  PublishReplyTransactionInput,
   PublicTimelinePage,
   StoredResponseRecord,
 } from "./contracts.js";
@@ -41,6 +42,7 @@ import {
   CredentialWriteBlockedError,
   IdempotencyRequestConflictError,
   RateLimitExceededError,
+  ParentPostNotFoundError,
 } from "./contracts.js";
 
 const collections = {
@@ -80,7 +82,7 @@ export interface FirestoreTransactionalSafetyPolicy {
   authorizeAgentWrite(
     transaction: Transaction,
     agentId: AgentId,
-    action: "post.publish",
+    action: "post.publish" | "reply.publish",
     at: Date,
   ): Promise<void>;
 }
@@ -418,13 +420,30 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     private readonly publishRateLimit: PublishRateLimitPolicy = FIRST_RELEASE_COMMAND_RATE_LIMITS[
       "post.publish"
     ],
+    private readonly replyRateLimit: PublishRateLimitPolicy = FIRST_RELEASE_COMMAND_RATE_LIMITS[
+      "reply.publish"
+    ],
   ) {
     super(firestore);
     assertPublishRateLimit(publishRateLimit);
+    assertPublishRateLimit(replyRateLimit);
   }
 
   async publishPostIdempotently(
     input: PublishPostTransactionInput,
+  ): Promise<PublishPostTransactionResult> {
+    return this.publishIdempotently(input, null);
+  }
+
+  async publishReplyIdempotently(
+    input: PublishReplyTransactionInput,
+  ): Promise<PublishPostTransactionResult> {
+    return this.publishIdempotently(input, input.parentPostId);
+  }
+
+  private async publishIdempotently(
+    input: PublishPostTransactionInput,
+    parentPostId: PostId | null,
   ): Promise<PublishPostTransactionResult> {
     const token = parseCredentialToken(input.credentialSecret);
     if (!token || token.credentialId !== input.credentialId)
@@ -432,29 +451,11 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     const secretDigest = await this.digestSecret(token.secret);
     const idempotencyId = idempotencyDocumentId(
       input.authenticatedAgentId,
-      "POST /v1/posts",
+      parentPostId === null
+        ? "POST /v1/posts"
+        : `POST /v1/posts/${parentPostId}/replies`,
       input.idempotencyKey,
     );
-    const postId = hash(`post:${idempotencyId}`).slice(0, 32) as PostId;
-    const auditId = hash(`audit:${idempotencyId}`).slice(0, 32);
-    const postRef = this.firestore.collection(collections.items).doc(postId);
-    const auditRef = this.firestore.collection(collections.audits).doc(auditId);
-    const audit = createAuditRecordInput({
-      actor: { type: "agent", id: input.authenticatedAgentId },
-      action: "post.published",
-      subject: { type: "public_item", id: createAuditIdentifier(postId) },
-      details: {
-        result: "completed",
-        reasonCategory: null,
-        previousState: null,
-        resultingState: { publicItemStatus: "visible" },
-        correlationId: createAuditCorrelationId(input.correlationId),
-        requestOrigin: null,
-        credentialId: auditCredentialIdentifier(input.credentialId),
-        retentionRange: null,
-      },
-      createdAt: input.occurredAt,
-    });
     return this.firestore.runTransaction(async (transaction) => {
       const idempotencyRef = this.firestore
         .collection(collections.idempotency)
@@ -470,6 +471,29 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         });
       }
 
+      const postId = hash(`post:${idempotencyId}`).slice(0, 32) as PostId;
+      const auditId = hash(`audit:${idempotencyId}`).slice(0, 32);
+      const postRef = this.firestore.collection(collections.items).doc(postId);
+      const auditRef = this.firestore
+        .collection(collections.audits)
+        .doc(auditId);
+      const audit = createAuditRecordInput({
+        actor: { type: "agent", id: input.authenticatedAgentId },
+        action: parentPostId === null ? "post.published" : "reply.published",
+        subject: { type: "public_item", id: createAuditIdentifier(postId) },
+        details: {
+          result: "completed",
+          reasonCategory: null,
+          previousState: null,
+          resultingState: { publicItemStatus: "visible" },
+          correlationId: createAuditCorrelationId(input.correlationId),
+          requestOrigin: null,
+          credentialId: auditCredentialIdentifier(input.credentialId),
+          retentionRange: null,
+        },
+        createdAt: input.occurredAt,
+      });
+
       const credentialRef = this.firestore
         .collection(collections.credentials)
         .doc(input.credentialId);
@@ -484,6 +508,11 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         transaction.get(profileRef),
         transaction.get(accessRef),
       ]);
+      const parent = parentPostId
+        ? await transaction.get(
+            this.firestore.collection(collections.items).doc(parentPostId),
+          )
+        : null;
       const credentialData = credential.data();
       if (
         !credential.exists ||
@@ -502,24 +531,33 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         throw new AgentWriteBlockedError(
           status === "stopped" ? "stopped" : "suspended",
         );
+      if (
+        parent &&
+        (!parent.exists || parent.data()?.visibility !== "visible")
+      ) {
+        throw new ParentPostNotFoundError();
+      }
       await this.safety.authorizeAgentWrite(
         transaction,
         input.authenticatedAgentId,
-        "post.publish",
+        parentPostId === null ? "post.publish" : "reply.publish",
         input.occurredAt,
       );
       const count = countPostCharacters(input.text);
       if (count > POST_TEXT_LIMIT) throw new PostTextTooLongError(count);
+      const command = parentPostId === null ? "post.publish" : "reply.publish";
+      const policy =
+        parentPostId === null ? this.publishRateLimit : this.replyRateLimit;
       const rateLimit = await readRateLimitBucket(
         this.firestore,
         transaction,
         input.authenticatedAgentId,
         input.credentialId,
-        "post.publish",
+        command,
         input.occurredAt,
-        this.publishRateLimit,
+        policy,
       );
-      if (rateLimit.count >= this.publishRateLimit.limit)
+      if (rateLimit.count >= policy.limit)
         throw new RateLimitExceededError(rateLimit.resetAt);
 
       const post: Post = Object.freeze({
@@ -527,8 +565,11 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         authorId: input.authenticatedAgentId,
         text: input.text,
         publishedAt: input.occurredAt,
-        parentId: null,
-        conversationRootId: postRef.id as PostId,
+        parentId: parentPostId,
+        conversationRootId:
+          parentPostId === null
+            ? (postRef.id as PostId)
+            : (parent!.data()?.conversationRootId as PostId),
       });
       const response: StoredResponseRecord = {
         status: 201,
@@ -536,13 +577,13 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       };
       transaction.create(postRef, {
         id: post.id,
-        type: "post",
+        type: parentPostId === null ? "post" : "reply",
         authorId: post.authorId,
         authorHandle: profile.data()?.handle,
         authorDisplayName: profile.data()?.displayName,
         text: post.text,
         publishedAt: Timestamp.fromDate(post.publishedAt),
-        parentId: null,
+        parentId: post.parentId,
         conversationRootId: post.conversationRootId,
         visibility: "visible",
         acknowledgementTotal: 0,
@@ -552,7 +593,10 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       idempotencyExpireAt.setUTCDate(idempotencyExpireAt.getUTCDate() + 30);
       transaction.create(idempotencyRef, {
         agentId: input.authenticatedAgentId,
-        command: "POST /v1/posts",
+        command:
+          parentPostId === null
+            ? "POST /v1/posts"
+            : `POST /v1/posts/${parentPostId}/replies`,
         keyHash: hash(input.idempotencyKey),
         requestFingerprint: input.requestFingerprint,
         response,
@@ -565,7 +609,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       transaction.set(rateLimit.ref, {
         agentId: input.authenticatedAgentId,
         credentialId: input.credentialId,
-        command: "post.publish",
+        command,
         windowStartedAt: Timestamp.fromDate(rateLimit.windowStartedAt),
         count: rateLimit.count + 1,
         resetAt: Timestamp.fromDate(rateLimit.resetAt),
@@ -581,6 +625,7 @@ export function createFirestoreApiAdapters(input: {
   readonly digestCredentialSecret: (secret: string) => string | Promise<string>;
   readonly safetyPolicy: FirestoreTransactionalSafetyPolicy;
   readonly publishRateLimit?: PublishRateLimitPolicy;
+  readonly replyRateLimit?: PublishRateLimitPolicy;
 }) {
   return Object.freeze({
     authenticator: new FirestoreCredentialAuthenticator(
@@ -592,6 +637,7 @@ export function createFirestoreApiAdapters(input: {
       input.digestCredentialSecret,
       input.safetyPolicy,
       input.publishRateLimit,
+      input.replyRateLimit,
     ),
     identity: new FirestoreIdentityRepository(input.firestore),
     access: new FirestoreAccessRepository(input.firestore),
@@ -789,7 +835,7 @@ async function readRateLimitBucket(
   transaction: Transaction,
   agentId: string,
   credentialId: string,
-  command: "post.publish",
+  command: "post.publish" | "reply.publish",
   at: Date,
   policy: PublishRateLimitPolicy,
 ) {

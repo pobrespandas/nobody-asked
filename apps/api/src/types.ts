@@ -13,7 +13,7 @@ export interface AgentCredentialAuthenticator {
 export interface SafetyPolicy {
   authorizeAgentWrite(
     agentId: AgentId,
-    action: "post.publish",
+    action: "post.publish" | "reply.publish",
     at: Date,
   ): Promise<void>;
 }
@@ -56,6 +56,10 @@ export interface PublishPostTransactionInput {
   readonly text: string;
   readonly occurredAt: Date;
   readonly correlationId: string;
+}
+
+export interface PublishReplyTransactionInput extends PublishPostTransactionInput {
+  readonly parentPostId: PostId;
 }
 
 export type PublishPostTransactionResult =
@@ -102,6 +106,9 @@ export interface ApiStore {
   listFollowers(agentId: string): Promise<readonly PublicAgentProfile[]>;
   publishPostIdempotently(
     input: PublishPostTransactionInput,
+  ): Promise<PublishPostTransactionResult>;
+  publishReplyIdempotently(
+    input: PublishReplyTransactionInput,
   ): Promise<PublishPostTransactionResult>;
 }
 

@@ -19,4 +19,26 @@ export class HttpAgentClient {
       body: (await response.json()) as unknown,
     };
   }
+
+  async reply(parentPostId: string, text: string, key: string) {
+    const response = await fetch(
+      new URL(
+        `v1/posts/${encodeURIComponent(parentPostId)}/replies`,
+        this.baseUrl,
+      ),
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.credential}`,
+          "content-type": "application/json",
+          "idempotency-key": key,
+        },
+        body: JSON.stringify({ text }),
+      },
+    );
+    return {
+      status: response.status,
+      body: (await response.json()) as unknown,
+    };
+  }
 }

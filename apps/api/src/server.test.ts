@@ -1,4 +1,7 @@
 import {
+  countPostCharacters,
+  POST_TEXT_LIMIT,
+  PostTextTooLongError,
   publishPost,
   type AgentId,
   type PostId,
@@ -122,6 +125,44 @@ function harness() {
       });
       return { kind: "created", post, response };
     },
+    publishReplyIdempotently: async (input) => {
+      await safety();
+      const count = countPostCharacters(input.text);
+      if (count > POST_TEXT_LIMIT) throw new PostTextTooLongError(count);
+      const parent = posts.find(
+        (candidate) => candidate.id === input.parentPostId,
+      );
+      if (!parent) {
+        throw Object.assign(new Error("missing"), { code: "post_not_found" });
+      }
+      const reply = {
+        id: `post-${++sequence}` as PostId,
+        authorId: input.authenticatedAgentId,
+        text: input.text,
+        publishedAt: input.occurredAt,
+        parentId: parent.id,
+        conversationRootId: parent.conversationRootId,
+      };
+      posts.push({
+        ...reply,
+        authorHandle: "observer",
+        authorDisplayName: "Observer",
+        acknowledgementTotal: 0,
+      });
+      return {
+        kind: "created",
+        post: reply,
+        response: {
+          status: 201,
+          body: {
+            data: {
+              ...reply,
+              publishedAt: reply.publishedAt.toISOString(),
+            },
+          },
+        },
+      };
+    },
   };
   const dependencies: ApiDependencies = {
     authenticator: {
@@ -178,6 +219,21 @@ function post(text: string, key = "request-1", extra: object = {}) {
     },
     body: JSON.stringify({ text, ...extra }),
   });
+}
+
+function reply(parentId: string, text: string, key = "reply-1") {
+  return new Request(
+    `https://network.test/v1/posts/${encodeURIComponent(parentId)}/replies`,
+    {
+      method: "POST",
+      headers: {
+        authorization: "Bearer valid-secret",
+        "idempotency-key": key,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ text }),
+    },
+  );
 }
 
 describe("POST /v1/posts", () => {
@@ -301,6 +357,43 @@ describe("POST /v1/posts", () => {
       }),
     );
     expect(serialized).not.toMatch(/23505|credential|constraint|private/i);
+  });
+});
+
+describe("POST /v1/posts/{parentPostId}/replies", () => {
+  it("preserves the direct parent and conversation root", async () => {
+    const { api } = harness();
+    const root = await api(post("Root.", "root"));
+    const rootId = String(
+      ((await root.json()) as { data: { id: string } }).data.id,
+    );
+    const first = await api(reply(rootId, "First.", "first"));
+    const firstBody = (await first.json()) as { data: { id: string } };
+    const nested = await api(reply(firstBody.data.id, "Nested.", "nested"));
+
+    expect(first.status).toBe(201);
+    await expect(nested.json()).resolves.toMatchObject({
+      data: { parentId: firstBody.data.id, conversationRootId: rootId },
+    });
+  });
+
+  it("returns stable errors for a missing parent and long text", async () => {
+    const { api } = harness();
+    const missing = await api(reply("missing", "No parent."));
+    const root = await api(post("Root.", "root"));
+    const rootId = String(
+      ((await root.json()) as { data: { id: string } }).data.id,
+    );
+    const tooLong = await api(reply(rootId, "x".repeat(129), "long"));
+
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toMatchObject({
+      error: { code: "post_not_found" },
+    });
+    expect(tooLong.status).toBe(422);
+    await expect(tooLong.json()).resolves.toMatchObject({
+      error: { code: "post_text_too_long" },
+    });
   });
 });
 

@@ -42,6 +42,96 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     beforeEach(async () => resetLocalFirestore());
     afterAll(async () => deleteApp(local.app));
 
+    it("publishes nested replies with one stable conversation root", async () => {
+      await adapters.identity.createAgentProfile(
+        profile("agent-reply", "replyer"),
+      );
+      await adapters.access.issueCredential({
+        id: "credential-reply",
+        agentId: "agent-reply",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+      });
+      const root = await adapters.store.publishPostIdempotently(
+        publishInput("agent-reply", "credential-reply", "root"),
+      );
+      if (root.kind !== "created") throw new Error("The root was not created.");
+      const firstInput = {
+        ...publishInput("agent-reply", "credential-reply", "first"),
+        parentPostId: root.post.id,
+        text: "First reply.",
+      };
+      const [first, replay] = await Promise.all([
+        adapters.store.publishReplyIdempotently(firstInput),
+        adapters.store.publishReplyIdempotently(firstInput),
+      ]);
+      expect([first.kind, replay.kind].sort()).toEqual(["created", "replay"]);
+      const created = first.kind === "created" ? first : replay;
+      if (created.kind !== "created")
+        throw new Error("The reply was not created.");
+      const nested = await adapters.store.publishReplyIdempotently({
+        ...publishInput("agent-reply", "credential-reply", "nested"),
+        parentPostId: created.post.id,
+        text: "Nested reply.",
+      });
+      if (nested.kind !== "created")
+        throw new Error("The nested reply was not created.");
+
+      expect(created.post).toMatchObject({
+        parentId: root.post.id,
+        conversationRootId: root.post.id,
+      });
+      expect(nested.post).toMatchObject({
+        parentId: created.post.id,
+        conversationRootId: root.post.id,
+      });
+      await expect(
+        adapters.store.publishReplyIdempotently({
+          ...firstInput,
+          requestFingerprint: "different-fingerprint",
+          text: "Different input.",
+        }),
+      ).rejects.toMatchObject({ code: "idempotency_conflict" });
+      await expect(
+        adapters.store.publishReplyIdempotently({
+          ...publishInput("agent-reply", "credential-reply", "missing"),
+          parentPostId: "missing" as never,
+        }),
+      ).rejects.toMatchObject({ code: "post_not_found" });
+      await local.firestore.collection("safetyBlocks").doc("agent-reply").set({
+        active: true,
+      });
+      await expect(
+        adapters.store.publishReplyIdempotently({
+          ...publishInput("agent-reply", "credential-reply", "blocked"),
+          parentPostId: root.post.id,
+        }),
+      ).rejects.toThrow("safety_blocked");
+      await local.firestore
+        .collection("safetyBlocks")
+        .doc("agent-reply")
+        .delete();
+      await adapters.access.revokeCredential(
+        "agent-reply",
+        "credential-reply",
+        new Date(at.getTime() + 1),
+      );
+      await expect(
+        adapters.store.publishReplyIdempotently({
+          ...publishInput("agent-reply", "credential-reply", "revoked"),
+          parentPostId: root.post.id,
+          occurredAt: new Date(at.getTime() + 2),
+        }),
+      ).rejects.toMatchObject({ code: "invalid_credential" });
+      expect((await local.firestore.collection("publicItems").get()).size).toBe(
+        3,
+      );
+      expect(
+        (await local.firestore.collection("idempotencyRecords").get()).size,
+      ).toBe(3);
+    });
+
     it("enforces reservations and publishes idempotently under contention", async () => {
       const sameHandle = await Promise.allSettled([
         adapters.identity.createAgentProfile(profile("agent-a", "observer")),

@@ -64,9 +64,8 @@ describe("reference agent client", () => {
 
     expect(requests).toEqual([
       command("POST", "/v1/posts", "publish-1", { text: "A post" }),
-      command("POST", "/v1/posts", "reply-1", {
+      command("POST", "/v1/posts/post%2Froot/replies", "reply-1", {
         text: "A reply",
-        parentId: "post/root",
       }),
     ]);
   });

@@ -46,6 +46,10 @@ async function handleApiRequest(
     if (request.method === "GET" && postMatch?.[1]) {
       return await readPost(dependencies, postMatch[1]);
     }
+    const replyMatch = url.pathname.match(/^\/v1\/posts\/([^/]+)\/replies$/);
+    if (request.method === "POST" && replyMatch?.[1]) {
+      return await createReply(dependencies, request, replyMatch[1]);
+    }
     const conversationMatch = url.pathname.match(
       /^\/v1\/conversations\/([^/]+)$/,
     );
@@ -93,6 +97,12 @@ function operationalRoute(request: Request): OperationalRoute {
   if (pathname === "/v1/timeline") return "timeline.read";
   if (pathname === "/v1/posts" && request.method === "POST") {
     return "post.publish";
+  }
+  if (
+    request.method === "POST" &&
+    /^\/v1\/posts\/[^/]+\/replies$/.test(pathname)
+  ) {
+    return "reply.publish";
   }
   if (/^\/v1\/posts\/[^/]+$/.test(pathname)) return "post.read";
   if (/^\/v1\/conversations\/[^/]+$/.test(pathname)) {
@@ -223,6 +233,40 @@ async function createPost(dependencies: ApiDependencies, request: Request) {
     requestFingerprint: fingerprint,
     text: input.text,
     occurredAt: now,
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return jsonResponse(result.response.status, result.response.body);
+}
+
+async function createReply(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedParentPostId: string,
+) {
+  const parentPostId = decodeSegment(encodedParentPostId, "post");
+  if (parentPostId instanceof Response) return parentPostId;
+  const authentication = await authenticate(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const { authenticated, secret } = authentication;
+  const key = request.headers.get("idempotency-key")?.trim();
+  if (!key) {
+    return errorResponse(
+      400,
+      "idempotency_key_required",
+      "The Idempotency-Key header is required.",
+    );
+  }
+  const input = await readPostInput(request);
+  if (input instanceof Response) return input;
+  const result = await dependencies.store.publishReplyIdempotently({
+    authenticatedAgentId: authenticated.agentId,
+    credentialId: authenticated.credentialId,
+    credentialSecret: secret,
+    idempotencyKey: key,
+    requestFingerprint: JSON.stringify(input),
+    parentPostId: parentPostId as import("@nobody-asked/publishing").PostId,
+    text: input.text,
+    occurredAt: dependencies.now(),
     correlationId: dependencies.nextCorrelationId(),
   });
   return jsonResponse(result.response.status, result.response.body);
@@ -429,6 +473,7 @@ const allowedDomainErrorStatus = {
   rate_limit_exceeded: 429,
   idempotency_conflict: 409,
   invalid_credential: 401,
+  post_not_found: 404,
 } as const;
 
 const allowedDomainErrorMessage: Record<
@@ -441,6 +486,7 @@ const allowedDomainErrorMessage: Record<
   rate_limit_exceeded: "The action limit was reached.",
   idempotency_conflict: "The idempotency key was used with different input.",
   invalid_credential: "The agent credential is invalid or inactive.",
+  post_not_found: "The post was not found.",
 };
 
 function getAllowedDomainError(error: unknown): {

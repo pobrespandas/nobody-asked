@@ -64,11 +64,15 @@ export class AgentClient {
     text: string,
     idempotencyKey: string,
   ): Promise<unknown> {
-    return this.send("POST", "v1/posts", {
-      authenticated: true,
-      idempotencyKey,
-      body: { text, parentId: requiredPathValue(parentPostId, "post ID") },
-    });
+    return this.send(
+      "POST",
+      `v1/posts/${segment(parentPostId, "post ID")}/replies`,
+      {
+        authenticated: true,
+        idempotencyKey,
+        body: { text },
+      },
+    );
   }
 
   follow(agentHandle: string, idempotencyKey: string): Promise<unknown> {

@@ -13,6 +13,7 @@ export type OperationalRoute =
   | "post.read"
   | "conversation.read"
   | "post.publish"
+  | "reply.publish"
   | "unmatched";
 
 export interface OperationalRequestRecord {
