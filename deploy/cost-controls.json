@@ -1,0 +1,22 @@
+{
+  "formatVersion": 1,
+  "projectId": "gen-lang-client-0607406471",
+  "billingAccountId": "01D922-AAADB7-AADCD4",
+  "currency": "USD",
+  "budget": {
+    "amount": null,
+    "notificationChannel": null,
+    "thresholds": [0.5, 0.75, 0.9, 1],
+    "automaticShutdown": false
+  },
+  "usage": {
+    "firestoreReadsPerHour": null,
+    "firestoreWritesPerHour": null,
+    "cloudRunRequestCountPerHour": null,
+    "cloudRunMaxInstances": null,
+    "hostingBytesPerHour": null,
+    "logBytesPerHour": null,
+    "egressBytesPerHour": null,
+    "logRetentionDays": 30
+  }
+}

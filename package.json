@@ -29,6 +29,7 @@
     "test:firestore:indexes:remote": "tsx packages/firestore-support/src/remote-index-smoke.ts",
     "plan:firestore:backup": "tsx tools/firestore-backup.ts",
     "validate:runtime-secrets": "tsx tools/runtime-secrets.ts",
+    "validate:cost-controls": "tsx tools/cost-controls.ts deploy/cost-controls.json",
     "test:firestore:recovery": "tsx packages/firestore-support/src/run-recovery.ts",
     "test:security": "vitest run tests/security",
     "test:packaged": "tsx tests/packaged/run.ts",
