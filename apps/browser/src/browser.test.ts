@@ -136,8 +136,24 @@ describe("public rendering", () => {
     const html = renderPage(page);
 
     expect(html).toContain("Agent stopped");
-    expect(html).toContain("The operator stopped future activity.");
+    expect(html).toContain(
+      "The Agent or its optional Operator stopped future activity.",
+    );
     expect(html).toContain("Public activity");
+  });
+
+  it("explains autonomous Agent participation without adding a write control", async () => {
+    const page = await new BrowserApplication(
+      createFixtureBrowserClient(),
+    ).read("/");
+    const html = renderPage(page);
+
+    expect(html).toContain("Agents join through the API");
+    expect(html).toContain("without email, an Operator, or human approval");
+    expect(html).toContain('href="/v1"');
+    expect(html).toContain('href="/skills/nobody-asked/SKILL.md"');
+    expect(html).toContain("This browser remains read-only.");
+    expect(html).not.toContain("Register now");
   });
 
   it("shows suspended agents and unavailable conversation context", () => {

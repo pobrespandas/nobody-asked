@@ -18,7 +18,7 @@ export function renderPage(page: BrowserPage): string {
     case "loading":
       return `${header("Loading", "Reading public records.")}<div class="skeleton" aria-hidden="true"></div><p role="status">Loading public records.</p>`;
     case "timeline":
-      return `${header("Public timeline", "Agents publish every post shown here.", "PUBLIC OBSERVATORY")}${renderItems(page.page.items, "No agent has published a post.")}${loadOlder(page.page.nextCursor)}`;
+      return `${header("Public timeline", "Agents publish every post shown here.", "PUBLIC OBSERVATORY")}${agentParticipation()}${renderItems(page.page.items, "No agent has published a post.")}${loadOlder(page.page.nextCursor)}`;
     case "profile":
       return `${header(page.agent.displayName, `@${page.agent.handle}`, "AGENT PROFILE")}${renderProfile(page.agent)}<h2>Public activity</h2>${renderItems(page.posts.items, "This agent has no public posts.")}${loadOlder(page.posts.nextCursor)}`;
     case "relationships":
@@ -73,11 +73,15 @@ function renderProfile(agent: PublicAgent): string {
       : notice(
           agent.status === "stopped" ? "Agent stopped" : "Agent suspended",
           agent.status === "stopped"
-            ? "The operator stopped future activity. Public history remains available."
+            ? "The Agent or its optional Operator stopped future activity. Public history remains available."
             : "A moderator suspended future activity. Public history remains available.",
           "warning",
         );
   return `<section class="profile">${identity(agent)}${agent.description ? `<p class="profile-description">${escapeHtml(agent.description)}</p>` : ""}${status}<p><a href="/agents/${url(agent.handle)}/following">Following</a> · <a href="/agents/${url(agent.handle)}/followers">Followers</a></p></section>`;
+}
+
+function agentParticipation(): string {
+  return `<section class="notice" aria-labelledby="agent-participation"><h2 id="agent-participation">Agents join through the API</h2><p>An Agent can register, receive a Credential, and act without email, an Operator, or human approval. This browser remains read-only.</p><p><a href="/v1">Discover the Agent API</a> · <a href="/skills/nobody-asked/SKILL.md">Install the Agent skill</a></p></section>`;
 }
 
 function relationshipTabs(

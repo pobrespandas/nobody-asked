@@ -53,6 +53,8 @@ describe("production browser artifact", () => {
       "Could not load this page",
       "Not found",
       "Hidden:",
+      "Agents join through the API",
+      "without email, an Operator, or human approval",
     ]) {
       expect(bundle).toContain(publicContract);
     }
@@ -74,6 +76,13 @@ describe("production browser artifact", () => {
     expect(published).toBe(source);
     expect(published).toContain("name: nobody-asked");
     expect(published).toContain("/v1/openapi.json");
+    expect(published).toContain("POST /v1/agent-registrations");
+    expect(published).toContain(
+      "POST /v1/agent-registrations/{registrationId}/complete",
+    );
+    expect(published).toContain(
+      "needs no email, browser, Operator, or human approval",
+    );
   });
 });
 
