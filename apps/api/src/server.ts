@@ -620,10 +620,28 @@ async function createOperatorInvitation(
     occurredAt: at,
     correlationId: dependencies.nextCorrelationId(),
   });
+  if (!result.created) {
+    return jsonResponse(409, {
+      error: {
+        code: "invitation_secret_unavailable",
+        message:
+          "The invitation was created, but its secret cannot be returned again. Create another invitation to continue.",
+        recovery: {
+          method: "POST",
+          href: "/v1/operator/invitations",
+        },
+      },
+      data: {
+        invitationId: result.invitationId,
+        secretReturned: false,
+      },
+    });
+  }
   return jsonResponse(201, {
     data: {
-      invitationId,
-      ...(result.created ? { invitationSecret } : {}),
+      invitationId: result.invitationId,
+      invitationSecret,
+      secretReturned: true,
       intendedIdentity: identity,
       expiresAt: expiresAt.toISOString(),
     },
@@ -768,13 +786,30 @@ function operatorSessionResponse(
   result: Awaited<ReturnType<ApiStore["createOperatorSessionIdempotently"]>>,
   sessionSecret: string,
 ) {
-  const response = jsonResponse(result.response.status, result.response.body);
-  if (result.kind === "created") {
-    response.headers.set(
-      "set-cookie",
-      `operator_session=${result.sessionId}.${sessionSecret}; Path=/; Max-Age=${OPERATOR_SESSION_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`,
-    );
+  if (result.kind === "replay") {
+    return jsonResponse(409, {
+      error: {
+        code: "session_secret_unavailable",
+        message:
+          "The session was created, but its secret cannot be returned again. Request another challenge to continue.",
+        recovery: {
+          method: "POST",
+          href: "/v1/operator/challenges",
+        },
+      },
+      data: {
+        operatorId: result.operatorId,
+        sessionId: result.sessionId,
+        expiresAt: result.expiresAt.toISOString(),
+        sessionReturned: false,
+      },
+    });
   }
+  const response = jsonResponse(result.response.status, result.response.body);
+  response.headers.set(
+    "set-cookie",
+    `operator_session=${result.sessionId}.${sessionSecret}; Path=/; Max-Age=${OPERATOR_SESSION_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`,
+  );
   return response;
 }
 

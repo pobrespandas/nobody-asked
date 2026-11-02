@@ -1070,6 +1070,88 @@ describe("hosted operator controls", () => {
     expect(JSON.stringify(await response.json())).not.toContain("secret");
   });
 
+  it("gives explicit recovery when an invitation secret cannot be replayed", async () => {
+    const { api, dependencies } = harness();
+    vi.mocked(dependencies.store.createOperatorInvitation).mockResolvedValue({
+      invitationId: "invitation-existing",
+      created: false,
+    });
+    const response = await api(
+      new Request("https://network.test/v1/operator/invitations", {
+        method: "POST",
+        headers: {
+          cookie: "operator_session=session-1.secret",
+          origin: "https://operator.test",
+          "content-type": "application/json",
+          "idempotency-key": "invitation-replay",
+        },
+        body: JSON.stringify({ identity: "next@example.test" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invitation_secret_unavailable",
+        recovery: { method: "POST", href: "/v1/operator/invitations" },
+      },
+      data: {
+        invitationId: "invitation-existing",
+        secretReturned: false,
+      },
+    });
+  });
+
+  it("gives explicit recovery when a session secret cannot be replayed", async () => {
+    const { api, dependencies } = harness();
+    vi.mocked(
+      dependencies.store.acceptOperatorInvitationIdempotently,
+    ).mockResolvedValue({
+      kind: "replay",
+      operatorId: "operator-2",
+      sessionId: "session-existing",
+      expiresAt: new Date(at.getTime() + 12 * 60 * 60 * 1_000),
+      response: {
+        status: 201,
+        body: {
+          data: {
+            operatorId: "operator-2",
+            sessionId: "session-existing",
+          },
+        },
+      },
+    });
+    const response = await api(
+      new Request(
+        "https://network.test/v1/operator/invitations/invitation-1/accept",
+        {
+          method: "POST",
+          headers: {
+            origin: "https://operator.test",
+            "content-type": "application/json",
+            "idempotency-key": "enroll-replay",
+          },
+          body: JSON.stringify({
+            invitationSecret: "invitation-secret-long",
+            challengeId: "challenge-1",
+            challengeSecret: "challenge-secret-long",
+          }),
+        },
+      ),
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "session_secret_unavailable",
+        recovery: { method: "POST", href: "/v1/operator/challenges" },
+      },
+      data: { sessionId: "session-existing", sessionReturned: false },
+    });
+  });
+
   it("revokes the current session and clears its cookie", async () => {
     const { api } = harness();
     const response = await api(

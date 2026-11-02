@@ -125,7 +125,14 @@
             "$ref": "#/components/responses/OperatorControlDenied"
           },
           "409": {
-            "$ref": "#/components/responses/IdempotencyConflict"
+            "description": "The idempotency input conflicts, or the invitation exists and its one-time secret is no longer available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -212,7 +219,14 @@
             "$ref": "#/components/responses/OperatorEnrollmentRejected"
           },
           "409": {
-            "$ref": "#/components/responses/IdempotencyConflict"
+            "description": "The idempotency input conflicts, or the session exists and its one-time cookie secret is no longer available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -266,7 +280,14 @@
             "$ref": "#/components/responses/OperatorAuthenticationError"
           },
           "409": {
-            "$ref": "#/components/responses/IdempotencyConflict"
+            "description": "The idempotency input conflicts, or the session exists and its one-time cookie secret is no longer available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -2618,6 +2639,8 @@
               "invalid_agent_status_transition",
               "operator_enrollment_rejected",
               "operator_authentication_rejected",
+              "invitation_secret_unavailable",
+              "session_secret_unavailable",
               "handle_already_taken",
               "credential_secret_unavailable",
               "invalid_report",
