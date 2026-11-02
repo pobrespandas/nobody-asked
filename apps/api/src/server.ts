@@ -135,6 +135,16 @@ async function handleApiRequest(
     if (request.method === "GET" && url.pathname === "/v1/feed") {
       return await readPersonalFeed(dependencies, request, url);
     }
+    const operatorExportMatch = url.pathname.match(
+      /^\/v1\/operator\/agents\/([^/]+)\/export$/,
+    );
+    if (request.method === "GET" && operatorExportMatch?.[1]) {
+      return await readOperatorPortableExport(
+        dependencies,
+        request,
+        operatorExportMatch[1],
+      );
+    }
     const operatorCredentialMatch = url.pathname.match(
       /^\/v1\/operator\/agents\/([^/]+)\/credentials(?:\/([^/]+))?$/,
     );
@@ -275,6 +285,9 @@ function operationalRoute(request: Request): OperationalRoute {
   }
   if (/^\/v1\/operator\/agents\/[^/]+\/restore$/.test(pathname)) {
     return "operator.agent.restore";
+  }
+  if (/^\/v1\/operator\/agents\/[^/]+\/export$/.test(pathname)) {
+    return "operator.agent.export";
   }
   if (pathname === "/v1/posts" && request.method === "POST") {
     return "post.publish";
@@ -568,6 +581,23 @@ async function changeOperatorAgentControl(
     correlationId: dependencies.nextCorrelationId(),
   });
   return jsonResponse(200, { data: { agentId, ...result } });
+}
+
+async function readOperatorPortableExport(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedAgentId: string,
+) {
+  const agentId = decodeIdentifier(encodedAgentId, "agent ID");
+  if (agentId instanceof Response) return agentId;
+  const authentication = await authenticateOperator(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const data = await dependencies.store.exportPortableAgent({
+    operatorId: authentication.operatorId,
+    agentId,
+    exportedAt: dependencies.now(),
+  });
+  return jsonResponse(200, { data });
 }
 
 async function authenticateOperator(

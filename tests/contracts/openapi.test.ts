@@ -31,6 +31,7 @@ const expectedOperations = new Map([
   ],
   ["POST /v1/operator/agents/{agentId}/stop", "stopControlledAgent"],
   ["POST /v1/operator/agents/{agentId}/restore", "restoreControlledAgent"],
+  ["GET /v1/operator/agents/{agentId}/export", "exportControlledAgent"],
 ]);
 
 describe("versioned OpenAPI contract", () => {

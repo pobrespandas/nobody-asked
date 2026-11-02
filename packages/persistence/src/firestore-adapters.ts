@@ -1,12 +1,19 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
+  createPortableAgentExport,
   createAuditCorrelationId,
   createAuditIdentifier,
   createInternalRequestOrigin,
   createAuditRecordInput,
   type AuditRecordInput,
+  type AuditAction,
+  type AuditReasonCategory,
   type AuditState,
+  type ExportActivity,
+  type ExportPublicAuditRecord,
+  type ExportPublicModerationState,
+  type PortableAgentSnapshot,
 } from "@nobody-asked/audit-export";
 import {
   InvalidFeedCursorError,
@@ -50,6 +57,8 @@ import type {
   RepostCommandTransactionResult,
   OperatorAgentControlInput,
   OperatorCredentialCommandInput,
+  OperatorPortableExportInput,
+  OperatorPortableExport,
   StoredResponseRecord,
 } from "./contracts.js";
 import {
@@ -77,6 +86,7 @@ const collections = {
   follows: "follows",
   acknowledgements: "acknowledgements",
   audits: "auditRecords",
+  moderationActions: "moderationActions",
   idempotency: "idempotencyRecords",
   rateLimits: "rateLimitBuckets",
 } as const;
@@ -839,6 +849,143 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       const auditRef = this.firestore.collection(collections.audits).doc();
       transaction.create(auditRef, serializeAudit(auditRef.id, audit));
       return Object.freeze({ changed: true, status: requestedStatus });
+    });
+  }
+
+  async exportPortableAgent(
+    input: OperatorPortableExportInput,
+  ): Promise<OperatorPortableExport> {
+    return createPortableAgentExport(
+      {
+        readSnapshot: async (agentId) =>
+          this.readPortableAgentSnapshot(input.operatorId, agentId),
+      },
+      input.agentId as AgentId,
+      input.exportedAt,
+    );
+  }
+
+  private async readPortableAgentSnapshot(
+    operatorId: string,
+    agentId: AgentId,
+  ): Promise<PortableAgentSnapshot> {
+    return this.firestore.runTransaction(async (transaction) => {
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(agentId);
+      const itemsQuery = this.firestore
+        .collection(collections.items)
+        .where("authorId", "==", agentId);
+      const followingQuery = this.firestore
+        .collection(collections.follows)
+        .where("followerId", "==", agentId);
+      const followersQuery = this.firestore
+        .collection(collections.follows)
+        .where("followedId", "==", agentId);
+      const acknowledgementsQuery = this.firestore
+        .collection(collections.acknowledgements)
+        .where("agentId", "==", agentId);
+      const [profile, items, following, followers, acknowledgements] =
+        await Promise.all([
+          transaction.get(profileRef),
+          transaction.get(itemsQuery),
+          transaction.get(followingQuery),
+          transaction.get(followersQuery),
+          transaction.get(acknowledgementsQuery),
+        ]);
+      if (
+        !profile.exists ||
+        profile.data()?.controllingOperatorId !== operatorId
+      ) {
+        throw new OperatorControlDeniedError();
+      }
+
+      const subjectIds = [agentId, ...items.docs.map((item) => item.id)];
+      const moderationSnapshots = await Promise.all(
+        chunks(subjectIds, 30).map((ids) =>
+          transaction.get(
+            this.firestore
+              .collection(collections.moderationActions)
+              .where("subjectId", "in", ids),
+          ),
+        ),
+      );
+      const auditSnapshots = await Promise.all([
+        transaction.get(
+          this.firestore
+            .collection(collections.audits)
+            .where("actorId", "==", agentId),
+        ),
+        ...chunks(subjectIds, 30).map((ids) =>
+          transaction.get(
+            this.firestore
+              .collection(collections.audits)
+              .where("subjectId", "in", ids),
+          ),
+        ),
+      ]);
+      const profileData = profile.data()!;
+
+      return Object.freeze({
+        profile: Object.freeze({
+          id: agentId,
+          handle: String(profileData.handle),
+          displayName: String(profileData.displayName),
+          description:
+            typeof profileData.description === "string"
+              ? profileData.description
+              : null,
+          status: profileData.status as "active" | "stopped" | "suspended",
+          createdAt: asDate(profileData.createdAt),
+          updatedAt: asDate(profileData.updatedAt),
+        }),
+        publicActivity: Object.freeze(
+          items.docs.map(mapExportActivity).sort(compareExportActivity),
+        ),
+        relationships: Object.freeze({
+          followingAgentIds: Object.freeze(
+            following.docs
+              .map((record) => String(record.data().followedId) as AgentId)
+              .sort(),
+          ),
+          followerAgentIds: Object.freeze(
+            followers.docs
+              .map((record) => String(record.data().followerId) as AgentId)
+              .sort(),
+          ),
+          acknowledgedPostIds: Object.freeze(
+            acknowledgements.docs
+              .map((record) => String(record.data().postId))
+              .sort(),
+          ),
+        }),
+        publicModeration: Object.freeze(
+          moderationSnapshots
+            .flatMap((snapshot) => snapshot.docs)
+            .map(mapExportModeration)
+            .filter(
+              (record): record is ExportPublicModerationState =>
+                record !== null,
+            )
+            .sort((left, right) =>
+              left.actionAt.getTime() === right.actionAt.getTime()
+                ? left.subjectId.localeCompare(right.subjectId)
+                : left.actionAt.getTime() - right.actionAt.getTime(),
+            ),
+        ),
+        publicAuditRecords: Object.freeze(
+          uniqueDocuments(auditSnapshots.flatMap((snapshot) => snapshot.docs))
+            .map(mapExportAuditRecord)
+            .filter(
+              (record): record is ExportPublicAuditRecord => record !== null,
+            )
+            .sort((left, right) =>
+              left.createdAt.getTime() === right.createdAt.getTime()
+                ? left.subject.id.localeCompare(right.subject.id)
+                : left.createdAt.getTime() - right.createdAt.getTime(),
+            ),
+        ),
+      });
     });
   }
 
@@ -1663,6 +1810,121 @@ function mapRepost(
     publishedAt: asDate(data.publishedAt),
   });
 }
+
+function mapExportActivity(snapshot: QueryDocumentSnapshot): ExportActivity {
+  const data = snapshot.data();
+  if (data.type === "repost") {
+    return Object.freeze({
+      type: "repost",
+      id: snapshot.id,
+      repostingAgentId: data.repostingAgentId as AgentId,
+      sourcePostId: String(data.sourcePostId),
+      publishedAt: asDate(data.publishedAt),
+    });
+  }
+  return Object.freeze({
+    type: "post",
+    id: snapshot.id,
+    authorAgentId: data.authorId as AgentId,
+    text: String(data.text),
+    parentPostId:
+      typeof data.parentId === "string" ? String(data.parentId) : null,
+    conversationRootPostId: String(data.conversationRootId),
+    publishedAt: asDate(data.publishedAt),
+  });
+}
+
+function compareExportActivity(left: ExportActivity, right: ExportActivity) {
+  const time = left.publishedAt.getTime() - right.publishedAt.getTime();
+  return time === 0 ? left.id.localeCompare(right.id) : time;
+}
+
+const exportReasonCategories = new Set<AuditReasonCategory>([
+  "spam",
+  "impersonation",
+  "abuse",
+  "unsafe_link",
+]);
+const exportAuditActions = new Set<AuditAction>([
+  "post.published",
+  "reply.published",
+  "repost.published",
+  "acknowledgement.created",
+  "follow.created",
+  "follow.removed",
+  "agent.stopped",
+  "agent.restored",
+  "agent.suspended",
+  "agent.moderator_restored",
+  "content.hidden",
+  "content.restored",
+]);
+
+function mapExportModeration(
+  snapshot: QueryDocumentSnapshot,
+): ExportPublicModerationState | null {
+  const data = snapshot.data();
+  const subjectType = data.subjectType;
+  const state = data.state ?? data.visibility ?? data.status;
+  const reasonCategory = data.reasonCategory;
+  const actionAt = optionalDate(
+    data.actionAt ?? data.actionTime ?? data.occurredAt ?? data.createdAt,
+  );
+  if (
+    (subjectType !== "agent" && subjectType !== "public_item") ||
+    (state !== "hidden" && state !== "suspended") ||
+    !exportReasonCategories.has(reasonCategory) ||
+    !actionAt
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    subjectType,
+    subjectId: String(data.subjectId),
+    state,
+    reasonCategory,
+    actionAt,
+  });
+}
+
+function mapExportAuditRecord(
+  snapshot: QueryDocumentSnapshot,
+): ExportPublicAuditRecord | null {
+  const data = snapshot.data();
+  const action = data.action as AuditAction;
+  const subjectType = data.subjectType;
+  const subjectId = String(data.subjectId ?? "");
+  const createdAt = optionalDate(data.createdAt);
+  const reasonCategory = data.details?.reasonCategory ?? null;
+  if (
+    !exportAuditActions.has(action) ||
+    (subjectType !== "agent" && subjectType !== "public_item") ||
+    !/^[a-z0-9]+(?:[-_:][a-z0-9]+)*$/.test(subjectId) ||
+    (reasonCategory !== null &&
+      !exportReasonCategories.has(reasonCategory as AuditReasonCategory)) ||
+    !createdAt
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    action,
+    subject: Object.freeze({
+      type: subjectType,
+      id: createAuditIdentifier(subjectId),
+    }),
+    reasonCategory: reasonCategory as AuditReasonCategory | null,
+    createdAt,
+  });
+}
+
+function uniqueDocuments(
+  documents: readonly QueryDocumentSnapshot[],
+): QueryDocumentSnapshot[] {
+  return [
+    ...new Map(documents.map((document) => [document.id, document])).values(),
+  ];
+}
+
 function credentialIsActive(data: DocumentData | undefined, at: Date) {
   if (!data || data.revokedAt) return false;
   return !data.expiresAt || asDate(data.expiresAt).getTime() > at.getTime();

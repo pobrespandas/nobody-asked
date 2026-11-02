@@ -1,4 +1,5 @@
 import type { AgentId, Post, Repost } from "@nobody-asked/publishing";
+import type { PortableAgentExport } from "@nobody-asked/audit-export";
 
 export interface AuthenticatedAgentRecord {
   readonly agentId: AgentId;
@@ -28,6 +29,12 @@ export interface OperatorAgentControlInput {
   readonly operation: "stop" | "restore";
   readonly occurredAt: Date;
   readonly correlationId: string;
+}
+
+export interface OperatorPortableExportInput {
+  readonly operatorId: string;
+  readonly agentId: string;
+  readonly exportedAt: Date;
 }
 
 export interface PublicAgentProfileRecord {
@@ -180,6 +187,8 @@ export class AgentNotFoundError extends Error {
 export class OperatorControlDeniedError extends Error {
   readonly code = "operator_control_denied";
 }
+
+export type OperatorPortableExport = PortableAgentExport;
 
 export class ActiveCredentialExistsError extends Error {
   readonly code = "active_credential_exists";

@@ -26,6 +26,7 @@ export type OperationalRoute =
   | "operator.credential.revoke"
   | "operator.agent.stop"
   | "operator.agent.restore"
+  | "operator.agent.export"
   | "unmatched";
 
 export interface OperationalRequestRecord {

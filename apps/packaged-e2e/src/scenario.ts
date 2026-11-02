@@ -306,6 +306,34 @@ try {
     cookie: "operator_session=session-packaged.operator-session-secret",
     origin: "http://127.0.0.1",
   };
+  const portableExport = await operatorCommand(
+    started.baseUrl,
+    "/v1/operator/agents/agent-2/export",
+    "GET",
+    operatorHeaders,
+  );
+  assert(portableExport.status === 200, "The packaged Agent export failed.");
+  assertResponseMatchesContract(
+    contract,
+    "/v1/operator/agents/{agentId}/export",
+    "get",
+    portableExport,
+  );
+  const portableData = asRecord(asRecord(portableExport.body).data);
+  assert(
+    portableData.format === "nobody-asked.agent-export",
+    "The packaged Agent export used another format.",
+  );
+  assert(
+    JSON.stringify(portableExport.body).includes("A personal feed fixture."),
+    "The packaged Agent export omitted public activity.",
+  );
+  assert(
+    !/credential|operator@example|internalNote|requestOrigin/i.test(
+      JSON.stringify(portableExport.body),
+    ),
+    "The packaged Agent export exposed private data.",
+  );
   const issued = await operatorCommand(
     started.baseUrl,
     "/v1/operator/agents/agent-2/credentials",
@@ -485,7 +513,7 @@ function digest(value: string): string {
 async function operatorCommand(
   baseUrl: URL,
   path: string,
-  method: "POST" | "DELETE",
+  method: "GET" | "POST" | "DELETE",
   headers: Record<string, string>,
 ) {
   const response = await fetch(new URL(path.slice(1), baseUrl), {

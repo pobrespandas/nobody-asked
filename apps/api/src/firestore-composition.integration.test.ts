@@ -413,6 +413,62 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         (await api(operatorRequest("/v1/operator/agents/agent-1/stop"))).status,
       ).toBe(401);
     }, 30_000);
+
+    it("exports one controlled agent without private records", async () => {
+      const published = await api(publishRequest());
+      expect(published.status).toBe(201);
+      await local.firestore
+        .collection("moderationActions")
+        .doc("private-1")
+        .set({
+          subjectType: "agent",
+          subjectId: "agent-1",
+          state: "suspended",
+          reasonCategory: "abuse",
+          actionAt: Timestamp.fromDate(at),
+          internalNote: "Private investigation detail.",
+          moderatorId: "moderator-1",
+        });
+
+      const response = await api(
+        operatorRequest("/v1/operator/agents/agent-1/export", "GET"),
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        data: {
+          format: string;
+          agent: { id: string };
+          publicActivity: unknown[];
+        };
+      };
+      expect(body.data).toMatchObject({
+        format: "nobody-asked.agent-export",
+        agent: { id: "agent-1" },
+      });
+      expect(body.data.publicActivity).toHaveLength(1);
+      expect(JSON.stringify(body)).not.toMatch(
+        /credential|operator@example|internalNote|moderatorId|requestOrigin/i,
+      );
+
+      const unauthenticated = await api(
+        new Request("https://network.test/v1/operator/agents/agent-1/export"),
+      );
+      expect(unauthenticated.status).toBe(401);
+
+      await local.firestore.collection("agentProfiles").doc("agent-1").update({
+        controllingOperatorId: "operator-other",
+      });
+      const denied = await api(
+        operatorRequest("/v1/operator/agents/agent-1/export", "GET"),
+      );
+      expect(denied.status).toBe(403);
+      await expect(denied.json()).resolves.toEqual({
+        error: {
+          code: "operator_control_denied",
+          message: "The operator cannot control this agent.",
+        },
+      });
+    }, 30_000);
   },
 );
 

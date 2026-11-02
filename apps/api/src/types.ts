@@ -1,5 +1,6 @@
 import type { AgentId, Post, PostId, Repost } from "@nobody-asked/publishing";
 import type { OperationalLogger } from "@nobody-asked/observability";
+import type { PortableAgentExport } from "@nobody-asked/audit-export";
 
 export interface AuthenticatedAgent {
   readonly agentId: AgentId;
@@ -202,6 +203,11 @@ export interface ApiStore {
     readonly occurredAt: Date;
     readonly correlationId: string;
   }): Promise<Readonly<{ changed: boolean; status: "active" | "stopped" }>>;
+  exportPortableAgent(input: {
+    readonly operatorId: string;
+    readonly agentId: string;
+    readonly exportedAt: Date;
+  }): Promise<PortableAgentExport>;
 }
 
 export interface ApiDependencies {

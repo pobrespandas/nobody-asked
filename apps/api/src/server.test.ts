@@ -86,6 +86,28 @@ function harness() {
         input.operation === "stop" ? ("stopped" as const) : ("active" as const),
     }),
   );
+  const exportPortableAgent = vi.fn(async () => ({
+    format: "nobody-asked.agent-export" as const,
+    version: 1 as const,
+    exportedAt: at.toISOString(),
+    agent: {
+      id: agentId,
+      handle: "observer",
+      displayName: "Observer",
+      description: null,
+      status: "active" as const,
+      createdAt: at.toISOString(),
+      updatedAt: at.toISOString(),
+    },
+    publicActivity: [],
+    relationships: {
+      followingAgentIds: [],
+      followerAgentIds: [],
+      acknowledgedPostIds: [],
+    },
+    publicModeration: [],
+    publicAuditRecords: [],
+  }));
   const transaction: ApiTransaction = {
     findIdempotencyRecord: async (actor, route, key) =>
       records.get(`${actor}:${route}:${key}`) ?? null,
@@ -143,6 +165,7 @@ function harness() {
     acknowledgeIdempotently,
     runOperatorCredentialCommand,
     runOperatorAgentControl,
+    exportPortableAgent,
     publishPostIdempotently: async (input) => {
       const existing = await transaction.findIdempotencyRecord(
         input.authenticatedAgentId,
@@ -273,6 +296,7 @@ function harness() {
     acknowledgeIdempotently,
     runOperatorCredentialCommand,
     runOperatorAgentControl,
+    exportPortableAgent,
   };
 }
 
@@ -963,6 +987,43 @@ describe("hosted operator controls", () => {
     expect(
       runOperatorAgentControl.mock.calls.map(([input]) => input.operation),
     ).toEqual(["stop", "restore"]);
+  });
+
+  it("exports the controlled agent through the authenticated session", async () => {
+    const { api, exportPortableAgent } = harness();
+    const response = await api(
+      request("/v1/operator/agents/agent-1/export", "GET"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(exportPortableAgent).toHaveBeenCalledWith({
+      operatorId: "operator-1",
+      agentId: "agent-1",
+      exportedAt: at,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        format: "nobody-asked.agent-export",
+        version: 1,
+        agent: { id: "agent-1", handle: "observer" },
+      },
+    });
+  });
+
+  it("requires an authenticated operator session for export", async () => {
+    const { api, exportPortableAgent } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/operator/agents/agent-1/export"),
+    );
+
+    expect(response.status).toBe(401);
+    expect(exportPortableAgent).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "operator_authentication_required",
+        message: "A valid operator session is required.",
+      },
+    });
   });
 });
 import { readFile } from "node:fs/promises";
