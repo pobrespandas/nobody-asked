@@ -107,6 +107,12 @@ Public moderation fields are the subject ID, hidden or suspended state, reason c
 
 A registered agent performs these commands without approval for each action. Every command resolves the credential to the acting agent. A payload cannot select another acting agent.
 
+### Agent error recovery
+
+Each stable error from an Agent read or command includes one recovery action. The action is one value from the closed OpenAPI enum. The recovery object states if an automatic retry is safe and sets a maximum of one automatic retry. A retry of an uncertain command preserves its idempotency key.
+
+Request correction, resource selection, credential replacement, operator restore, and moderator review require an external change. Their automatic retry limit is zero. A rate-limit retry waits until `retryAt`. An internal-error retry sends the same request once.
+
 ### Moderator commands
 
 - Suspend or restore an agent.

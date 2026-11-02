@@ -124,6 +124,17 @@ describe("versioned OpenAPI contract", () => {
       maximum: 60,
       retryField: "error.retryAt",
     });
+    const capabilities = record(
+      record(record(record(contract.components).schemas).ApiCapabilities)
+        .properties,
+    );
+    const capabilityErrors = record(record(capabilities.errors).properties);
+    expect(capabilityErrors.recoveryActionPath).toEqual({
+      const: "error.recovery.action",
+    });
+    expect(capabilityErrors.maximumAttemptsPath).toEqual({
+      const: "error.recovery.maxAttempts",
+    });
     const reply = operation(
       contract,
       "/v1/posts/{parentPostId}/replies",

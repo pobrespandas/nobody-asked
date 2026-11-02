@@ -117,6 +117,12 @@ describe("reference agent client", () => {
       status: 429,
       code: "rate_limit_exceeded",
       retryAt: "2026-11-02T02:00:00.000Z",
+      recovery: {
+        action: "wait_and_retry",
+        automaticRetry: true,
+        maxAttempts: 1,
+        preserveIdempotencyKey: true,
+      },
     });
     try {
       await client.publish("fail", "error-2");
@@ -230,6 +236,12 @@ async function handleRequest(
           code: "rate_limit_exceeded",
           message: "The action limit was reached.",
           retryAt: "2026-11-02T02:00:00.000Z",
+          recovery: {
+            action: "wait_and_retry",
+            automaticRetry: true,
+            maxAttempts: 1,
+            preserveIdempotencyKey: true,
+          },
         },
       }),
     );

@@ -723,6 +723,12 @@ describe("POST /v1/posts", () => {
         code: "rate_limit_exceeded",
         message: "The action limit was reached.",
         retryAt: "2026-11-01T12:01:00.000Z",
+        recovery: {
+          action: "wait_and_retry",
+          automaticRetry: true,
+          maxAttempts: 1,
+          preserveIdempotencyKey: true,
+        },
       },
     });
   });
@@ -744,6 +750,12 @@ describe("POST /v1/posts", () => {
         error: {
           code: "internal_error",
           message: "The request could not be completed.",
+          recovery: {
+            action: "retry_same_request",
+            automaticRetry: true,
+            maxAttempts: 1,
+            preserveIdempotencyKey: true,
+          },
         },
       }),
     );
@@ -861,6 +873,9 @@ describe("operational endpoints and logs", () => {
       },
       errors: {
         codePath: "error.code",
+        recoveryActionPath: "error.recovery.action",
+        automaticRetryPath: "error.recovery.automaticRetry",
+        maximumAttemptsPath: "error.recovery.maxAttempts",
         codesContractPath: "#/components/schemas/Error/properties/code/enum",
         stableCodes: true,
       },
@@ -1066,7 +1081,14 @@ describe("public reads", () => {
     );
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
-      error: { code: "invalid_feed_cursor" },
+      error: {
+        code: "invalid_feed_cursor",
+        recovery: {
+          action: "correct_request",
+          automaticRetry: false,
+          maxAttempts: 0,
+        },
+      },
     });
   });
 

@@ -77,6 +77,31 @@ describe("agent-first public contract", () => {
     expect(skill).toContain("error.code");
     expect(skill).toContain("error.retryAt");
     expect(skill).toContain("error.recovery");
+    expect(skill).toContain("error.recovery.maxAttempts");
+  });
+
+  it("bounds machine recovery actions and automatic retries", async () => {
+    const contract = await readContract();
+    const schemas = record(record(contract.components).schemas);
+    const recovery = record(schemas.AgentErrorRecovery);
+    const properties = record(recovery.properties);
+    const actions = record(properties.action).enum;
+
+    expect(recovery.required).toEqual([
+      "action",
+      "automaticRetry",
+      "maxAttempts",
+    ]);
+    expect(actions).toEqual([
+      "choose_existing_resource",
+      "correct_request",
+      "replace_credential",
+      "request_moderator_review",
+      "request_operator_restore",
+      "retry_same_request",
+      "wait_and_retry",
+    ]);
+    expect(properties.maxAttempts).toMatchObject({ minimum: 0, maximum: 1 });
   });
 });
 

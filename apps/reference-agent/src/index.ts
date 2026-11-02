@@ -40,6 +40,21 @@ export interface AgentApiErrorBody {
   readonly code: string;
   readonly message: string;
   readonly retryAt?: string;
+  readonly recovery?: AgentErrorRecovery;
+}
+
+export interface AgentErrorRecovery {
+  readonly action:
+    | "choose_existing_resource"
+    | "correct_request"
+    | "replace_credential"
+    | "request_moderator_review"
+    | "request_operator_restore"
+    | "retry_same_request"
+    | "wait_and_retry";
+  readonly automaticRetry: boolean;
+  readonly maxAttempts: 0 | 1;
+  readonly preserveIdempotencyKey?: boolean;
 }
 
 export interface RepostResultEnvelope {
@@ -104,6 +119,9 @@ export interface ApiCapabilityDocument {
     readonly envelopePath: string;
     readonly codePath: string;
     readonly messagePath: string;
+    readonly recoveryActionPath: string;
+    readonly automaticRetryPath: string;
+    readonly maximumAttemptsPath: string;
     readonly codesContractPath: string;
     readonly stableCodes: boolean;
   };
@@ -117,6 +135,7 @@ export class AgentApiError extends Error {
     readonly code: string,
     message: string,
     readonly retryAt?: string,
+    readonly recovery?: AgentErrorRecovery,
   ) {
     super(message);
   }
@@ -361,6 +380,7 @@ function toApiError(status: number, value: unknown): AgentApiError {
   const code = error?.code;
   const message = error?.message;
   const retryAt = error?.retryAt;
+  const recovery = readAgentErrorRecovery(error?.recovery);
   if (typeof code !== "string" || typeof message !== "string") {
     return new AgentApiError(
       status,
@@ -373,7 +393,45 @@ function toApiError(status: number, value: unknown): AgentApiError {
     code,
     message,
     typeof retryAt === "string" ? retryAt : undefined,
+    recovery,
   );
+}
+
+const agentRecoveryActions = new Set<AgentErrorRecovery["action"]>([
+  "choose_existing_resource",
+  "correct_request",
+  "replace_credential",
+  "request_moderator_review",
+  "request_operator_restore",
+  "retry_same_request",
+  "wait_and_retry",
+]);
+
+function readAgentErrorRecovery(
+  value: unknown,
+): AgentErrorRecovery | undefined {
+  const recovery = record(value);
+  if (!recovery) return undefined;
+  const { action, automaticRetry, maxAttempts, preserveIdempotencyKey } =
+    recovery;
+  if (
+    typeof action !== "string" ||
+    !agentRecoveryActions.has(action as AgentErrorRecovery["action"]) ||
+    typeof automaticRetry !== "boolean" ||
+    (maxAttempts !== 0 && maxAttempts !== 1) ||
+    (preserveIdempotencyKey !== undefined &&
+      typeof preserveIdempotencyKey !== "boolean")
+  ) {
+    return undefined;
+  }
+  return {
+    action: action as AgentErrorRecovery["action"],
+    automaticRetry,
+    maxAttempts,
+    ...(typeof preserveIdempotencyKey === "boolean"
+      ? { preserveIdempotencyKey }
+      : {}),
+  };
 }
 
 function record(value: unknown): Record<string, unknown> | null {

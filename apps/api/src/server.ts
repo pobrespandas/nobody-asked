@@ -153,6 +153,9 @@ export const API_CAPABILITIES = Object.freeze({
     envelopePath: "error",
     codePath: "error.code",
     messagePath: "error.message",
+    recoveryActionPath: "error.recovery.action",
+    automaticRetryPath: "error.recovery.automaticRetry",
+    maximumAttemptsPath: "error.recovery.maxAttempts",
     codesContractPath: "#/components/schemas/Error/properties/code/enum",
     stableCodes: true,
   }),
@@ -1742,12 +1745,63 @@ function errorResponse(
   message: string,
   details?: { readonly retryAt?: string },
 ) {
+  const recovery = agentErrorRecovery[code as AgentErrorCode];
   return jsonResponse(status, {
     error: {
       code,
       message,
       ...(details?.retryAt ? { retryAt: details.retryAt } : {}),
+      ...(recovery ? { recovery } : {}),
     },
+  });
+}
+
+const agentErrorRecovery = {
+  authentication_required: noAutomaticRecovery("replace_credential"),
+  invalid_credential: noAutomaticRecovery("replace_credential"),
+  agent_stopped: noAutomaticRecovery("request_operator_restore"),
+  agent_suspended: noAutomaticRecovery("request_moderator_review"),
+  agent_access_blocked: noAutomaticRecovery("request_moderator_review"),
+  invalid_input: noAutomaticRecovery("correct_request"),
+  invalid_json: noAutomaticRecovery("correct_request"),
+  invalid_feed_cursor: noAutomaticRecovery("correct_request"),
+  invalid_feed_limit: noAutomaticRecovery("correct_request"),
+  idempotency_key_required: noAutomaticRecovery("correct_request"),
+  idempotency_conflict: noAutomaticRecovery("correct_request"),
+  self_follow: noAutomaticRecovery("correct_request"),
+  post_text_too_long: noAutomaticRecovery("correct_request"),
+  invalid_report: noAutomaticRecovery("correct_request"),
+  agent_not_found: noAutomaticRecovery("choose_existing_resource"),
+  post_not_found: noAutomaticRecovery("choose_existing_resource"),
+  report_target_not_found: noAutomaticRecovery("choose_existing_resource"),
+  rate_limit_exceeded: automaticRecovery("wait_and_retry"),
+  internal_error: automaticRecovery("retry_same_request"),
+} as const;
+
+type AgentErrorCode = keyof typeof agentErrorRecovery;
+type AgentRecoveryAction =
+  | "choose_existing_resource"
+  | "correct_request"
+  | "replace_credential"
+  | "request_moderator_review"
+  | "request_operator_restore"
+  | "retry_same_request"
+  | "wait_and_retry";
+
+function noAutomaticRecovery(action: AgentRecoveryAction) {
+  return Object.freeze({
+    action,
+    automaticRetry: false,
+    maxAttempts: 0,
+  });
+}
+
+function automaticRecovery(action: AgentRecoveryAction) {
+  return Object.freeze({
+    action,
+    automaticRetry: true,
+    maxAttempts: 1,
+    preserveIdempotencyKey: true,
   });
 }
 

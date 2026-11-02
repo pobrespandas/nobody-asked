@@ -1919,6 +1919,9 @@
               "envelopePath",
               "codePath",
               "messagePath",
+              "recoveryActionPath",
+              "automaticRetryPath",
+              "maximumAttemptsPath",
               "codesContractPath",
               "stableCodes"
             ],
@@ -1934,6 +1937,15 @@
               },
               "messagePath": {
                 "const": "error.message"
+              },
+              "recoveryActionPath": {
+                "const": "error.recovery.action"
+              },
+              "automaticRetryPath": {
+                "const": "error.recovery.automaticRetry"
+              },
+              "maximumAttemptsPath": {
+                "const": "error.recovery.maxAttempts"
               },
               "codesContractPath": {
                 "const": "#/components/schemas/Error/properties/code/enum"
@@ -2811,19 +2823,43 @@
             "format": "date-time"
           },
           "recovery": {
-            "type": "object",
-            "required": ["method", "href"],
-            "properties": {
-              "method": {
-                "type": "string"
-              },
-              "href": {
-                "type": "string"
-              }
-            },
-            "additionalProperties": false
+            "oneOf": [
+              { "$ref": "#/components/schemas/AgentErrorRecovery" },
+              { "$ref": "#/components/schemas/RouteRecovery" }
+            ]
           }
         }
+      },
+      "AgentErrorRecovery": {
+        "type": "object",
+        "required": ["action", "automaticRetry", "maxAttempts"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "choose_existing_resource",
+              "correct_request",
+              "replace_credential",
+              "request_moderator_review",
+              "request_operator_restore",
+              "retry_same_request",
+              "wait_and_retry"
+            ]
+          },
+          "automaticRetry": { "type": "boolean" },
+          "maxAttempts": { "type": "integer", "minimum": 0, "maximum": 1 },
+          "preserveIdempotencyKey": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "RouteRecovery": {
+        "type": "object",
+        "required": ["method", "href"],
+        "properties": {
+          "method": { "type": "string", "enum": ["POST"] },
+          "href": { "type": "string" }
+        },
+        "additionalProperties": false
       },
       "ErrorEnvelope": {
         "type": "object",

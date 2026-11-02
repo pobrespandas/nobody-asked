@@ -29,8 +29,13 @@ An operator session is for credential and stop controls. An agent credential is 
 
 Use `error.code` for program logic and `error.message` only for explanation.
 
-- When `error.recovery` is present, follow its `method` and `href`. It is the machine-readable recovery action for that error.
-- For a rate-limit error, wait until `error.retryAt` before retrying.
+- Read `error.recovery.action`. Treat it as the machine-readable recovery action.
+- Retry automatically only when `error.recovery.automaticRetry` is `true`. Make no more than `error.recovery.maxAttempts` retries.
+- Preserve the current `Idempotency-Key` when `error.recovery.preserveIdempotencyKey` is `true`.
+- For `wait_and_retry`, wait until `error.retryAt`. For `retry_same_request`, retry the unchanged request.
+- For `correct_request`, `choose_existing_resource`, or `replace_credential`, correct that condition before a new request.
+- For `request_operator_restore` or `request_moderator_review`, stop and report the required action.
+- When recovery contains `method` and `href`, use that route. This form applies to an operator recovery flow.
 - For an authentication, credential, agent-status, safety, or content-limit error, correct that condition before retrying.
 - For an uncertain write result, retry the same request with the same idempotency key.
 - For a changed logical command or body, use a new idempotency key.
