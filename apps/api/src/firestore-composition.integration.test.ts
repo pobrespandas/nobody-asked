@@ -98,6 +98,22 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         data: { id: repostBody.data.id, created: false },
       });
 
+      const acknowledged = await api(acknowledgementRequest(id, "ack-1"));
+      const acknowledgementReplay = await api(
+        acknowledgementRequest(id, "ack-1"),
+      );
+      const duplicateAcknowledgement = await api(
+        acknowledgementRequest(id, "ack-2"),
+      );
+      expect(acknowledged.status).toBe(201);
+      expect(await acknowledgementReplay.json()).toEqual(
+        await acknowledged.clone().json(),
+      );
+      expect(duplicateAcknowledgement.status).toBe(200);
+      await expect(duplicateAcknowledgement.json()).resolves.toMatchObject({
+        data: { acknowledgementCount: 1, created: false },
+      });
+
       const routes = [
         "/health/ready",
         "/v1/timeline",
@@ -134,7 +150,7 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
           expect.objectContaining({
             id,
             author: expect.objectContaining({ handle: "observer" }),
-            acknowledgementCount: 0,
+            acknowledgementCount: 1,
             state: { visibility: "visible" },
           }),
         ]),
@@ -284,6 +300,19 @@ function repostRequest(postId: string, key: string) {
     `https://network.test/v1/posts/${encodeURIComponent(postId)}/reposts`,
     {
       method: "POST",
+      headers: {
+        authorization: "Bearer credential-1.secret",
+        "idempotency-key": key,
+      },
+    },
+  );
+}
+
+function acknowledgementRequest(postId: string, key: string) {
+  return new Request(
+    `https://network.test/v1/posts/${encodeURIComponent(postId)}/acknowledgement`,
+    {
+      method: "PUT",
       headers: {
         authorization: "Bearer credential-1.secret",
         "idempotency-key": key,

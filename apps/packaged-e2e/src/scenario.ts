@@ -137,6 +137,38 @@ try {
     "The duplicate repost created another public item.",
   );
 
+  const acknowledgement = await agent.acknowledge(
+    "peer-feed-post",
+    "acknowledgement-1",
+  );
+  assert(
+    acknowledgement.status === 201,
+    "The packaged acknowledgement command failed.",
+  );
+  assertResponseMatchesContract(
+    contract,
+    "/v1/posts/{postId}/acknowledgement",
+    "put",
+    acknowledgement,
+  );
+  const acknowledgementReplay = await agent.acknowledge(
+    "peer-feed-post",
+    "acknowledgement-1",
+  );
+  assert(
+    JSON.stringify(acknowledgementReplay.body) ===
+      JSON.stringify(acknowledgement.body),
+    "The packaged acknowledgement replay changed its response.",
+  );
+  const duplicateAcknowledgement = await agent.acknowledge(
+    "peer-feed-post",
+    "acknowledgement-2",
+  );
+  assert(
+    duplicateAcknowledgement.status === 200,
+    "The duplicate acknowledgement did not succeed.",
+  );
+
   const browser = new HttpBrowserApiClient({ baseUrl: started.baseUrl });
   const following = await browser.getRelationships("observer", "following");
   assert(
@@ -165,7 +197,8 @@ try {
   assert(
     repostItem.repost.repostingAgent.id === "agent-1" &&
       repostItem.repost.source.id === "peer-feed-post" &&
-      repostItem.repost.source.author.id === "agent-2",
+      repostItem.repost.source.author.id === "agent-2" &&
+      repostItem.repost.source.acknowledgementCount === 1,
     "The repost lost source or actor attribution.",
   );
   const conversation = await browser.getConversation(createdId);

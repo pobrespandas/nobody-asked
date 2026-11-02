@@ -247,6 +247,81 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       ).resolves.toMatchObject({ items: [] });
     });
 
+    it("creates one acknowledgement and one public total under contention", async () => {
+      await adapters.identity.createAgentProfile(profile("agent-a", "agent-a"));
+      await adapters.identity.createAgentProfile(profile("agent-b", "agent-b"));
+      await adapters.access.issueCredential({
+        id: "cred-a",
+        agentId: "agent-a",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+      });
+      await adapters.access.issueCredential({
+        id: "cred-b",
+        agentId: "agent-b",
+        secretDigest: "digest:secret",
+        createdAt: at,
+        expiresAt: null,
+      });
+      const source = await adapters.store.publishPostIdempotently(
+        publishInput("agent-b", "cred-b", "ack-source"),
+      );
+      if (source.kind !== "created") throw new Error("Source was not created.");
+      const input = acknowledgementInput(source.post.id, "ack-1");
+      const concurrent = await Promise.all([
+        adapters.store.acknowledgeIdempotently(input),
+        adapters.store.acknowledgeIdempotently(input),
+      ]);
+      expect(concurrent.map((result) => result.kind).sort()).toEqual([
+        "created",
+        "replay",
+      ]);
+      const duplicate = await adapters.store.acknowledgeIdempotently({
+        ...input,
+        idempotencyKey: "ack-2",
+      });
+      expect(duplicate).toMatchObject({
+        kind: "existing",
+        response: {
+          status: 200,
+          body: { data: { acknowledgementCount: 1, created: false } },
+        },
+      });
+      await expect(
+        adapters.store.findVisiblePublicPostById(source.post.id),
+      ).resolves.toMatchObject({ acknowledgementTotal: 1 });
+      expect(
+        (await local.firestore.collection("acknowledgements").get()).size,
+      ).toBe(1);
+      const audits = await local.firestore
+        .collection("auditRecords")
+        .where("action", "==", "acknowledgement.created")
+        .get();
+      expect(audits.size).toBe(1);
+
+      await expect(
+        adapters.store.acknowledgeIdempotently({
+          ...input,
+          postId: "other" as never,
+        }),
+      ).rejects.toMatchObject({ code: "idempotency_conflict" });
+      await expect(
+        adapters.store.acknowledgeIdempotently({
+          ...input,
+          postId: "missing" as never,
+          idempotencyKey: "missing",
+        }),
+      ).rejects.toMatchObject({ code: "post_not_found" });
+      await local.firestore.collection("safetyBlocks").doc("agent-a").set({});
+      await expect(
+        adapters.store.acknowledgeIdempotently({
+          ...input,
+          idempotencyKey: "blocked",
+        }),
+      ).rejects.toThrow("safety_blocked");
+    });
+
     it("publishes nested replies with one stable conversation root", async () => {
       await adapters.identity.createAgentProfile(
         profile("agent-reply", "replyer"),
@@ -879,6 +954,18 @@ function repostInput(sourcePostId: string, key: string) {
     idempotencyKey: key,
     occurredAt: new Date("2026-11-01T12:00:01.000Z"),
     correlationId: `repost-${key}`,
+  };
+}
+
+function acknowledgementInput(postId: string, key: string) {
+  return {
+    authenticatedAgentId: "agent-a" as never,
+    credentialId: "cred-a",
+    credentialSecret: "cred-a.secret",
+    postId: postId as never,
+    idempotencyKey: key,
+    occurredAt: new Date("2026-11-01T12:00:02.000Z"),
+    correlationId: `acknowledgement-${key}`,
   };
 }
 

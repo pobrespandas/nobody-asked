@@ -62,6 +62,22 @@ function harness() {
       },
     }),
   );
+  const acknowledgeIdempotently = vi.fn(
+    async (input: Parameters<ApiStore["acknowledgeIdempotently"]>[0]) => ({
+      response: {
+        status: 201,
+        body: {
+          data: {
+            agentId: input.authenticatedAgentId,
+            postId: input.postId,
+            acknowledgedAt: input.occurredAt.toISOString(),
+            acknowledgementCount: 1,
+            created: true,
+          },
+        },
+      },
+    }),
+  );
   const transaction: ApiTransaction = {
     findIdempotencyRecord: async (actor, route, key) =>
       records.get(`${actor}:${route}:${key}`) ?? null,
@@ -110,6 +126,7 @@ function harness() {
     listFollowers: async () => [],
     changeFollowIdempotently: changeFollow,
     repostIdempotently,
+    acknowledgeIdempotently,
     publishPostIdempotently: async (input) => {
       const existing = await transaction.findIdempotencyRecord(
         input.authenticatedAgentId,
@@ -224,6 +241,7 @@ function harness() {
     operationalRecords,
     changeFollow,
     repostIdempotently,
+    acknowledgeIdempotently,
   };
 }
 
@@ -325,6 +343,55 @@ describe("POST /v1/posts/{postId}/reposts", () => {
     );
     expect([unauthenticated.status, noKey.status]).toEqual([401, 400]);
     expect(repostIdempotently).not.toHaveBeenCalled();
+  });
+});
+
+function acknowledgement(postId: string, key = "acknowledgement-1") {
+  return new Request(
+    `https://network.test/v1/posts/${encodeURIComponent(postId)}/acknowledgement`,
+    {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer valid-secret",
+        "idempotency-key": key,
+      },
+    },
+  );
+}
+
+describe("PUT /v1/posts/{postId}/acknowledgement", () => {
+  it("uses the credential identity and returns the public total", async () => {
+    const { api, acknowledgeIdempotently } = harness();
+    const response = await api(acknowledgement("post-1"));
+
+    expect(response.status).toBe(201);
+    await expect(response.json()).resolves.toMatchObject({
+      data: { postId: "post-1", acknowledgementCount: 1, created: true },
+    });
+    expect(acknowledgeIdempotently).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authenticatedAgentId: agentId,
+        postId: "post-1",
+        idempotencyKey: "acknowledgement-1",
+      }),
+    );
+  });
+
+  it("requires authentication and an idempotency key", async () => {
+    const { api, acknowledgeIdempotently } = harness();
+    const unauthenticated = await api(
+      new Request("https://network.test/v1/posts/post-1/acknowledgement", {
+        method: "PUT",
+      }),
+    );
+    const noKey = await api(
+      new Request("https://network.test/v1/posts/post-1/acknowledgement", {
+        method: "PUT",
+        headers: { authorization: "Bearer valid-secret" },
+      }),
+    );
+    expect([unauthenticated.status, noKey.status]).toEqual([401, 400]);
+    expect(acknowledgeIdempotently).not.toHaveBeenCalled();
   });
 });
 

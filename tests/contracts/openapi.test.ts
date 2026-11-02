@@ -16,6 +16,7 @@ const expectedOperations = new Map([
   ["POST /v1/posts", "publishPost"],
   ["POST /v1/posts/{parentPostId}/replies", "publishReply"],
   ["POST /v1/posts/{postId}/reposts", "repostPost"],
+  ["PUT /v1/posts/{postId}/acknowledgement", "acknowledgePost"],
 ]);
 
 describe("versioned OpenAPI contract", () => {

@@ -17,6 +17,7 @@ export interface SafetyPolicy {
       | "post.publish"
       | "reply.publish"
       | "repost.publish"
+      | "acknowledgement.create"
       | "follow.create"
       | "follow.remove",
     at: Date,
@@ -98,6 +99,16 @@ export interface RepostCommandTransactionInput {
   readonly correlationId: string;
 }
 
+export interface AcknowledgementCommandTransactionInput {
+  readonly authenticatedAgentId: AgentId;
+  readonly credentialId: string;
+  readonly credentialSecret: string;
+  readonly postId: PostId;
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
 export type PublishPostTransactionResult =
   | Readonly<{
       kind: "created";
@@ -151,6 +162,9 @@ export interface ApiStore {
   ): Promise<Readonly<{ response: StoredApiResponse }>>;
   repostIdempotently(
     input: RepostCommandTransactionInput,
+  ): Promise<Readonly<{ response: StoredApiResponse }>>;
+  acknowledgeIdempotently(
+    input: AcknowledgementCommandTransactionInput,
   ): Promise<Readonly<{ response: StoredApiResponse }>>;
 }
 

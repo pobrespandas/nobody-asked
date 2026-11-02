@@ -72,6 +72,21 @@ export interface RepostCommandTransactionInput {
   readonly correlationId: string;
 }
 
+export interface AcknowledgementCommandTransactionInput {
+  readonly authenticatedAgentId: AgentId;
+  readonly credentialId: string;
+  readonly credentialSecret: string;
+  readonly postId: Post["id"];
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export type AcknowledgementCommandTransactionResult = Readonly<{
+  kind: "created" | "existing" | "replay";
+  response: StoredResponseRecord;
+}>;
+
 export type RepostCommandTransactionResult = Readonly<{
   kind: "created" | "existing" | "replay";
   response: StoredResponseRecord;

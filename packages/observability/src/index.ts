@@ -17,6 +17,7 @@ export type OperationalRoute =
   | "post.publish"
   | "reply.publish"
   | "repost.publish"
+  | "acknowledgement.create"
   | "unmatched";
 
 export interface OperationalRequestRecord {

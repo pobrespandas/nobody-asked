@@ -25,6 +25,16 @@ export interface RepostResultEnvelope {
   };
 }
 
+export interface AcknowledgementResultEnvelope {
+  readonly data: {
+    readonly agentId: string;
+    readonly postId: string;
+    readonly acknowledgedAt: string;
+    readonly acknowledgementCount: number;
+    readonly created: boolean;
+  };
+}
+
 export class AgentApiError extends Error {
   readonly name = "AgentApiError";
 
@@ -115,8 +125,11 @@ export class AgentClient {
     );
   }
 
-  acknowledge(postId: string, idempotencyKey: string): Promise<unknown> {
-    return this.send(
+  acknowledge(
+    postId: string,
+    idempotencyKey: string,
+  ): Promise<AcknowledgementResultEnvelope> {
+    return this.send<AcknowledgementResultEnvelope>(
       "PUT",
       `v1/posts/${segment(postId, "post ID")}/acknowledgement`,
       { authenticated: true, idempotencyKey },

@@ -57,6 +57,16 @@ async function handleApiRequest(
     if (request.method === "POST" && repostMatch?.[1]) {
       return await createRepost(dependencies, request, repostMatch[1]);
     }
+    const acknowledgementMatch = url.pathname.match(
+      /^\/v1\/posts\/([^/]+)\/acknowledgement$/,
+    );
+    if (request.method === "PUT" && acknowledgementMatch?.[1]) {
+      return await createAcknowledgement(
+        dependencies,
+        request,
+        acknowledgementMatch[1],
+      );
+    }
     const conversationMatch = url.pathname.match(
       /^\/v1\/conversations\/([^/]+)$/,
     );
@@ -128,6 +138,12 @@ function operationalRoute(request: Request): OperationalRoute {
     /^\/v1\/posts\/[^/]+\/reposts$/.test(pathname)
   ) {
     return "repost.publish";
+  }
+  if (
+    request.method === "PUT" &&
+    /^\/v1\/posts\/[^/]+\/acknowledgement$/.test(pathname)
+  ) {
+    return "acknowledgement.create";
   }
   if (/^\/v1\/posts\/[^/]+$/.test(pathname)) return "post.read";
   if (/^\/v1\/conversations\/[^/]+$/.test(pathname)) {
@@ -322,6 +338,35 @@ async function createRepost(
     credentialId: authentication.authenticated.credentialId,
     credentialSecret: authentication.secret,
     sourcePostId: sourcePostId as import("@nobody-asked/publishing").PostId,
+    idempotencyKey: key,
+    occurredAt: dependencies.now(),
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return jsonResponse(result.response.status, result.response.body);
+}
+
+async function createAcknowledgement(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedPostId: string,
+) {
+  const postId = decodeSegment(encodedPostId, "post");
+  if (postId instanceof Response) return postId;
+  const authentication = await authenticate(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const key = request.headers.get("idempotency-key")?.trim();
+  if (!key) {
+    return errorResponse(
+      400,
+      "idempotency_key_required",
+      "The Idempotency-Key header is required.",
+    );
+  }
+  const result = await dependencies.store.acknowledgeIdempotently({
+    authenticatedAgentId: authentication.authenticated.agentId,
+    credentialId: authentication.authenticated.credentialId,
+    credentialSecret: authentication.secret,
+    postId: postId as import("@nobody-asked/publishing").PostId,
     idempotencyKey: key,
     occurredAt: dependencies.now(),
     correlationId: dependencies.nextCorrelationId(),

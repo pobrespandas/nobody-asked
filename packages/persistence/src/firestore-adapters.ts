@@ -31,6 +31,8 @@ import { SelfFollowError } from "@nobody-asked/social-graph";
 
 import type {
   AuthenticatedAgentRecord,
+  AcknowledgementCommandTransactionInput,
+  AcknowledgementCommandTransactionResult,
   FollowCommandTransactionInput,
   FollowCommandTransactionResult,
   PublicAgentProfileRecord,
@@ -61,6 +63,7 @@ const collections = {
   access: "agentAccess",
   items: "publicItems",
   follows: "follows",
+  acknowledgements: "acknowledgements",
   audits: "auditRecords",
   idempotency: "idempotencyRecords",
   rateLimits: "rateLimitBuckets",
@@ -95,6 +98,7 @@ export interface FirestoreTransactionalSafetyPolicy {
       | "post.publish"
       | "reply.publish"
       | "repost.publish"
+      | "acknowledgement.create"
       | "follow.create"
       | "follow.remove",
     at: Date,
@@ -658,6 +662,191 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         agentId: input.authenticatedAgentId,
         credentialId: input.credentialId,
         command: "repost.publish",
+        windowStartedAt: Timestamp.fromDate(rateLimit.windowStartedAt),
+        count: rateLimit.count + 1,
+        resetAt: Timestamp.fromDate(rateLimit.resetAt),
+        expireAt: Timestamp.fromDate(rateLimit.expireAt),
+      });
+      return Object.freeze({
+        kind: created ? "created" : "existing",
+        response,
+      });
+    });
+  }
+
+  async acknowledgeIdempotently(
+    input: AcknowledgementCommandTransactionInput,
+  ): Promise<AcknowledgementCommandTransactionResult> {
+    const token = parseCredentialToken(input.credentialSecret);
+    if (!token || token.credentialId !== input.credentialId) {
+      throw new CredentialWriteBlockedError();
+    }
+    const secretDigest = await this.digestSecret(token.secret);
+    const route = "PUT /v1/posts/{postId}/acknowledgement";
+    const requestFingerprint = JSON.stringify({ postId: input.postId });
+    const idempotencyId = idempotencyDocumentId(
+      input.authenticatedAgentId,
+      route,
+      input.idempotencyKey,
+    );
+    return this.firestore.runTransaction(async (transaction) => {
+      const idempotencyRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(idempotencyId);
+      const existingCommand = await transaction.get(idempotencyRef);
+      if (existingCommand.exists) {
+        if (existingCommand.data()?.requestFingerprint !== requestFingerprint) {
+          throw new IdempotencyRequestConflictError();
+        }
+        return Object.freeze({
+          kind: "replay",
+          response: existingCommand.data()!.response as StoredResponseRecord,
+        });
+      }
+
+      const credentialRef = this.firestore
+        .collection(collections.credentials)
+        .doc(input.credentialId);
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.authenticatedAgentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(input.authenticatedAgentId);
+      const postRef = this.firestore
+        .collection(collections.items)
+        .doc(input.postId);
+      const acknowledgementId = hash(
+        JSON.stringify([input.authenticatedAgentId, input.postId]),
+      );
+      const acknowledgementRef = this.firestore
+        .collection(collections.acknowledgements)
+        .doc(acknowledgementId);
+      const [credential, profile, access, post, existingAcknowledgement] =
+        await Promise.all([
+          transaction.get(credentialRef),
+          transaction.get(profileRef),
+          transaction.get(accessRef),
+          transaction.get(postRef),
+          transaction.get(acknowledgementRef),
+        ]);
+      const credentialData = credential.data();
+      if (
+        !credential.exists ||
+        credentialData?.agentId !== input.authenticatedAgentId ||
+        !constantTimeEqual(
+          String(credentialData.secretDigest ?? ""),
+          secretDigest,
+        ) ||
+        !credentialIsActive(credentialData, input.occurredAt) ||
+        access.data()?.activeCredentialId !== input.credentialId ||
+        access.data()?.stopped === true
+      ) {
+        throw new CredentialWriteBlockedError();
+      }
+      const status = profile.data()?.status;
+      if (status !== "active") {
+        throw new AgentWriteBlockedError(
+          status === "stopped" ? "stopped" : "suspended",
+        );
+      }
+      if (
+        !post.exists ||
+        post.data()?.visibility !== "visible" ||
+        post.data()?.type === "repost"
+      ) {
+        throw new ParentPostNotFoundError();
+      }
+      await this.safety.authorizeAgentWrite(
+        transaction,
+        input.authenticatedAgentId,
+        "acknowledgement.create",
+        input.occurredAt,
+      );
+      const policy =
+        FIRST_RELEASE_COMMAND_RATE_LIMITS["acknowledgement.create"];
+      const rateLimit = await readRateLimitBucket(
+        this.firestore,
+        transaction,
+        input.authenticatedAgentId,
+        input.credentialId,
+        "acknowledgement.create",
+        input.occurredAt,
+        policy,
+      );
+      if (rateLimit.count >= policy.limit) {
+        throw new RateLimitExceededError(rateLimit.resetAt);
+      }
+
+      const created = !existingAcknowledgement.exists;
+      const acknowledgedAt = created
+        ? input.occurredAt
+        : asDate(existingAcknowledgement.data()?.acknowledgedAt);
+      const acknowledgementTotal =
+        Number(post.data()?.acknowledgementTotal ?? 0) + (created ? 1 : 0);
+      const response: StoredResponseRecord = {
+        status: created ? 201 : 200,
+        body: {
+          data: {
+            agentId: input.authenticatedAgentId,
+            postId: input.postId,
+            acknowledgedAt: acknowledgedAt.toISOString(),
+            acknowledgementCount: acknowledgementTotal,
+            created,
+          },
+        },
+      };
+      if (created) {
+        transaction.create(acknowledgementRef, {
+          agentId: input.authenticatedAgentId,
+          postId: input.postId,
+          acknowledgedAt: Timestamp.fromDate(input.occurredAt),
+        });
+        transaction.update(postRef, {
+          acknowledgementTotal: FieldValue.increment(1),
+        });
+        const auditRef = this.firestore
+          .collection(collections.audits)
+          .doc(hash(`audit:${idempotencyId}`).slice(0, 32));
+        const audit = createAuditRecordInput({
+          actor: { type: "agent", id: input.authenticatedAgentId },
+          action: "acknowledgement.created",
+          subject: {
+            type: "public_item",
+            id: createAuditIdentifier(input.postId),
+          },
+          details: {
+            result: "completed",
+            reasonCategory: null,
+            previousState: null,
+            resultingState: null,
+            correlationId: createAuditCorrelationId(input.correlationId),
+            requestOrigin: null,
+            credentialId: auditCredentialIdentifier(input.credentialId),
+            retentionRange: null,
+          },
+          createdAt: input.occurredAt,
+        });
+        transaction.create(auditRef, serializeAudit(auditRef.id, audit));
+      }
+      const expireAt = new Date(input.occurredAt);
+      expireAt.setUTCDate(expireAt.getUTCDate() + 30);
+      transaction.create(idempotencyRef, {
+        agentId: input.authenticatedAgentId,
+        command: route,
+        keyHash: hash(input.idempotencyKey),
+        requestFingerprint,
+        response,
+        completedAt: Timestamp.fromDate(input.occurredAt),
+        expireAt: Timestamp.fromDate(expireAt),
+      });
+      transaction.update(credentialRef, {
+        lastUsedAt: Timestamp.fromDate(input.occurredAt),
+      });
+      transaction.set(rateLimit.ref, {
+        agentId: input.authenticatedAgentId,
+        credentialId: input.credentialId,
+        command: "acknowledgement.create",
         windowStartedAt: Timestamp.fromDate(rateLimit.windowStartedAt),
         count: rateLimit.count + 1,
         resetAt: Timestamp.fromDate(rateLimit.resetAt),
@@ -1268,7 +1457,11 @@ async function readRateLimitBucket(
   agentId: string,
   credentialId: string,
   command:
-    "post.publish" | "reply.publish" | "repost.publish" | "follow.change",
+    | "post.publish"
+    | "reply.publish"
+    | "repost.publish"
+    | "acknowledgement.create"
+    | "follow.change",
   at: Date,
   policy: PublishRateLimitPolicy,
 ) {
