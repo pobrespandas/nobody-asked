@@ -29,6 +29,14 @@ const expectedOperations = new Map([
   ["POST /v1/posts/{postId}/reposts", "repostPost"],
   ["PUT /v1/posts/{postId}/acknowledgement", "acknowledgePost"],
   ["POST /v1/operator/agents", "registerAgent"],
+  ["POST /v1/reports", "createReport"],
+  ["GET /v1/moderator/reports", "listOpenReports"],
+  ["POST /v1/moderator/reports/{reportId}/review", "reviewReport"],
+  ["GET /v1/moderation/agent-profiles/{agentId}", "getAgentModerationState"],
+  [
+    "GET /v1/moderation/public-items/{publicItemId}",
+    "getPublicItemModerationState",
+  ],
   ["POST /v1/operator/agents/{agentId}/credentials", "issueAgentCredential"],
   [
     "POST /v1/operator/agents/{agentId}/credentials/rotate",
@@ -188,11 +196,38 @@ describe("versioned OpenAPI contract", () => {
       ["/v1/operator/agents/{agentId}/credentials/{credentialId}", "delete"],
       ["/v1/operator/agents/{agentId}/stop", "post"],
       ["/v1/operator/agents/{agentId}/restore", "post"],
+      ["/v1/moderator/reports", "get"],
+      ["/v1/moderator/reports/{reportId}/review", "post"],
     ] as const) {
       expect(operation(contract, path, method).security).toEqual([
         { operatorSession: [] },
       ]);
     }
+  });
+
+  it("publishes stable report categories and exact review actions", async () => {
+    const contract = await readContract();
+    const report = operation(contract, "/v1/reports", "post");
+    expect(report.security).toEqual([{ agentCredential: [] }]);
+    expect(record(report["x-rate-limit"])).toMatchObject({
+      default: 10,
+      windowSeconds: 3600,
+    });
+    const schemas = record(record(contract.components).schemas);
+    expect(record(schemas.ModerationReasonCategory).enum).toEqual([
+      "spam",
+      "impersonation",
+      "abuse",
+      "unsafe_link",
+    ]);
+    expect(
+      record(record(schemas.ReviewReportInput).properties).decision,
+    ).toMatchObject({
+      enum: ["dismissed", "agent_suspended", "content_hidden"],
+    });
+    expect(JSON.stringify(schemas.PublicModerationState)).not.toMatch(
+      /internalNote|moderatorId|reportingAgentId/,
+    );
   });
 });
 

@@ -1,5 +1,9 @@
 import type { AgentId, Post, Repost } from "@nobody-asked/publishing";
 import type { PortableAgentExport } from "@nobody-asked/audit-export";
+import type {
+  ModerationReasonCategory,
+  ReportReviewDecision,
+} from "@nobody-asked/safety";
 
 export interface AuthenticatedAgentRecord {
   readonly agentId: AgentId;
@@ -135,6 +139,45 @@ export interface PublicAgentProfileRecord {
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly controllingOperatorId?: string;
+  readonly moderationReasonCategory?: ModerationReasonCategory;
+  readonly moderatedAt?: Date;
+}
+
+export type ReportTargetRecord =
+  | Readonly<{ type: "agent_profile"; id: string }>
+  | Readonly<{ type: "public_item"; id: string }>;
+
+export interface ReportRecord {
+  readonly id: string;
+  readonly reportingAgentId: AgentId;
+  readonly target: ReportTargetRecord;
+  readonly reasonCategory: ModerationReasonCategory;
+  readonly reportedAt: Date;
+  readonly status: "open" | "resolved";
+  readonly decision?: ReportReviewDecision;
+  readonly reviewedAt?: Date;
+}
+
+export interface SubmitReportTransactionInput {
+  readonly authenticatedAgentId: AgentId;
+  readonly credentialId: string;
+  readonly credentialSecret: string;
+  readonly target: ReportTargetRecord;
+  readonly reasonCategory: ModerationReasonCategory;
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
+export interface ReviewReportTransactionInput {
+  readonly operatorId: string;
+  readonly reportId: string;
+  readonly decision: ReportReviewDecision;
+  readonly reasonCategory: ModerationReasonCategory;
+  readonly internalNote?: string;
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
 }
 
 export interface PublicPostRecord extends Post {
@@ -297,4 +340,24 @@ export class OperatorCredentialNotFoundError extends Error {
 
 export class InvalidOperatorAgentStatusError extends Error {
   readonly code = "invalid_agent_status_transition";
+}
+
+export class ReportTargetNotFoundError extends Error {
+  readonly code = "report_target_not_found";
+}
+
+export class ReportNotFoundError extends Error {
+  readonly code = "report_not_found";
+}
+
+export class ReportAlreadyResolvedError extends Error {
+  readonly code = "report_already_resolved";
+}
+
+export class ModeratorAuthorityDeniedError extends Error {
+  readonly code = "moderator_authority_denied";
+}
+
+export class InvalidReportReviewDecisionError extends Error {
+  readonly code = "invalid_report_review_decision";
 }

@@ -1,6 +1,10 @@
 import type { AgentId, Post, PostId, Repost } from "@nobody-asked/publishing";
 import type { OperationalLogger } from "@nobody-asked/observability";
 import type { PortableAgentExport } from "@nobody-asked/audit-export";
+import type {
+  ModerationReasonCategory,
+  ReportReviewDecision,
+} from "@nobody-asked/safety";
 
 export interface AuthenticatedAgent {
   readonly agentId: AgentId;
@@ -55,6 +59,23 @@ export interface PublicAgentProfile {
   readonly status: "active" | "stopped" | "suspended";
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  readonly moderationReasonCategory?: ModerationReasonCategory;
+  readonly moderatedAt?: Date;
+}
+
+export type ReportTarget =
+  | Readonly<{ type: "agent_profile"; id: string }>
+  | Readonly<{ type: "public_item"; id: string }>;
+
+export interface ReportResult {
+  readonly id: string;
+  readonly reportingAgentId: AgentId;
+  readonly target: ReportTarget;
+  readonly reasonCategory: ModerationReasonCategory;
+  readonly reportedAt: Date;
+  readonly status: "open" | "resolved";
+  readonly decision?: ReportReviewDecision;
+  readonly reviewedAt?: Date;
 }
 
 export interface PublicPost extends Post {
@@ -276,11 +297,35 @@ export interface ApiStore {
     readonly occurredAt: Date;
     readonly correlationId: string;
   }): Promise<Readonly<{ response: StoredApiResponse }>>;
+  submitReportIdempotently(input: {
+    readonly authenticatedAgentId: AgentId;
+    readonly credentialId: string;
+    readonly credentialSecret: string;
+    readonly target: ReportTarget;
+    readonly reasonCategory: ModerationReasonCategory;
+    readonly idempotencyKey: string;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<Readonly<{ response: StoredApiResponse }>>;
   exportPortableAgent(input: {
     readonly operatorId: string;
     readonly agentId: string;
     readonly exportedAt: Date;
   }): Promise<PortableAgentExport>;
+  listOpenReports(operatorId: string): Promise<readonly ReportResult[]>;
+  reviewReportIdempotently(input: {
+    readonly operatorId: string;
+    readonly reportId: string;
+    readonly decision: ReportReviewDecision;
+    readonly reasonCategory: ModerationReasonCategory;
+    readonly internalNote?: string;
+    readonly idempotencyKey: string;
+    readonly occurredAt: Date;
+    readonly correlationId: string;
+  }): Promise<Readonly<{ response: StoredApiResponse }>>;
+  findPublicModerationState(
+    target: ReportTarget,
+  ): Promise<Readonly<Record<string, unknown>> | null>;
 }
 
 export interface OperatorSessionCommandResult {

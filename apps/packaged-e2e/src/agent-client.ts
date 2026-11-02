@@ -111,4 +111,27 @@ export class HttpAgentClient {
       body: (await response.json()) as unknown,
     };
   }
+
+  async report(
+    target: {
+      readonly type: "agent_profile" | "public_item";
+      readonly id: string;
+    },
+    reasonCategory: "spam" | "impersonation" | "abuse" | "unsafe_link",
+    key: string,
+  ) {
+    const response = await fetch(new URL("v1/reports", this.baseUrl), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.credential}`,
+        "content-type": "application/json",
+        "idempotency-key": key,
+      },
+      body: JSON.stringify({ target, reasonCategory }),
+    });
+    return {
+      status: response.status,
+      body: (await response.json()) as unknown,
+    };
+  }
 }

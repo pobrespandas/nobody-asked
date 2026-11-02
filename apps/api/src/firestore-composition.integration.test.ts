@@ -93,6 +93,13 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
           createdAt: Timestamp.fromDate(at),
         });
       await local.firestore
+        .collection("moderatorAuthorities")
+        .doc("operator-1")
+        .set({
+          source: "first_operator_bootstrap",
+          grantedAt: Timestamp.fromDate(at),
+        });
+      await local.firestore
         .collection("operatorSessions")
         .doc("session-1")
         .set({
@@ -478,6 +485,103 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         },
       });
     }, 30_000);
+
+    it("reports and reviews an agent with atomic private and public state", async () => {
+      await local.firestore
+        .collection("credentials")
+        .doc("credential-2")
+        .set({
+          agentId: "agent-2",
+          secretDigest: "digest:peer-secret",
+          createdAt: Timestamp.fromDate(at),
+          lastUsedAt: null,
+          expiresAt: null,
+          revokedAt: null,
+        });
+      await local.firestore
+        .collection("agentAccess")
+        .doc("agent-2")
+        .set(
+          { activeCredentialId: "credential-2", stopped: false },
+          { merge: true },
+        );
+      const reportRequest = () =>
+        new Request("https://network.test/v1/reports", {
+          method: "POST",
+          headers: {
+            authorization: "Bearer credential-1.secret",
+            "content-type": "application/json",
+            "idempotency-key": "report-agent-2",
+          },
+          body: JSON.stringify({
+            target: { type: "agent_profile", id: "agent-2" },
+            reasonCategory: "impersonation",
+          }),
+        });
+      const report = await api(reportRequest());
+      expect(report.status).toBe(201);
+      const reportBody = (await report.json()) as { data: { id: string } };
+      expect(await (await api(reportRequest())).json()).toEqual(reportBody);
+
+      const queue = await api(operatorRequest("/v1/moderator/reports", "GET"));
+      expect(queue.status).toBe(200);
+      await expect(queue.json()).resolves.toMatchObject({
+        data: [{ id: reportBody.data.id, reportingAgentId: "agent-1" }],
+      });
+      const review = await api(
+        operatorRequest(
+          `/v1/moderator/reports/${reportBody.data.id}/review`,
+          "POST",
+          "https://operator.test",
+          {
+            decision: "agent_suspended",
+            reasonCategory: "impersonation",
+            internalNote: "Handle and profile claim another identity.",
+          },
+          "review-agent-2",
+        ),
+      );
+      expect(review.status).toBe(200);
+      expect(JSON.stringify(await review.json())).not.toContain("internalNote");
+      const [profile, credential, storedReport, audits] = await Promise.all([
+        local.firestore.collection("agentProfiles").doc("agent-2").get(),
+        local.firestore.collection("credentials").doc("credential-2").get(),
+        local.firestore.collection("reports").doc(reportBody.data.id).get(),
+        local.firestore.collection("auditRecords").get(),
+      ]);
+      expect(profile.data()).toMatchObject({
+        status: "suspended",
+        moderationReasonCategory: "impersonation",
+      });
+      expect(credential.data()?.revokedAt).toBeInstanceOf(Timestamp);
+      expect(storedReport.data()).toMatchObject({
+        decision: "agent_suspended",
+        internalNote: "Handle and profile claim another identity.",
+        moderatorId: "operator-1",
+      });
+      expect(storedReport.data()?.resolvedAt).toBeInstanceOf(Timestamp);
+      expect(audits.docs.map((entry) => entry.data().action)).toEqual(
+        expect.arrayContaining([
+          "report.created",
+          "agent.suspended",
+          "report.resolved",
+        ]),
+      );
+      const publicState = await api(
+        new Request(
+          "https://network.test/v1/moderation/agent-profiles/agent-2",
+        ),
+      );
+      expect(await publicState.json()).toEqual({
+        data: {
+          id: "agent-2",
+          type: "agent_profile",
+          status: "suspended",
+          reasonCategory: "impersonation",
+          actionTime: at.toISOString(),
+        },
+      });
+    }, 30_000);
   },
 );
 
@@ -533,12 +637,21 @@ function operatorRequest(
   path: string,
   method = "POST",
   origin = "https://operator.test",
+  body?: unknown,
+  idempotencyKey?: string,
 ) {
   return new Request(`https://network.test${path}`, {
     method,
     headers: {
       cookie: "operator_session=session-1.session-secret",
       origin,
+      ...(body === undefined
+        ? {}
+        : {
+            "content-type": "application/json",
+            "idempotency-key": idempotencyKey ?? "operator-command",
+          }),
     },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 }

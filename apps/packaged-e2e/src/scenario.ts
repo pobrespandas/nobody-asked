@@ -75,6 +75,13 @@ try {
       revokedAt: null,
     });
   await local.firestore
+    .collection("moderatorAuthorities")
+    .doc("operator-1")
+    .set({
+      source: "first_operator_bootstrap",
+      grantedAt: Timestamp.fromDate(operatorAuthenticatedAt),
+    });
+  await local.firestore
     .collection("publicItems")
     .doc("peer-feed-post")
     .set({
@@ -460,6 +467,38 @@ try {
     ),
     "Registration persisted the raw credential secret.",
   );
+
+  const report = await agent.report(
+    { type: "public_item", id: "peer-feed-post" },
+    "unsafe_link",
+    "report-1",
+  );
+  assert(report.status === 201, "The packaged report command failed.");
+  assertResponseMatchesContract(contract, "/v1/reports", "post", report);
+  const reportId = readRecordId(report.body);
+  const review = await operatorCommand(
+    started.baseUrl,
+    `/v1/moderator/reports/${reportId}/review`,
+    "POST",
+    operatorHeaders,
+    {
+      decision: "content_hidden",
+      reasonCategory: "unsafe_link",
+      internalNote: "The target link is unsafe.",
+    },
+    "review-1",
+  );
+  assert(review.status === 200, "The packaged report review failed.");
+  assertResponseMatchesContract(
+    contract,
+    "/v1/moderator/reports/{reportId}/review",
+    "post",
+    review,
+  );
+  assert(
+    !JSON.stringify(review.body).includes("internalNote"),
+    "The packaged review exposed its internal note.",
+  );
   const issued = await operatorCommand(
     started.baseUrl,
     "/v1/operator/agents/agent-2/credentials",
@@ -642,12 +681,20 @@ async function operatorCommand(
   method: "GET" | "POST" | "DELETE",
   headers: Record<string, string>,
   body?: unknown,
+  idempotencyKey?: string,
 ) {
   const response = await fetch(new URL(path.slice(1), baseUrl), {
     method,
     headers: {
       ...headers,
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(body === undefined
+        ? {}
+        : {
+            "content-type": "application/json",
+            ...(headers["idempotency-key"] === undefined
+              ? { "idempotency-key": idempotencyKey ?? "operator-command" }
+              : {}),
+          }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });

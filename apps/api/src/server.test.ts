@@ -124,6 +124,37 @@ function harness() {
     publicModeration: [],
     publicAuditRecords: [],
   }));
+  const submitReportIdempotently = vi.fn(async () => ({
+    response: {
+      status: 201,
+      body: {
+        data: {
+          id: "report-1",
+          target: { type: "public_item", id: "post-1" },
+          reasonCategory: "spam",
+          reportedAt: at.toISOString(),
+          status: "open",
+        },
+      },
+    },
+  }));
+  const reviewReportIdempotently = vi.fn(async () => ({
+    response: {
+      status: 200,
+      body: {
+        data: {
+          id: "report-1",
+          status: "resolved",
+          decision: "content_hidden",
+          reasonCategory: "spam",
+          reviewedAt: at.toISOString(),
+          target: { type: "public_item", id: "post-1" },
+          changed: true,
+          publicState: { visibility: "hidden" },
+        },
+      },
+    },
+  }));
   const transaction: ApiTransaction = {
     findIdempotencyRecord: async (actor, route, key) =>
       records.get(`${actor}:${route}:${key}`) ?? null,
@@ -218,6 +249,23 @@ function harness() {
     runOperatorCredentialCommand,
     runOperatorAgentControl,
     exportPortableAgent,
+    submitReportIdempotently,
+    listOpenReports: async () => [
+      {
+        id: "report-1",
+        reportingAgentId: agentId,
+        target: { type: "public_item", id: "post-1" },
+        reasonCategory: "spam",
+        reportedAt: at,
+        status: "open",
+      },
+    ],
+    reviewReportIdempotently,
+    findPublicModerationState: async (target) => ({
+      id: target.id,
+      type: target.type,
+      visibility: "visible",
+    }),
     publishPostIdempotently: async (input) => {
       const existing = await transaction.findIdempotencyRecord(
         input.authenticatedAgentId,
@@ -358,6 +406,8 @@ function harness() {
     runOperatorCredentialCommand,
     runOperatorAgentControl,
     exportPortableAgent,
+    submitReportIdempotently,
+    reviewReportIdempotently,
   };
 }
 
@@ -1231,3 +1281,106 @@ describe("hosted operator controls", () => {
     });
   });
 });
+
+describe("report and moderator review API", () => {
+  const moderatorRequest = (path: string, body?: unknown) =>
+    new Request(`https://network.test${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        cookie: "operator_session=session-1.secret",
+        origin: "https://operator.test",
+        ...(body === undefined
+          ? {}
+          : {
+              "content-type": "application/json",
+              "idempotency-key": "review-1",
+            }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+
+  it("derives the reporting agent and accepts only stable categories", async () => {
+    const { api, submitReportIdempotently } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/reports", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer valid-secret",
+          "content-type": "application/json",
+          "idempotency-key": "report-1",
+        },
+        body: JSON.stringify({
+          target: { type: "public_item", id: "post-1" },
+          reasonCategory: "spam",
+          reportingAgentId: "agent-hostile",
+        }),
+      }),
+    );
+    expect(response.status).toBe(201);
+    expect(submitReportIdempotently).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authenticatedAgentId: agentId,
+        target: { type: "public_item", id: "post-1" },
+        reasonCategory: "spam",
+      }),
+    );
+
+    const invalid = await api(
+      new Request("https://network.test/v1/reports", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer valid-secret",
+          "content-type": "application/json",
+          "idempotency-key": "report-2",
+        },
+        body: JSON.stringify({
+          target: { type: "public_item", id: "post-1" },
+          reasonCategory: "other",
+        }),
+      }),
+    );
+    expect(invalid.status).toBe(400);
+    await expect(invalid.json()).resolves.toMatchObject({
+      error: { code: "invalid_report" },
+    });
+  });
+
+  it("requires recent moderator authentication and records an exact action", async () => {
+    const { api, reviewReportIdempotently } = harness();
+    const queue = await api(moderatorRequest("/v1/moderator/reports"));
+    expect(queue.status).toBe(200);
+    await expect(queue.json()).resolves.toMatchObject({
+      data: [{ id: "report-1", reportingAgentId: agentId, status: "open" }],
+    });
+
+    const response = await api(
+      moderatorRequest("/v1/moderator/reports/report-1/review", {
+        decision: "content_hidden",
+        reasonCategory: "spam",
+        internalNote: "Repeated automated promotion.",
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(reviewReportIdempotently).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operatorId: "operator-1",
+        reportId: "report-1",
+        decision: "content_hidden",
+        internalNote: "Repeated automated promotion.",
+      }),
+    );
+    expect(JSON.stringify(await response.json())).not.toContain("internalNote");
+  });
+
+  it("publishes moderation state without private review fields", async () => {
+    const { api } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/moderation/public-items/post-1"),
+    );
+    expect(response.status).toBe(200);
+    const body = JSON.stringify(await response.json());
+    expect(body).toContain("visible");
+    expect(body).not.toMatch(/moderator|internalNote|reportingAgent/);
+  });
+});
+import { readFile } from "node:fs/promises";

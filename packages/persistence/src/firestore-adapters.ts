@@ -46,6 +46,10 @@ import {
   type RepostId,
 } from "@nobody-asked/publishing";
 import { SelfFollowError } from "@nobody-asked/social-graph";
+import {
+  isModerationReasonCategory,
+  isReportReviewDecision,
+} from "@nobody-asked/safety";
 
 import type {
   AuthenticatedAgentRecord,
@@ -77,6 +81,10 @@ import type {
   RegisterOperatorAgentInput,
   RegisterOperatorAgentResult,
   StoredResponseRecord,
+  SubmitReportTransactionInput,
+  ReviewReportTransactionInput,
+  ReportRecord,
+  ReportTargetRecord,
 } from "./contracts.js";
 import {
   AgentWriteBlockedError,
@@ -91,6 +99,11 @@ import {
   OperatorControlDeniedError,
   OperatorCredentialNotFoundError,
   HandleAlreadyTakenError,
+  ModeratorAuthorityDeniedError,
+  ReportAlreadyResolvedError,
+  ReportNotFoundError,
+  ReportTargetNotFoundError,
+  InvalidReportReviewDecisionError,
 } from "./contracts.js";
 
 const collections = {
@@ -110,6 +123,8 @@ const collections = {
   moderationActions: "moderationActions",
   idempotency: "idempotencyRecords",
   rateLimits: "rateLimitBuckets",
+  reports: "reports",
+  moderatorAuthorities: "moderatorAuthorities",
 } as const;
 
 export const FIRST_RELEASE_COMMAND_RATE_LIMITS = Object.freeze({
@@ -143,7 +158,8 @@ export interface FirestoreTransactionalSafetyPolicy {
       | "repost.publish"
       | "acknowledgement.create"
       | "follow.create"
-      | "follow.remove",
+      | "follow.remove"
+      | "report.create",
     at: Date,
   ): Promise<void>;
 }
@@ -1680,6 +1696,452 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     });
   }
 
+  async submitReportIdempotently(
+    input: SubmitReportTransactionInput,
+  ): Promise<Readonly<{ response: StoredResponseRecord }>> {
+    if (!isModerationReasonCategory(input.reasonCategory)) {
+      throw new TypeError("The report reason category is invalid.");
+    }
+    const token = parseCredentialToken(input.credentialSecret);
+    if (!token || token.credentialId !== input.credentialId) {
+      throw new CredentialWriteBlockedError();
+    }
+    const secretDigest = await this.digestSecret(token.secret);
+    const route = "POST /v1/reports";
+    const fingerprint = JSON.stringify({
+      target: input.target,
+      reasonCategory: input.reasonCategory,
+    });
+    const commandId = idempotencyDocumentId(
+      input.authenticatedAgentId,
+      route,
+      input.idempotencyKey,
+    );
+    return this.firestore.runTransaction(async (transaction) => {
+      const commandRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(commandId);
+      const credentialRef = this.firestore
+        .collection(collections.credentials)
+        .doc(input.credentialId);
+      const profileRef = this.firestore
+        .collection(collections.profiles)
+        .doc(input.authenticatedAgentId);
+      const accessRef = this.firestore
+        .collection(collections.access)
+        .doc(input.authenticatedAgentId);
+      const targetRef = this.firestore
+        .collection(
+          input.target.type === "agent_profile"
+            ? collections.profiles
+            : collections.items,
+        )
+        .doc(input.target.id);
+      const [command, credential, profile, access, target] = await Promise.all([
+        transaction.get(commandRef),
+        transaction.get(credentialRef),
+        transaction.get(profileRef),
+        transaction.get(accessRef),
+        transaction.get(targetRef),
+      ]);
+      if (command.exists) {
+        if (command.data()?.requestFingerprint !== fingerprint) {
+          throw new IdempotencyRequestConflictError();
+        }
+        return Object.freeze({
+          response: command.data()!.response as StoredResponseRecord,
+        });
+      }
+      const credentialData = credential.data();
+      if (
+        !credential.exists ||
+        credentialData?.agentId !== input.authenticatedAgentId ||
+        !constantTimeEqual(
+          String(credentialData.secretDigest ?? ""),
+          secretDigest,
+        ) ||
+        !credentialIsActive(credentialData, input.occurredAt) ||
+        access.data()?.activeCredentialId !== input.credentialId ||
+        access.data()?.stopped === true
+      )
+        throw new CredentialWriteBlockedError();
+      const agentStatus = profile.data()?.status;
+      if (agentStatus !== "active") {
+        throw new AgentWriteBlockedError(
+          agentStatus === "stopped" ? "stopped" : "suspended",
+        );
+      }
+      if (
+        !target.exists ||
+        (input.target.type === "public_item" &&
+          target.data()?.visibility !== "visible")
+      ) {
+        throw new ReportTargetNotFoundError();
+      }
+      await this.safety.authorizeAgentWrite(
+        transaction,
+        input.authenticatedAgentId,
+        "report.create",
+        input.occurredAt,
+      );
+      const policy = FIRST_RELEASE_COMMAND_RATE_LIMITS["report.create"];
+      const rateLimit = await readRateLimitBucket(
+        this.firestore,
+        transaction,
+        input.authenticatedAgentId,
+        input.credentialId,
+        "report.create",
+        input.occurredAt,
+        policy,
+      );
+      if (rateLimit.count >= policy.limit)
+        throw new RateLimitExceededError(rateLimit.resetAt);
+
+      const reportId = hash(`report:${commandId}`).slice(0, 32);
+      const reportRef = this.firestore
+        .collection(collections.reports)
+        .doc(reportId);
+      const response: StoredResponseRecord = {
+        status: 201,
+        body: {
+          data: {
+            id: reportId,
+            target: input.target,
+            reasonCategory: input.reasonCategory,
+            reportedAt: input.occurredAt.toISOString(),
+            status: "open",
+          },
+        },
+      };
+      transaction.create(reportRef, {
+        id: reportId,
+        reportingAgentId: input.authenticatedAgentId,
+        targetType: input.target.type,
+        targetId: input.target.id,
+        reasonCategory: input.reasonCategory,
+        reportedAt: Timestamp.fromDate(input.occurredAt),
+        resolvedAt: null,
+      });
+      const audit = createAuditRecordInput({
+        actor: { type: "agent", id: input.authenticatedAgentId },
+        action: "report.created",
+        subject: { type: "report", id: createAuditIdentifier(reportId) },
+        details: {
+          result: "completed",
+          reasonCategory: input.reasonCategory,
+          previousState: null,
+          resultingState: { reportStatus: "open" },
+          correlationId: createAuditCorrelationId(input.correlationId),
+          requestOrigin: null,
+          credentialId: auditCredentialIdentifier(input.credentialId),
+          retentionRange: null,
+        },
+        createdAt: input.occurredAt,
+      });
+      const auditId = hash(`audit:${commandId}`).slice(0, 32);
+      transaction.create(
+        this.firestore.collection(collections.audits).doc(auditId),
+        serializeAudit(auditId, audit),
+      );
+      const expireAt = new Date(input.occurredAt);
+      expireAt.setUTCDate(expireAt.getUTCDate() + 30);
+      transaction.create(commandRef, {
+        agentId: input.authenticatedAgentId,
+        command: route,
+        keyHash: hash(input.idempotencyKey),
+        requestFingerprint: fingerprint,
+        response,
+        completedAt: Timestamp.fromDate(input.occurredAt),
+        expireAt: Timestamp.fromDate(expireAt),
+      });
+      transaction.update(credentialRef, {
+        lastUsedAt: Timestamp.fromDate(input.occurredAt),
+      });
+      transaction.set(rateLimit.ref, {
+        agentId: input.authenticatedAgentId,
+        credentialId: input.credentialId,
+        command: "report.create",
+        windowStartedAt: Timestamp.fromDate(rateLimit.windowStartedAt),
+        count: rateLimit.count + 1,
+        resetAt: Timestamp.fromDate(rateLimit.resetAt),
+        expireAt: Timestamp.fromDate(rateLimit.expireAt),
+      });
+      return Object.freeze({ response });
+    });
+  }
+
+  async listOpenReports(operatorId: string): Promise<readonly ReportRecord[]> {
+    const authority = await this.firestore
+      .collection(collections.moderatorAuthorities)
+      .doc(operatorId)
+      .get();
+    if (!authority.exists) throw new ModeratorAuthorityDeniedError();
+    const reports = await this.firestore
+      .collection(collections.reports)
+      .where("resolvedAt", "==", null)
+      .orderBy("reportedAt", "asc")
+      .orderBy("id", "asc")
+      .limit(100)
+      .get();
+    return Object.freeze(
+      reports.docs
+        .map(mapReport)
+        .sort(
+          (left, right) =>
+            left.reportedAt.getTime() - right.reportedAt.getTime(),
+        ),
+    );
+  }
+
+  async reviewReportIdempotently(
+    input: ReviewReportTransactionInput,
+  ): Promise<Readonly<{ response: StoredResponseRecord }>> {
+    if (
+      !isReportReviewDecision(input.decision) ||
+      !isModerationReasonCategory(input.reasonCategory)
+    ) {
+      throw new InvalidReportReviewDecisionError();
+    }
+    const note = input.internalNote?.trim();
+    if (note && note.length > 2_000)
+      throw new InvalidReportReviewDecisionError();
+    const route = `POST /v1/moderator/reports/${input.reportId}/review`;
+    const fingerprint = JSON.stringify({
+      decision: input.decision,
+      reasonCategory: input.reasonCategory,
+      internalNote: note ?? null,
+    });
+    const commandId = idempotencyDocumentId(
+      input.operatorId,
+      route,
+      input.idempotencyKey,
+    );
+    return this.firestore.runTransaction(async (transaction) => {
+      const authorityRef = this.firestore
+        .collection(collections.moderatorAuthorities)
+        .doc(input.operatorId);
+      const reportRef = this.firestore
+        .collection(collections.reports)
+        .doc(input.reportId);
+      const commandRef = this.firestore
+        .collection(collections.idempotency)
+        .doc(commandId);
+      const [authority, reportSnapshot, command] = await Promise.all([
+        transaction.get(authorityRef),
+        transaction.get(reportRef),
+        transaction.get(commandRef),
+      ]);
+      if (!authority.exists) throw new ModeratorAuthorityDeniedError();
+      if (command.exists) {
+        if (command.data()?.requestFingerprint !== fingerprint)
+          throw new IdempotencyRequestConflictError();
+        return Object.freeze({
+          response: command.data()!.response as StoredResponseRecord,
+        });
+      }
+      if (!reportSnapshot.exists) throw new ReportNotFoundError();
+      if (reportSnapshot.data()?.resolvedAt)
+        throw new ReportAlreadyResolvedError();
+      const report = mapReport(reportSnapshot);
+      const validDecision =
+        input.decision === "dismissed" ||
+        (report.target.type === "agent_profile" &&
+          input.decision === "agent_suspended") ||
+        (report.target.type === "public_item" &&
+          input.decision === "content_hidden");
+      if (!validDecision) throw new InvalidReportReviewDecisionError();
+      const subjectRef = this.firestore
+        .collection(
+          report.target.type === "agent_profile"
+            ? collections.profiles
+            : collections.items,
+        )
+        .doc(report.target.id);
+      const subject = await transaction.get(subjectRef);
+      if (!subject.exists) throw new ReportTargetNotFoundError();
+
+      let changed = false;
+      let publicState: Record<string, unknown>;
+      let moderationAction: "agent.suspended" | "content.hidden" | null = null;
+      let previousState: AuditState | null = null;
+      let resultingState: AuditState | null = null;
+      if (report.target.type === "agent_profile") {
+        const current = subject.data()?.status as
+          "active" | "stopped" | "suspended";
+        if (input.decision === "agent_suspended" && current !== "suspended") {
+          const credentials = await transaction.get(
+            this.firestore
+              .collection(collections.credentials)
+              .where("agentId", "==", report.target.id),
+          );
+          const activeCredentials = credentials.docs.filter((candidate) =>
+            credentialIsActive(candidate.data(), input.occurredAt),
+          );
+          transaction.update(subjectRef, {
+            status: "suspended",
+            moderationReasonCategory: input.reasonCategory,
+            moderatedAt: Timestamp.fromDate(input.occurredAt),
+            updatedAt: Timestamp.fromDate(input.occurredAt),
+          });
+          for (const credential of activeCredentials) {
+            transaction.update(credential.ref, {
+              revokedAt: Timestamp.fromDate(input.occurredAt),
+            });
+          }
+          transaction.set(
+            this.firestore.collection(collections.access).doc(report.target.id),
+            { activeCredentialId: null },
+            { merge: true },
+          );
+          changed = true;
+          moderationAction = "agent.suspended";
+          previousState = {
+            agentStatus: current === "stopped" ? "stopped" : "active",
+          };
+          resultingState = { agentStatus: "suspended" };
+        }
+        publicState =
+          input.decision === "agent_suspended"
+            ? {
+                id: report.target.id,
+                type: report.target.type,
+                status: "suspended",
+                reasonCategory: input.reasonCategory,
+                actionTime: input.occurredAt.toISOString(),
+              }
+            : {
+                id: report.target.id,
+                type: report.target.type,
+                status: current,
+              };
+      } else {
+        const current = subject.data()?.visibility as "visible" | "hidden";
+        if (input.decision === "content_hidden" && current !== "hidden") {
+          transaction.update(subjectRef, {
+            visibility: "hidden",
+            moderationReasonCategory: input.reasonCategory,
+            moderatedAt: Timestamp.fromDate(input.occurredAt),
+          });
+          changed = true;
+          moderationAction = "content.hidden";
+          previousState = { publicItemStatus: "visible" };
+          resultingState = { publicItemStatus: "hidden" };
+        }
+        publicState =
+          input.decision === "content_hidden"
+            ? {
+                id: report.target.id,
+                type: report.target.type,
+                visibility: "hidden",
+                reasonCategory: input.reasonCategory,
+                actionTime: input.occurredAt.toISOString(),
+              }
+            : {
+                id: report.target.id,
+                type: report.target.type,
+                visibility: current,
+              };
+      }
+
+      transaction.update(reportRef, {
+        decision: input.decision,
+        reviewReasonCategory: input.reasonCategory,
+        internalNote: note ?? null,
+        moderatorId: input.operatorId,
+        resolvedAt: Timestamp.fromDate(input.occurredAt),
+      });
+      if (moderationAction) {
+        const moderationAudit = moderatorAudit({
+          operatorId: input.operatorId,
+          action: moderationAction,
+          subjectType:
+            report.target.type === "agent_profile" ? "agent" : "public_item",
+          subjectId: report.target.id,
+          reasonCategory: input.reasonCategory,
+          previousState,
+          resultingState,
+          occurredAt: input.occurredAt,
+          correlationId: input.correlationId,
+        });
+        const auditId = hash(`audit:moderation:${commandId}`).slice(0, 32);
+        transaction.create(
+          this.firestore.collection(collections.audits).doc(auditId),
+          serializeAudit(auditId, moderationAudit),
+        );
+      }
+      const reportAudit = moderatorAudit({
+        operatorId: input.operatorId,
+        action: "report.resolved",
+        subjectType: "report",
+        subjectId: input.reportId,
+        reasonCategory: input.reasonCategory,
+        previousState: { reportStatus: "open" },
+        resultingState: { reportStatus: "resolved" },
+        occurredAt: input.occurredAt,
+        correlationId: input.correlationId,
+      });
+      const reportAuditId = hash(`audit:report:${commandId}`).slice(0, 32);
+      transaction.create(
+        this.firestore.collection(collections.audits).doc(reportAuditId),
+        serializeAudit(reportAuditId, reportAudit),
+      );
+      const response: StoredResponseRecord = {
+        status: 200,
+        body: {
+          data: {
+            id: input.reportId,
+            status: "resolved",
+            decision: input.decision,
+            reasonCategory: input.reasonCategory,
+            reviewedAt: input.occurredAt.toISOString(),
+            target: report.target,
+            changed,
+            publicState,
+          },
+        },
+      };
+      const expireAt = new Date(input.occurredAt);
+      expireAt.setUTCDate(expireAt.getUTCDate() + 30);
+      transaction.create(commandRef, {
+        agentId: input.operatorId,
+        command: route,
+        keyHash: hash(input.idempotencyKey),
+        requestFingerprint: fingerprint,
+        response,
+        completedAt: Timestamp.fromDate(input.occurredAt),
+        expireAt: Timestamp.fromDate(expireAt),
+      });
+      return Object.freeze({ response });
+    });
+  }
+
+  async findPublicModerationState(
+    target: ReportTargetRecord,
+  ): Promise<Readonly<Record<string, unknown>> | null> {
+    const snapshot = await this.firestore
+      .collection(
+        target.type === "agent_profile"
+          ? collections.profiles
+          : collections.items,
+      )
+      .doc(target.id)
+      .get();
+    if (!snapshot.exists) return null;
+    const data = snapshot.data()!;
+    const category = data.moderationReasonCategory;
+    const at = optionalDate(data.moderatedAt);
+    return Object.freeze({
+      id: target.id,
+      type: target.type,
+      ...(target.type === "agent_profile"
+        ? { status: data.status }
+        : { visibility: data.visibility }),
+      ...(category && at
+        ? { reasonCategory: category, actionTime: at.toISOString() }
+        : {}),
+    });
+  }
+
   async repostIdempotently(
     input: RepostCommandTransactionInput,
   ): Promise<RepostCommandTransactionResult> {
@@ -2567,12 +3029,19 @@ function serializeProfile(profile: PublicAgentProfileRecord) {
     status: profile.status,
     createdAt: Timestamp.fromDate(profile.createdAt),
     updatedAt: Timestamp.fromDate(profile.updatedAt),
+    ...(profile.moderationReasonCategory
+      ? { moderationReasonCategory: profile.moderationReasonCategory }
+      : {}),
+    ...(profile.moderatedAt
+      ? { moderatedAt: Timestamp.fromDate(profile.moderatedAt) }
+      : {}),
     ...(profile.controllingOperatorId
       ? { controllingOperatorId: profile.controllingOperatorId }
       : {}),
   };
 }
 function mapProfile(id: string, data: DocumentData): PublicAgentProfileRecord {
+  const moderatedAt = optionalDate(data.moderatedAt);
   return Object.freeze({
     id,
     handle: data.handle as string,
@@ -2581,6 +3050,27 @@ function mapProfile(id: string, data: DocumentData): PublicAgentProfileRecord {
     status: data.status as PublicAgentProfileRecord["status"],
     createdAt: asDate(data.createdAt),
     updatedAt: asDate(data.updatedAt),
+    ...(data.moderationReasonCategory
+      ? { moderationReasonCategory: data.moderationReasonCategory }
+      : {}),
+    ...(moderatedAt ? { moderatedAt } : {}),
+  });
+}
+function mapReport(snapshot: FirebaseFirestore.DocumentSnapshot): ReportRecord {
+  const data = snapshot.data()!;
+  const reviewedAt = optionalDate(data.resolvedAt);
+  return Object.freeze({
+    id: snapshot.id,
+    reportingAgentId: data.reportingAgentId as AgentId,
+    target: Object.freeze({
+      type: data.targetType as ReportTargetRecord["type"],
+      id: data.targetId as string,
+    }) as ReportTargetRecord,
+    reasonCategory: data.reasonCategory as ReportRecord["reasonCategory"],
+    reportedAt: asDate(data.reportedAt),
+    status: reviewedAt ? "resolved" : "open",
+    ...(data.decision ? { decision: data.decision } : {}),
+    ...(reviewedAt ? { reviewedAt } : {}),
   });
 }
 function mapPost(
@@ -2903,6 +3393,41 @@ function operatorSecurityAudit(value: {
   });
 }
 
+function moderatorAudit(value: {
+  readonly operatorId: string;
+  readonly action: "agent.suspended" | "content.hidden" | "report.resolved";
+  readonly subjectType: "agent" | "public_item" | "report";
+  readonly subjectId: string;
+  readonly reasonCategory: "spam" | "impersonation" | "abuse" | "unsafe_link";
+  readonly previousState: AuditState | null;
+  readonly resultingState: AuditState | null;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}): AuditRecordInput {
+  return createAuditRecordInput({
+    actor: {
+      type: "moderator",
+      id: createAuditIdentifier(value.operatorId),
+    },
+    action: value.action,
+    subject: {
+      type: value.subjectType,
+      id: createAuditIdentifier(value.subjectId),
+    },
+    details: {
+      result: "completed",
+      reasonCategory: value.reasonCategory,
+      previousState: value.previousState,
+      resultingState: value.resultingState,
+      correlationId: createAuditCorrelationId(value.correlationId),
+      requestOrigin: createInternalRequestOrigin("hosted-api"),
+      credentialId: null,
+      retentionRange: null,
+    },
+    createdAt: value.occurredAt,
+  });
+}
+
 function auditCredentialIdentifier(value: string) {
   return createAuditIdentifier(`cred-${hash(value).slice(0, 24)}`);
 }
@@ -2948,7 +3473,8 @@ async function readRateLimitBucket(
     | "reply.publish"
     | "repost.publish"
     | "acknowledgement.create"
-    | "follow.change",
+    | "follow.change"
+    | "report.create",
   at: Date,
   policy: PublishRateLimitPolicy,
 ) {

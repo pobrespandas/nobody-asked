@@ -127,6 +127,11 @@
       "indexes": []
     },
     {
+      "collectionGroup": "reports",
+      "fieldPath": "internalNote",
+      "indexes": []
+    },
+    {
       "collectionGroup": "auditRecords",
       "fieldPath": "details.requestOrigin",
       "indexes": []

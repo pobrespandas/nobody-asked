@@ -13,6 +13,10 @@ import {
 } from "@nobody-asked/identity";
 import { SelfFollowError } from "@nobody-asked/social-graph";
 import {
+  isModerationReasonCategory,
+  isReportReviewDecision,
+} from "@nobody-asked/safety";
+import {
   observeRequest,
   type OperationalHttpMethod,
   type OperationalRoute,
@@ -185,6 +189,30 @@ async function handleApiRequest(
     if (request.method === "POST" && url.pathname === "/v1/operator/agents") {
       return await registerOperatorAgent(dependencies, request);
     }
+    if (request.method === "POST" && url.pathname === "/v1/reports") {
+      return await createReport(dependencies, request);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/moderator/reports") {
+      return await readModeratorReports(dependencies, request);
+    }
+    const reviewMatch = url.pathname.match(
+      /^\/v1\/moderator\/reports\/([^/]+)\/review$/,
+    );
+    if (request.method === "POST" && reviewMatch?.[1]) {
+      return await reviewReport(dependencies, request, reviewMatch[1]);
+    }
+    const moderationStateMatch = url.pathname.match(
+      /^\/v1\/moderation\/(agent-profiles|public-items)\/([^/]+)$/,
+    );
+    if (request.method === "GET" && moderationStateMatch?.[2]) {
+      return await readPublicModerationState(
+        dependencies,
+        moderationStateMatch[1] === "agent-profiles"
+          ? "agent_profile"
+          : "public_item",
+        moderationStateMatch[2],
+      );
+    }
     const operatorCredentialMatch = url.pathname.match(
       /^\/v1\/operator\/agents\/([^/]+)\/credentials(?:\/([^/]+))?$/,
     );
@@ -328,6 +356,16 @@ function operationalRoute(request: Request): OperationalRoute {
   }
   if (pathname === "/v1/operator/agents" && request.method === "POST") {
     return "operator.agent.register";
+  }
+  if (pathname === "/v1/reports") return "report.create";
+  if (pathname === "/v1/moderator/reports") return "moderator.reports.read";
+  if (/^\/v1\/moderator\/reports\/[^/]+\/review$/.test(pathname)) {
+    return "moderator.report.review";
+  }
+  if (
+    /^\/v1\/moderation\/(agent-profiles|public-items)\/[^/]+$/.test(pathname)
+  ) {
+    return "moderation-state.read";
   }
   if (/^\/v1\/operator\/agents\/[^/]+\/credentials\/rotate$/.test(pathname)) {
     return "operator.credential.rotate";
@@ -877,6 +915,109 @@ async function registerOperatorAgent(
   });
 }
 
+async function createReport(dependencies: ApiDependencies, request: Request) {
+  const authentication = await authenticate(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const key = request.headers.get("idempotency-key")?.trim();
+  if (!key) {
+    return errorResponse(
+      400,
+      "idempotency_key_required",
+      "The Idempotency-Key header is required.",
+    );
+  }
+  const input = await readReportInput(request);
+  if (input instanceof Response) return input;
+  const result = await dependencies.store.submitReportIdempotently({
+    authenticatedAgentId: authentication.authenticated.agentId,
+    credentialId: authentication.authenticated.credentialId,
+    credentialSecret: authentication.secret,
+    target: input.target,
+    reasonCategory: input.reasonCategory,
+    idempotencyKey: key,
+    occurredAt: dependencies.now(),
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return jsonResponse(result.response.status, result.response.body);
+}
+
+async function readModeratorReports(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
+  const authentication = await authenticateRecentOperator(
+    dependencies,
+    request,
+  );
+  if (authentication instanceof Response) return authentication;
+  const reports = await dependencies.store.listOpenReports(
+    authentication.operatorId,
+  );
+  return jsonResponse(200, {
+    data: reports.map((report) => ({
+      id: report.id,
+      reportingAgentId: report.reportingAgentId,
+      target: report.target,
+      reasonCategory: report.reasonCategory,
+      reportedAt: report.reportedAt.toISOString(),
+      status: report.status,
+    })),
+  });
+}
+
+async function reviewReport(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedReportId: string,
+) {
+  const reportId = decodeIdentifier(encodedReportId, "report ID");
+  if (reportId instanceof Response) return reportId;
+  const authentication = await authenticateRecentOperator(
+    dependencies,
+    request,
+  );
+  if (authentication instanceof Response) return authentication;
+  const key = request.headers.get("idempotency-key")?.trim();
+  if (!key) {
+    return errorResponse(
+      400,
+      "idempotency_key_required",
+      "The Idempotency-Key header is required.",
+    );
+  }
+  const input = await readReviewInput(request);
+  if (input instanceof Response) return input;
+  const result = await dependencies.store.reviewReportIdempotently({
+    operatorId: authentication.operatorId,
+    reportId,
+    ...input,
+    idempotencyKey: key,
+    occurredAt: dependencies.now(),
+    correlationId: dependencies.nextCorrelationId(),
+  });
+  return jsonResponse(result.response.status, result.response.body);
+}
+
+async function readPublicModerationState(
+  dependencies: ApiDependencies,
+  type: "agent_profile" | "public_item",
+  encodedId: string,
+) {
+  const id = decodeIdentifier(encodedId, "subject ID");
+  if (id instanceof Response) return id;
+  const state = await dependencies.store.findPublicModerationState({
+    type,
+    id,
+  });
+  return state
+    ? jsonResponse(200, { data: state })
+    : errorResponse(
+        404,
+        "moderation_subject_not_found",
+        "The moderation subject was not found.",
+      );
+}
+
 async function authenticateRecentOperator(
   dependencies: ApiDependencies,
   request: Request,
@@ -1224,7 +1365,68 @@ async function readPostInput(request: Request) {
     : errorResponse(400, "invalid_input", "The text field is required.");
 }
 
-async function readAgentRegistrationInput(request: Request) {
+async function readReportInput(request: Request) {
+  const value = await readJsonObject(request);
+  if (value instanceof Response) return value;
+  const target = value.target;
+  const reasonCategory = value.reasonCategory;
+  if (
+    !target ||
+    typeof target !== "object" ||
+    Array.isArray(target) ||
+    typeof (target as Record<string, unknown>).id !== "string" ||
+    ((target as Record<string, unknown>).type !== "agent_profile" &&
+      (target as Record<string, unknown>).type !== "public_item") ||
+    typeof reasonCategory !== "string" ||
+    !isModerationReasonCategory(reasonCategory)
+  ) {
+    return errorResponse(400, "invalid_report", "The report input is invalid.");
+  }
+  const id = decodeIdentifier(
+    (target as Record<string, unknown>).id as string,
+    "report target ID",
+  );
+  if (id instanceof Response) return id;
+  return {
+    target: {
+      type: (target as Record<string, unknown>).type as
+        "agent_profile" | "public_item",
+      id,
+    },
+    reasonCategory,
+  };
+}
+
+async function readReviewInput(request: Request) {
+  const value = await readJsonObject(request);
+  if (value instanceof Response) return value;
+  const decision = value.decision;
+  const reasonCategory = value.reasonCategory;
+  const internalNote = value.internalNote;
+  if (
+    typeof decision !== "string" ||
+    !isReportReviewDecision(decision) ||
+    typeof reasonCategory !== "string" ||
+    !isModerationReasonCategory(reasonCategory) ||
+    (internalNote !== undefined &&
+      (typeof internalNote !== "string" || internalNote.trim().length > 2_000))
+  ) {
+    return errorResponse(
+      400,
+      "invalid_report_review_decision",
+      "The report review input is invalid.",
+    );
+  }
+  return {
+    decision,
+    reasonCategory,
+    ...(typeof internalNote === "string" && internalNote.trim()
+      ? { internalNote: internalNote.trim() }
+      : {}),
+  };
+}
+
+async function readJsonObject(request: Request) {
   let value: unknown;
   try {
     value = await request.json();
@@ -1235,20 +1437,20 @@ async function readAgentRegistrationInput(request: Request) {
       "The request body is not valid JSON.",
     );
   }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return errorResponse(
-      400,
-      "invalid_input",
-      "The agent profile is required.",
-    );
-  }
-  const record = value as Record<string, unknown>;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : errorResponse(400, "invalid_input", "The request body is invalid.");
+}
+
+async function readAgentRegistrationInput(request: Request) {
+  const value = await readJsonObject(request);
+  if (value instanceof Response) return value;
   if (
-    typeof record.handle !== "string" ||
-    typeof record.displayName !== "string" ||
-    (record.description !== undefined &&
-      record.description !== null &&
-      typeof record.description !== "string")
+    typeof value.handle !== "string" ||
+    typeof value.displayName !== "string" ||
+    (value.description !== undefined &&
+      value.description !== null &&
+      typeof value.description !== "string")
   ) {
     return errorResponse(
       400,
@@ -1257,9 +1459,9 @@ async function readAgentRegistrationInput(request: Request) {
     );
   }
   return {
-    handle: record.handle,
-    displayName: record.displayName,
-    description: (record.description as string | null | undefined) ?? null,
+    handle: value.handle,
+    displayName: value.displayName,
+    description: (value.description as string | null | undefined) ?? null,
   };
 }
 
@@ -1375,6 +1577,14 @@ function serializeAgent(profile: PublicAgentProfile) {
     status: profile.status,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
+    ...(profile.moderationReasonCategory && profile.moderatedAt
+      ? {
+          moderation: {
+            reasonCategory: profile.moderationReasonCategory,
+            actionTime: profile.moderatedAt.toISOString(),
+          },
+        }
+      : {}),
   };
 }
 
@@ -1445,6 +1655,11 @@ const allowedDomainErrorStatus = {
   operator_enrollment_rejected: 401,
   operator_authentication_rejected: 401,
   handle_already_taken: 409,
+  report_target_not_found: 404,
+  report_not_found: 404,
+  report_already_resolved: 409,
+  moderator_authority_denied: 403,
+  invalid_report_review_decision: 409,
 } as const;
 
 const allowedDomainErrorMessage: Record<
@@ -1470,6 +1685,12 @@ const allowedDomainErrorMessage: Record<
   operator_authentication_rejected:
     "The operator authentication proof was rejected.",
   handle_already_taken: "The handle is already in use.",
+  report_target_not_found: "The report target was not found.",
+  report_not_found: "The report was not found.",
+  report_already_resolved: "The report is already resolved.",
+  moderator_authority_denied: "Moderator authority is required.",
+  invalid_report_review_decision:
+    "The report review decision does not match the report target.",
 };
 
 function getAllowedDomainError(error: unknown): {
