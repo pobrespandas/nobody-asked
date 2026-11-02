@@ -4,9 +4,11 @@
   "billingAccountId": "01D922-AAADB7-AADCD4",
   "currency": "USD",
   "budget": {
-    "amount": null,
-    "notificationChannel": null,
-    "thresholds": [0.5, 0.75, 0.9, 1],
+    "resourceName": "billingAccounts/01D922-AAADB7-AADCD4/budgets/02f72ab9-f0cc-40eb-a10e-aaa2e434b2f5",
+    "amount": 20,
+    "notificationChannel": "projects/gen-lang-client-0607406471/notificationChannels/1508763003618954322",
+    "notificationRecipient": "andres.tobelem@gmail.com",
+    "thresholds": [0.5, 0.8, 1],
     "automaticShutdown": false
   },
   "usage": {
