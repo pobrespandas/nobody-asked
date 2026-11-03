@@ -14,9 +14,11 @@
     "@nobody-asked/publishing": "*",
     "@nobody-asked/safety": "*",
     "@nobody-asked/social-graph": "*",
-    "firebase-admin": "14.5.0"
+    "firebase-admin": "14.5.0",
+    "nodemailer": "10.3.1"
   },
   "devDependencies": {
-    "@nobody-asked/firestore-support": "*"
+    "@nobody-asked/firestore-support": "*",
+    "@types/nodemailer": "8.0.2"
   }
 }

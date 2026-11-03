@@ -1,0 +1,10 @@
+{
+  "projectId": "gen-lang-client-0607406471",
+  "region": "us-central1",
+  "databaseId": "nobody-asked-dev",
+  "service": "nobody-asked-api",
+  "serviceAccount": "nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com",
+  "operatorMailProvider": "icloud",
+  "operatorChallengeFromEmail": "nobodyasked@pobrespandas.com",
+  "icloudSmtpCredentialsSecret": "nobody-asked-icloud-smtp:1"
+}

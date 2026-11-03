@@ -26,6 +26,8 @@ UN-62 covers optional human Operator and Moderator challenge delivery. It is not
 
 UN-84 is corrected locally in `fe37612`. Accepted challenge responses now distinguish request handling from delivery and tell callers to use a new challenge and idempotency key when no email arrives. Success, unknown identities, replays, and delivery failures keep the same response. The full check passed 370 tests with 38 environment tests skipped. This correction and the additional expiry and reuse tests in `6d07efc` are not deployed.
 
+The owner later confirmed invitation and runtime challenge receipt. Hosted acceptance returned `201` with a protected session cookie. The session reached the Moderator permission check and received `403 moderator_authority_denied`. Acceptance replay returned `409 session_secret_unavailable`; new-key reuse returned `401 operator_enrollment_rejected`, both without another cookie. Recovery revocation and rollback remain unverified remotely. UN-85 tracks the requested switch to `nobodyasked@pobrespandas.com` through iCloud. Its local provider, configuration, and deployment checks pass; the full check passed 391 tests with 38 skipped, and the clean-install packaged scenario passed. A project-specific Apple app password and hosted iCloud delivery evidence are still required. Published revisions continue to use Resend.
+
 ## Historical review
 
 - Review date: 2026-11-02

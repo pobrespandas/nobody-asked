@@ -18,6 +18,7 @@ import { bindRegistrationNetworkSource } from "./request-source.js";
 import { deriveAgentRegistrationId } from "./registration-identifiers.js";
 import { readHostedApiConfig } from "./runtime-config.js";
 import { createResendOperatorChallengeDelivery } from "./resend-delivery.js";
+import { createIcloudOperatorChallengeDelivery } from "./icloud-delivery.js";
 
 const config = readHostedApiConfig();
 const firebase = initializeApp({
@@ -48,10 +49,10 @@ const api = createFirestoreApi({
   generateOperatorInvitationSecret: () => randomBytes(32).toString("base64url"),
   nextOperatorChallengeId: randomUUID,
   generateOperatorChallengeSecret: () => randomBytes(32).toString("base64url"),
-  deliverOperatorChallenge: createResendOperatorChallengeDelivery({
-    apiKey: config.resendApiKey,
-    fromEmail: config.operatorChallengeFromEmail,
-  }),
+  deliverOperatorChallenge:
+    config.operatorMail.provider === "icloud"
+      ? createIcloudOperatorChallengeDelivery(config.operatorMail)
+      : createResendOperatorChallengeDelivery(config.operatorMail),
   now: () => new Date(),
   operationalLogger: createJsonOperationalLogger((line) => console.log(line)),
   monotonicNow: () => performance.now(),

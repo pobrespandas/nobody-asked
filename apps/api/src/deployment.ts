@@ -5,7 +5,9 @@ export interface ApiDeployment {
   readonly service: string;
   readonly serviceAccount: string;
   readonly operatorChallengeFromEmail: string;
-  readonly resendApiKeySecret: string;
+  readonly operatorMailProvider?: "resend" | "icloud";
+  readonly resendApiKeySecret?: string;
+  readonly icloudSmtpCredentialsSecret?: string;
 }
 
 export function createDeployArguments(
@@ -14,6 +16,7 @@ export function createDeployArguments(
   revision: string,
 ): string[] {
   validate(input, image, revision);
+  const provider = input.operatorMailProvider ?? "resend";
   return [
     "run",
     "deploy",
@@ -28,11 +31,15 @@ export function createDeployArguments(
     revision,
     "--service-account",
     input.serviceAccount,
-    "--no-allow-unauthenticated",
-    "--set-env-vars",
-    `NOBODY_ASKED_GCP_PROJECT_ID=${input.projectId},FIRESTORE_DATABASE_ID=${input.databaseId},OPERATOR_CHALLENGE_FROM_EMAIL=${input.operatorChallengeFromEmail}`,
-    "--set-secrets",
-    `RESEND_API_KEY=${input.resendApiKeySecret}`,
+    "--no-traffic",
+    "--update-env-vars",
+    `NOBODY_ASKED_GCP_PROJECT_ID=${input.projectId},FIRESTORE_DATABASE_ID=${input.databaseId},OPERATOR_CHALLENGE_FROM_EMAIL=${input.operatorChallengeFromEmail},OPERATOR_MAIL_PROVIDER=${provider}`,
+    "--update-secrets",
+    provider === "icloud"
+      ? `ICLOUD_SMTP_CREDENTIALS=${input.icloudSmtpCredentialsSecret}`
+      : `RESEND_API_KEY=${input.resendApiKeySecret}`,
+    "--remove-secrets",
+    provider === "icloud" ? "RESEND_API_KEY" : "ICLOUD_SMTP_CREDENTIALS",
     "--quiet",
   ];
 }
@@ -50,8 +57,27 @@ function validate(input: ApiDeployment, image: string, revision: string): void {
     !/^[^\s@,=]+@[^\s@,=]+\.[^\s@,=]+$/.test(input.operatorChallengeFromEmail)
   )
     throw new Error("operatorChallengeFromEmail must be an email address.");
-  if (!/^[a-z][a-z0-9-]*:[1-9][0-9]*$/.test(input.resendApiKeySecret))
-    throw new Error("resendApiKeySecret must name a numeric secret version.");
+  const provider = input.operatorMailProvider ?? "resend";
+  if (provider !== "resend" && provider !== "icloud")
+    throw new Error("operatorMailProvider must be resend or icloud.");
+  if (
+    provider === "icloud" &&
+    input.operatorChallengeFromEmail !== "nobodyasked@pobrespandas.com"
+  )
+    throw new Error("The iCloud sender must be nobodyasked@pobrespandas.com.");
+  const secret =
+    provider === "icloud"
+      ? input.icloudSmtpCredentialsSecret
+      : input.resendApiKeySecret;
+  if (!secret || !/^[a-z][a-z0-9-]*:[1-9][0-9]*$/.test(secret))
+    throw new Error(
+      "The selected mail secret must name a numeric secret version.",
+    );
+  if (
+    (provider === "icloud" && input.resendApiKeySecret) ||
+    (provider === "resend" && input.icloudSmtpCredentialsSecret)
+  )
+    throw new Error("Configure only the selected mail provider secret.");
   if (
     !input.serviceAccount.endsWith(
       `@${input.projectId}.iam.gserviceaccount.com`,

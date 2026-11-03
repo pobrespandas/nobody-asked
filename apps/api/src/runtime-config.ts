@@ -1,9 +1,26 @@
+import {
+  ICLOUD_FROM_EMAIL,
+  readIcloudMailCredentials,
+  type IcloudMailCredentials,
+} from "./icloud-delivery.js";
+
+export type OperatorMailConfig =
+  | {
+      readonly provider: "resend";
+      readonly apiKey: string;
+      readonly fromEmail: string;
+    }
+  | {
+      readonly provider: "icloud";
+      readonly credentials: IcloudMailCredentials;
+      readonly fromEmail: string;
+    };
+
 export interface HostedApiConfig {
   readonly projectId: string;
   readonly databaseId: string;
   readonly port: number;
-  readonly resendApiKey: string;
-  readonly operatorChallengeFromEmail: string;
+  readonly operatorMail: OperatorMailConfig;
 }
 
 export function readHostedApiConfig(
@@ -48,7 +65,6 @@ export function readHostedApiConfig(
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     throw new Error("PORT must be an integer from 1 through 65535.");
   }
-  const resendApiKey = required(environment.RESEND_API_KEY, "RESEND_API_KEY");
   const operatorChallengeFromEmail = required(
     environment.OPERATOR_CHALLENGE_FROM_EMAIL,
     "OPERATOR_CHALLENGE_FROM_EMAIL",
@@ -56,12 +72,37 @@ export function readHostedApiConfig(
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(operatorChallengeFromEmail)) {
     throw new Error("OPERATOR_CHALLENGE_FROM_EMAIL must be an email address.");
   }
+  const provider = environment.OPERATOR_MAIL_PROVIDER ?? "resend";
+  let operatorMail: OperatorMailConfig;
+  if (provider === "resend") {
+    operatorMail = {
+      provider,
+      apiKey: required(environment.RESEND_API_KEY, "RESEND_API_KEY"),
+      fromEmail: operatorChallengeFromEmail.toLowerCase(),
+    };
+  } else if (provider === "icloud") {
+    if (operatorChallengeFromEmail.toLowerCase() !== ICLOUD_FROM_EMAIL)
+      throw new Error(
+        "The iCloud sender must be nobodyasked@pobrespandas.com.",
+      );
+    operatorMail = {
+      provider,
+      credentials: readIcloudMailCredentials(
+        required(
+          environment.ICLOUD_SMTP_CREDENTIALS,
+          "ICLOUD_SMTP_CREDENTIALS",
+        ),
+      ),
+      fromEmail: ICLOUD_FROM_EMAIL,
+    };
+  } else {
+    throw new Error("OPERATOR_MAIL_PROVIDER must be resend or icloud.");
+  }
   return Object.freeze({
     projectId,
     databaseId,
     port,
-    resendApiKey,
-    operatorChallengeFromEmail: operatorChallengeFromEmail.toLowerCase(),
+    operatorMail: Object.freeze(operatorMail),
   });
 }
 

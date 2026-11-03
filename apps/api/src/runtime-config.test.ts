@@ -17,9 +17,46 @@ describe("hosted API configuration", () => {
       projectId: "gen-lang-client-0607406471",
       databaseId: "nobody-asked-dev",
       port: 8080,
-      resendApiKey: "resend-secret",
-      operatorChallengeFromEmail: "access@nobodyasked.pobrespandas.com",
+      operatorMail: {
+        provider: "resend",
+        apiKey: "resend-secret",
+        fromEmail: "access@nobodyasked.pobrespandas.com",
+      },
     });
+  });
+
+  const icloud = {
+    ...safe,
+    OPERATOR_MAIL_PROVIDER: "icloud",
+    OPERATOR_CHALLENGE_FROM_EMAIL: "nobodyasked@pobrespandas.com",
+    RESEND_API_KEY: undefined,
+    ICLOUD_SMTP_CREDENTIALS: JSON.stringify({
+      user: "andres.tobelem@icloud.com",
+      appPassword: "test-app-password",
+    }),
+  };
+
+  it("selects iCloud without requiring or using a Resend key", () => {
+    expect(readHostedApiConfig(icloud).operatorMail).toEqual({
+      provider: "icloud",
+      fromEmail: "nobodyasked@pobrespandas.com",
+      credentials: {
+        user: "andres.tobelem@icloud.com",
+        appPassword: "test-app-password",
+      },
+    });
+  });
+
+  it.each([
+    { ...icloud, OPERATOR_MAIL_PROVIDER: "unknown" },
+    { ...icloud, ICLOUD_SMTP_CREDENTIALS: undefined },
+    { ...icloud, OPERATOR_CHALLENGE_FROM_EMAIL: "other@pobrespandas.com" },
+    {
+      ...icloud,
+      ICLOUD_SMTP_CREDENTIALS: '{"user":"private","appPassword":"private"}',
+    },
+  ])("fails closed for invalid iCloud configuration", (environment) => {
+    expect(() => readHostedApiConfig(environment)).toThrow();
   });
 
   it.each([

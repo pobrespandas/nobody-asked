@@ -10,9 +10,9 @@ projects/PROJECT_ID/secrets/SECRET_ID/versions/VERSION_NUMBER
 
 The runtime service account uses Application Default Credentials. Grant `roles/secretmanager.secretAccessor` on each named secret. Use a secret-level grant. Do not create or mount a service account key.
 
-The hosted API requires `RESEND_API_KEY`. The key authorizes delivery of operator challenges. Store it in the `resend-api-key` secret. Bind an exact numeric version to the runtime environment variable. Do not expose the value in configuration, logs, issue comments, or deployment arguments.
+The selected Operator mail provider defines the required secret. `OPERATOR_MAIL_PROVIDER=resend` uses `RESEND_API_KEY` from `resend-api-key`. `OPERATOR_MAIL_PROVIDER=icloud` uses `ICLOUD_SMTP_CREDENTIALS` from `nobody-asked-icloud-smtp`. An absent provider keeps the existing Resend default. Unknown providers or missing selected credentials stop startup. Bind an exact numeric version. Keep secret values out of configuration, logs, issue comments, and deployment arguments. Follow [iCloud delivery](icloud-mail.md) for credential creation, the intended configuration, candidate verification, and rollback.
 
-`OPERATOR_CHALLENGE_FROM_EMAIL` is non-secret configuration. It must contain a sender address from a domain that Resend has verified. The deployment contract passes it as an environment variable.
+`OPERATOR_CHALLENGE_FROM_EMAIL` is non-secret configuration. Resend requires a verified sender domain. iCloud requires the fixed address `nobodyasked@pobrespandas.com`, authorized by the owner's custom domain. The deployment contract passes it as an environment variable.
 
 When the runtime has a defined secret, use this reference shape:
 
@@ -78,7 +78,7 @@ Use a numeric version for rotation and rollback. It makes the deployed configura
 
 The challenge endpoint returns a generic `202` result even when delivery fails. This prevents identity enumeration. Its `accepted` field does not prove Resend acceptance or inbox delivery. A same-key replay does not resend the committed challenge. If no email arrives, follow the response recovery instruction: request a new challenge with a new `Idempotency-Key`; automatic retry is disabled. The fixed `operator.challenge.delivery_failed` operational event contains no recipient, proof, secret, or provider error. Use provider acceptance and recipient confirmation as separate delivery evidence.
 
-Local validation does not prove remote IAM, Resend access, or sender verification. Before the delivery work can be Done, an operator must create or select `resend-api-key`, grant the runtime identity access at secret scope, verify the sender domain in Resend, deploy a numeric version binding, and complete one challenge flow. Record provider acceptance, recipient-confirmed inbox delivery, recipient proof, and successful enrollment as separate checks. Then verify expiry, one-time use, recovery revocation, and rollback. Record the Cloud Run revision, secret version number, and each result. Record no secret value, challenge value, or session cookie.
+Local validation does not prove remote IAM, provider access, or sender authorization. Before delivery can be Done, configure the selected provider secret and sender, grant the runtime identity access at secret scope, deploy a numeric version binding, and complete one challenge flow. For iCloud, follow the linked procedure above. For Resend, use `resend-api-key` and verify its sender domain. Record provider acceptance, recipient-confirmed inbox delivery, recipient proof, and successful enrollment as separate checks. Then verify expiry, one-time use, recovery revocation, and rollback. Record the Cloud Run revision, secret version number, and each result. Record no secret value, challenge value, or session cookie.
 
 ## Constitutional decision test
 
