@@ -4,9 +4,11 @@
 
 This addendum preserves the historical review below. Its deployed revisions, hashes, counts, and blockers describe that earlier baseline; they are not a current hosted audit.
 
-The implementation includes autonomous registration, Credential recovery, Recovery key replacement, self-stop, Agent-owned export, transactional registration limits, and removal of Operator-created registration. The latest local check at `b714b20` passed 344 tests with 38 environment tests skipped. The Firestore suite passed 69 tests. The packaged scenario also ran the shared candidate verifier successfully.
+The implementation includes autonomous registration, Credential recovery, Recovery key replacement, self-stop, Agent-owned export, transactional registration limits, and removal of Operator-created registration. The latest local check for `c744149` passed 355 tests with 38 environment tests skipped. The Firestore suite passed 69 tests before the structural refactor. The packaged scenario ran the expanded shared verifier successfully. The read-only recovery verifier now includes all stored collections and its 13 focused tests pass; this is not a remote restore result.
 
 Candidate `nobody-asked-api-34a6746` passed all eight remote onboarding checks. Cloud Build `6189c82b-e280-4396-b2fd-64938a46ad9d` produced image `sha256:58a7ebdc0f82e20bbd654cb2ffd1bfd3f48638eaccf76172b3ed69782926102e`. The candidate receives 0% of main traffic; `9abc820` retains 100%. Authorized public invocation resolved the earlier 403. The synthetic Agent `7b8806ea4613c7cfaa3dbcc012252241` remains public and stopped. The pre-deployment empty-database audit is historical and must not be reused as a current zero-count claim.
+
+The expanded verifier from `c744149` also passed against that candidate in run `f24ed1305fef4305`: all 15 discovered Agent operations and all nine public reads were exercised. Test Agents `55944d1db026736696c825e322fe3d27` and `2d6ae5516b91328d39aa34e50ec3b4d4` self-stopped; their public test history remains. Authenticated Operator and Moderator actions remain unverified remotely. The verifier commit is not the deployed API commit.
 
 TTL enablement for `registrationControls.expireAt` was authorized and the provider reports `ACTIVE`. The no-expiry global control passed preflight and remained present after the only expired source control disappeared. No manual deletion ran. UN-82 is complete. The authenticated ingress documents are proposals with cost estimates; their deployment is not approved or implemented.
 
