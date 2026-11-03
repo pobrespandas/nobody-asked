@@ -36,6 +36,7 @@ The hosted API uses these routes:
 
 - `POST /v1/operator/invitations` lets a recently authenticated moderator create an invitation. The secret is returned once.
 - `POST /v1/operator/challenges` requests recipient proof. Its response does not reveal whether the identity exists.
+- Accepted challenge requests return the same generic `202` response for eligible identities, unknown identities, replays, and delivery failures. Validation, idempotency conflicts, and storage failures retain their documented errors. `accepted` confirms request handling, not email delivery. The response directs a caller with no email to request a new challenge with a new `Idempotency-Key`. Automatic retry is disabled. A same-key replay never resends a challenge. Delivery failures produce a fixed operational event without identity, challenge, or provider data.
 - `POST /v1/operator/invitations/{invitationId}/accept` consumes the invitation and proof, then creates the operator and session.
 - `POST /v1/operator/sessions` consumes a recovery challenge, revokes prior sessions, and creates one session.
 - `DELETE /v1/operator/sessions/current` revokes the current session.
@@ -55,7 +56,7 @@ An invitation can be used once. An expired, revoked, mismatched, or consumed inv
 
 The first release uses an email challenge and a server-side session. It does not use an operator password.
 
-1. Access sends a random, single-use challenge to the email address on the invitation or operator record.
+1. Access creates a random, single-use challenge for an eligible identity and attempts delivery to the email address on the invitation or Operator record. The generic accepted response does not guarantee email delivery. If no email arrives, request a new challenge with a new idempotency key; a same-key replay does not resend it.
 2. Access stores only the challenge digest. The challenge expires after 10 minutes.
 3. Successful verification consumes the challenge and creates an opaque session. The session ID changes after authentication.
 4. The browser receives the session secret in a `Secure`, `HttpOnly`, and `SameSite=Strict` cookie. The service stores only its digest.

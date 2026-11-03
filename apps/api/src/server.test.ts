@@ -1489,12 +1489,119 @@ describe("hosted operator controls", () => {
     await expect(response.json()).resolves.toEqual({
       data: {
         accepted: true,
-        message: "If the identity can authenticate, a challenge was sent.",
+        message:
+          "The request was accepted. Delivery is not guaranteed. If no email arrives, request a new challenge with a new Idempotency-Key.",
+        recovery: {
+          method: "POST",
+          href: "/v1/operator/challenges",
+          automaticRetry: false,
+          idempotencyKey: "new",
+        },
       },
     });
     expect(first.dependencies.deliverOperatorChallenge).toHaveBeenCalledWith(
       "operator@example.test",
       "operator-challenge-secret-2",
+    );
+  });
+
+  it("keeps challenge success, unknown identity, replay, and delivery failure indistinguishable", async () => {
+    const bodies: unknown[] = [];
+    for (const condition of [
+      "success",
+      "unknown",
+      "replay",
+      "delivery-failure",
+      "logger-failure",
+    ] as const) {
+      const { api, dependencies } = harness();
+      vi.mocked(dependencies.store.createOperatorChallenge).mockResolvedValue({
+        accepted: condition !== "unknown",
+        created: condition !== "replay",
+      });
+      if (condition === "delivery-failure" || condition === "logger-failure")
+        vi.mocked(dependencies.deliverOperatorChallenge).mockRejectedValue(
+          new Error(
+            "private provider detail challenge-secret operator@example.test",
+          ),
+        );
+      if (condition === "logger-failure")
+        dependencies.operationalLogger.write = () => {
+          throw new Error("private sink detail");
+        };
+      const response = await api(
+        new Request("https://network.test/v1/operator/challenges", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": "challenge-safe",
+          },
+          body: JSON.stringify({ identity: "operator@example.test" }),
+        }),
+      );
+      expect(response.status).toBe(202);
+      const body = await response.json();
+      expect(body.data.recovery).toEqual({
+        method: "POST",
+        href: "/v1/operator/challenges",
+        automaticRetry: false,
+        idempotencyKey: "new",
+      });
+      expect(JSON.stringify(body)).not.toMatch(
+        /operator@example|challenge-secret|private provider|private sink/,
+      );
+      bodies.push(body);
+      if (condition === "unknown" || condition === "replay")
+        expect(dependencies.deliverOperatorChallenge).not.toHaveBeenCalled();
+    }
+    for (const body of bodies) expect(body).toEqual(bodies[0]);
+  });
+
+  it("does not claim that a same-key replay resends a committed challenge", async () => {
+    const { api, dependencies, operationalRecords } = harness();
+    vi.mocked(dependencies.store.createOperatorChallenge)
+      .mockResolvedValueOnce({ accepted: true, created: true })
+      .mockResolvedValueOnce({ accepted: true, created: false })
+      .mockResolvedValueOnce({ accepted: true, created: true });
+    vi.mocked(dependencies.deliverOperatorChallenge)
+      .mockRejectedValueOnce(new Error("provider unavailable"))
+      .mockResolvedValueOnce(undefined);
+    const request = (key = "same-key") =>
+      new Request("https://network.test/v1/operator/challenges", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": key,
+        },
+        body: JSON.stringify({ identity: "operator@example.test" }),
+      });
+    const first = await api(request());
+    const second = await api(request());
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(202);
+    expect(await first.json()).toEqual(await second.json());
+    expect(dependencies.deliverOperatorChallenge).toHaveBeenCalledOnce();
+    const recovered = await api(request("new-key"));
+    expect(recovered.status).toBe(202);
+    expect((await recovered.json()).data.recovery).toEqual({
+      method: "POST",
+      href: "/v1/operator/challenges",
+      automaticRetry: false,
+      idempotencyKey: "new",
+    });
+    expect(dependencies.deliverOperatorChallenge).toHaveBeenCalledTimes(2);
+    const failures = operationalRecords.filter(
+      (record) =>
+        record !== null &&
+        typeof record === "object" &&
+        "event" in record &&
+        record.event === "operator.challenge.delivery_failed",
+    );
+    expect(failures).toEqual([
+      { severity: "ERROR", event: "operator.challenge.delivery_failed" },
+    ]);
+    expect(JSON.stringify(failures)).not.toMatch(
+      /operator@example|challenge-secret|provider unavailable/,
     );
   });
 

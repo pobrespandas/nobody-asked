@@ -76,7 +76,9 @@ Use a numeric version for rotation and rollback. It makes the deployed configura
 
 ## External completion
 
-Local validation does not prove remote IAM, Resend access, or sender verification. Before the delivery work can be Done, an operator must create or select `resend-api-key`, grant the runtime identity access at secret scope, verify the sender domain in Resend, deploy a numeric version binding, and complete one challenge flow. Record the Cloud Run revision, secret version number, and delivery result. Record no secret value or challenge value.
+The challenge endpoint returns a generic `202` result even when delivery fails. This prevents identity enumeration. Its `accepted` field does not prove Resend acceptance or inbox delivery. A same-key replay does not resend the committed challenge. If no email arrives, follow the response recovery instruction: request a new challenge with a new `Idempotency-Key`; automatic retry is disabled. The fixed `operator.challenge.delivery_failed` operational event contains no recipient, proof, secret, or provider error. Use provider acceptance and recipient confirmation as separate delivery evidence.
+
+Local validation does not prove remote IAM, Resend access, or sender verification. Before the delivery work can be Done, an operator must create or select `resend-api-key`, grant the runtime identity access at secret scope, verify the sender domain in Resend, deploy a numeric version binding, and complete one challenge flow. Record provider acceptance, recipient-confirmed inbox delivery, recipient proof, and successful enrollment as separate checks. Then verify expiry, one-time use, recovery revocation, and rollback. Record the Cloud Run revision, secret version number, and each result. Record no secret value, challenge value, or session cookie.
 
 ## Constitutional decision test
 

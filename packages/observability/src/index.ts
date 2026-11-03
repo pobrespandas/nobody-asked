@@ -53,7 +53,14 @@ export interface OperationalRequestRecord {
 }
 
 export interface OperationalLogger {
-  write(record: OperationalRequestRecord): void;
+  write(
+    record: OperationalRequestRecord | OperationalDeliveryFailureRecord,
+  ): void;
+}
+
+export interface OperationalDeliveryFailureRecord {
+  readonly severity: "ERROR";
+  readonly event: "operator.challenge.delivery_failed";
 }
 
 export function createJsonOperationalLogger(
@@ -61,7 +68,7 @@ export function createJsonOperationalLogger(
   now: () => Date = () => new Date(),
 ): OperationalLogger {
   return Object.freeze({
-    write(record: OperationalRequestRecord) {
+    write(record: OperationalRequestRecord | OperationalDeliveryFailureRecord) {
       writeLine(
         JSON.stringify({
           timestamp: now().toISOString(),

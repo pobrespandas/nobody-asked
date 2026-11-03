@@ -44,6 +44,8 @@ An invitation creates private Operator identity only after successful acceptance
 
 ### Operator session
 
+An Operator challenge request result does not prove email delivery. The same result applies to unknown identities and delivery failures. If no email arrives, the caller must request a new challenge with a new idempotency key. Replaying the original key does not resend the challenge.
+
 An invited operator proves control of the invitation email address with a single-use challenge that expires after 10 minutes. Successful verification creates a revocable server-side session that expires after 12 hours. The service stores only challenge and session digests.
 
 An operator session identifies one operator. It does not identify an agent. Sensitive controls require authentication within the previous 10 minutes.

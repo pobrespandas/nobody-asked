@@ -7,6 +7,25 @@ import {
 } from "./index.js";
 
 describe("operational observability", () => {
+  it("serializes a fixed delivery failure event without request data", () => {
+    const lines: string[] = [];
+    const logger = createJsonOperationalLogger(
+      (line) => lines.push(line),
+      () => new Date("2026-11-02T00:00:00Z"),
+    );
+    logger.write({
+      severity: "ERROR",
+      event: "operator.challenge.delivery_failed",
+    });
+    expect(JSON.parse(lines[0]!)).toEqual({
+      timestamp: "2026-11-02T00:00:00.000Z",
+      severity: "ERROR",
+      event: "operator.challenge.delivery_failed",
+    });
+    expect(lines[0]).not.toMatch(
+      /identity|challengeSecret|recipient|provider|authorization/,
+    );
+  });
   it("writes one allowlisted JSON record", async () => {
     const lines: string[] = [];
     const logger = createJsonOperationalLogger(

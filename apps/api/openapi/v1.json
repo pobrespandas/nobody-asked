@@ -386,7 +386,7 @@
         "operationId": "requestOperatorChallenge",
         "tags": ["Operator commands"],
         "summary": "Request recipient proof",
-        "description": "Always returns the same accepted response. The service sends a 10-minute challenge only for an invited or enrolled identity.",
+        "description": "Valid accepted requests return the same 202 response for eligible identities, unknown identities, replays, and provider delivery failures. The service attempts delivery of a 10-minute challenge only for an invited or enrolled identity. Accepted does not guarantee delivery. If no email arrives, request a new challenge with a new Idempotency-Key; a same-key replay does not resend it.",
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKey"
@@ -3562,11 +3562,40 @@
         }
       },
       "OperatorChallengeAccepted": {
-        "description": "The identity-independent challenge request result.",
+        "description": "The identity-independent request result. Accepted does not guarantee delivery. Known identities, unknown identities, same-key replays, and delivery failures return the same response. A same-key replay does not resend a challenge. If no email arrives, request a new challenge with a new Idempotency-Key; do not retry automatically.",
         "content": {
           "application/json": {
             "schema": {
-              "type": "object"
+              "type": "object",
+              "required": ["data"],
+              "properties": {
+                "data": {
+                  "type": "object",
+                  "required": ["accepted", "message", "recovery"],
+                  "properties": {
+                    "accepted": { "const": true },
+                    "message": { "type": "string" },
+                    "recovery": {
+                      "type": "object",
+                      "required": [
+                        "method",
+                        "href",
+                        "automaticRetry",
+                        "idempotencyKey"
+                      ],
+                      "properties": {
+                        "method": { "const": "POST" },
+                        "href": { "const": "/v1/operator/challenges" },
+                        "automaticRetry": { "const": false },
+                        "idempotencyKey": { "const": "new" }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
             }
           }
         }

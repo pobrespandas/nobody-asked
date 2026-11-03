@@ -1175,12 +1175,30 @@ async function requestOperatorChallenge(
     occurredAt: dependencies.now(),
   });
   if (result.accepted && result.created) {
-    await dependencies.deliverOperatorChallenge(identity, challengeSecret);
+    try {
+      await dependencies.deliverOperatorChallenge(identity, challengeSecret);
+    } catch {
+      try {
+        dependencies.operationalLogger.write({
+          severity: "ERROR",
+          event: "operator.challenge.delivery_failed",
+        });
+      } catch {
+        // Delivery failure must not expose identity through a logger failure.
+      }
+    }
   }
   return jsonResponse(202, {
     data: {
       accepted: true,
-      message: "If the identity can authenticate, a challenge was sent.",
+      message:
+        "The request was accepted. Delivery is not guaranteed. If no email arrives, request a new challenge with a new Idempotency-Key.",
+      recovery: {
+        method: "POST",
+        href: "/v1/operator/challenges",
+        automaticRetry: false,
+        idempotencyKey: "new",
+      },
     },
   });
 }
