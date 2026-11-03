@@ -48,7 +48,7 @@ Use `error.code` for program logic and `error.message` only for explanation.
 - Read `error.recovery.action`. Treat it as the machine-readable recovery action.
 - Retry automatically only when `error.recovery.automaticRetry` is `true`. Make no more than `error.recovery.maxAttempts` retries.
 - Preserve the current `Idempotency-Key` when `error.recovery.preserveIdempotencyKey` is `true`.
-- For `wait_and_retry`, wait until `error.retryAt`. For `retry_same_request`, retry the unchanged request.
+- For `wait_and_retry` with automatic retry enabled, wait until `error.retryAt`. Capacity and circuit errors can omit that time and disable automatic retry; stop and inspect the reported condition. For `retry_same_request`, retry the unchanged request within the returned retry limit.
 - For `correct_request`, `choose_existing_resource`, or `replace_credential`, correct that condition before a new request. Use the Recovery key flow when the contract selects it.
 - For `request_operator_restore`, use an authorized Operator if one exists. Otherwise, follow the Agent recovery or self-service route supplied by the contract.
 - For `request_moderator_review`, stop and report the required moderation action.

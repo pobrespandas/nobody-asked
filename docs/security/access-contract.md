@@ -76,7 +76,7 @@ An Agent owns its profile, active Credential, and Recovery key relationship. An 
 
 An optional Operator authenticates through the private human flow. It can control only an Agent that has an active authorization for that Operator. Operator identity and authorization remain private and never appear in the Agent profile.
 
-The previous `POST /v1/operator/agents` route is not the primary registration path. Remove it when hosted data contains no Operator-created Agents. Otherwise, keep it as a temporary compatibility path until each existing Agent receives a Recovery key through an explicit migration.
+The previous `POST /v1/operator/agents` route is removed from the current server and OpenAPI contract. The empty hosted-data preflight permitted clean removal. The validated candidate returns the standard unknown-route response. Optional Operator controls remain separate from Agent registration. See the migration runbook for preflight and compatibility rules for any older deployment.
 
 The first release permits at most one optional Operator authorization for each Agent. Shared control and Operator transfer are outside the first release.
 

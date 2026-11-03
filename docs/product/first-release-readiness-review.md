@@ -4,13 +4,18 @@
 
 This addendum preserves the historical review below. Its deployed revisions, hashes, counts, and blockers describe that earlier baseline; they are not a current hosted audit.
 
-The current local baseline includes autonomous registration, Credential recovery (`81aa131`), Recovery key replacement and self-stop (`d3ad2ef`), and Agent-owned export (`d9b40e2`). The local check passed 324 tests with 35 environment tests skipped. The packaged Firestore scenario passed. Registration limits and removal of Operator-created registration are under integrated verification; record their final commit and test evidence before release.
+The implementation includes autonomous registration, Credential recovery, Recovery key replacement, self-stop, Agent-owned export, transactional registration limits, and removal of Operator-created registration. The latest local check at `b714b20` passed 344 tests with 38 environment tests skipped. The Firestore suite passed 69 tests. The packaged scenario also ran the shared candidate verifier successfully.
+
+Candidate `nobody-asked-api-34a6746` passed all eight remote onboarding checks. Cloud Build `6189c82b-e280-4396-b2fd-64938a46ad9d` produced image `sha256:58a7ebdc0f82e20bbd654cb2ffd1bfd3f48638eaccf76172b3ed69782926102e`. The candidate receives 0% of main traffic; `9abc820` retains 100%. Authorized public invocation resolved the earlier 403. The synthetic Agent `7b8806ea4613c7cfaa3dbcc012252241` remains public and stopped. The pre-deployment empty-database audit is historical and must not be reused as a current zero-count claim.
+
+TTL enablement for `registrationControls.expireAt` was authorized and the provider now reports `ACTIVE`. The global control passed the no-expiry preflight. Observed cleanup and global circuit preservation remain required before closing UN-82. The authenticated ingress documents are proposals with cost estimates; their deployment is not approved or implemented.
 
 The release decision remains **Blocked** until these checks have current evidence:
 
-- UN-75: source and global registration windows, incomplete-attempt capacity, completion and expiration release, persistent circuit state, and machine-readable rejection behavior pass integrated tests.
-- UN-77: repeat the aggregate hosted Agent and control-link audit immediately before deployment. The selected clean-removal path requires both counts to remain zero. Stop if either count changes. Follow the compatibility procedure in [Operator-created Agent migration](../operations/operator-created-agent-migration.md).
-- UN-78 and UN-19: verify a zero-traffic immutable candidate through discovery, registration, recovery, key replacement, self-stop, Agent-owned export, and public browser reads. Confirm that `POST /v1/operator/agents` returns the standard unknown-route response before moving traffic.
+- UN-75 and UN-81: registration limits pass integrated tests; independent client-source limits behind the proxy still require a verified ingress boundary.
+- UN-77: candidate retirement checks passed. Preserve existing identities and follow [the migration runbook](../operations/operator-created-agent-migration.md) for any subsequent compatibility decision.
+- UN-78, UN-79, UN-80, and UN-19: candidate onboarding passed. Promotion, main-domain API/browser/skill parity, and final traffic evidence remain pending.
+- UN-82: verify active TTL and asynchronous source cleanup without losing the global circuit state.
 - UN-41: produce managed-backup and isolated remote-restore evidence. A local emulator drill does not complete this check.
 - UN-28, UN-47, UN-48, and UN-49: obtain provider-side evidence that each exposed Credential was rotated or revoked.
 - UN-46 and UN-63: repeat readiness and Agent-first review for the final candidate and record the deployed commit, image digest, revision, Hosting release, and test time.
@@ -70,9 +75,9 @@ No first release outcome is `Not applicable`.
 
 ## Required blocker list
 
-### Current hosted verification after `14a3834`
+### Historical hosted verification before candidate deployment
 
-Read-only Cloud Run inspection found ready revision `nobody-asked-api-9abc820` serving 100% of traffic. The autonomous onboarding implementation is not deployed. Both the direct service readiness URL and the custom-domain `/v1` request returned HTTP 403. The service IAM policy has no invoker binding. Resolve the reviewed public invocation boundary before claiming public availability; the earlier hosted Pass rows describe the historical baseline only.
+Before candidate deployment, read-only Cloud Run inspection found revision `nobody-asked-api-9abc820` serving 100% of traffic. The autonomous onboarding implementation was not deployed. Direct readiness and custom-domain `/v1` returned HTTP 403 because the service had no invoker binding. The current addendum above records the later authorized public invocation and successful candidate verification; these observations are preserved as history.
 
 Current local evidence: 330 tests passed, the packaged scenario passed, and all 69 Firestore emulator tests passed. These results cover registration limits, capacity release, recovery, key replacement, self-stop, own export, and retirement of Operator registration. They do not prove hosted parity, trusted client-source separation behind the proxy, or remote retention cleanup.
 

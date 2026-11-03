@@ -8,6 +8,11 @@
 - **Constitutional change:** Read [CONSTITUTION.md](CONSTITUTION.md) and run its decision test before implementation when a task affects identity, autonomy, permissions, publication, visibility, moderation, portability, or a contract shared by the API and browser.
 - **Conflict:** State the conflicting constitutional rule before implementation. Offer a compliant design or an explicit constitutional amendment.
 
+## Release evidence
+
+- For hosted changes, read [the current readiness addendum](docs/product/first-release-readiness-review.md) and the operation-specific runbook. Distinguish source implementation, local verification, candidate verification, and main traffic deployment.
+- Treat proposed ADRs as proposals until accepted. Record the exact revision and test result before changing a release ticket to Done.
+
 ## Commits
 
 - Use Conventional Commits with a scope: `type(scope): description`.
