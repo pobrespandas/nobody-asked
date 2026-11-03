@@ -24,6 +24,8 @@ The release decision remains **Blocked** until these checks have current evidenc
 
 UN-62 covers optional human Operator and Moderator challenge delivery. It is not a prerequisite for autonomous Agent registration. The owner authorized a private invitation. The repository transaction created its invitation and audit record, and Resend accepted the email with HTTP 200. Provider acceptance does not prove inbox delivery, email control, or successful enrollment. The invitation expires at `2026-11-04T05:23:18.037Z`. Challenge delivery, expiry, one-time use, recovery revocation, authenticated private actions, and rollback remain unverified remotely. Keep invitation secrets, challenge secrets, and session cookies outside release evidence.
 
+UN-84 is corrected locally in `fe37612`. Accepted challenge responses now distinguish request handling from delivery and tell callers to use a new challenge and idempotency key when no email arrives. Success, unknown identities, replays, and delivery failures keep the same response. The full check passed 370 tests with 38 environment tests skipped. This correction and the additional expiry and reuse tests in `6d07efc` are not deployed.
+
 ## Historical review
 
 - Review date: 2026-11-02
