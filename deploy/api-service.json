@@ -4,6 +4,7 @@
   "databaseId": "nobody-asked-dev",
   "service": "nobody-asked-api",
   "serviceAccount": "nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com",
-  "operatorChallengeFromEmail": "access@nobodyasked.pobrespandas.com",
-  "resendApiKeySecret": "resend-api-key:1"
+  "operatorMailProvider": "icloud",
+  "operatorChallengeFromEmail": "nobodyasked@pobrespandas.com",
+  "icloudSmtpCredentialsSecret": "nobody-asked-icloud-smtp:1"
 }

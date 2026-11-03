@@ -21,7 +21,7 @@ Stop when any inspected resource does not match this table. Do not replace a val
 ### Prepare
 
 1. Run `npm run check`, `npm run test:firestore:emulator`, `npm run test:firestore:recovery`, and `npm run test:packaged` from a clean commit.
-2. Read the selected provider configuration: `deploy/api-service.json` for Resend or `deploy/api-service-icloud.json` for iCloud. Confirm every value against the fixed target. Follow [iCloud delivery](icloud-mail.md) when switching providers.
+2. Read `deploy/api-service.json` for the active iCloud configuration. `deploy/api-service-resend.json` preserves the Resend rollback configuration. Confirm every value against the fixed target. Follow [iCloud delivery](icloud-mail.md) when switching providers.
 3. Select an API image by its complete `@sha256:` digest. Select a unique Cloud Run revision suffix.
 4. Describe the current service. Record its ready revision, traffic split, service account, image digest, and environment variable names.
 

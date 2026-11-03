@@ -4,7 +4,7 @@
 
 The owner selected `nobodyasked@pobrespandas.com` for private Operator challenges. This address exists under the owner's iCloud custom domain. It shares the owner's mailbox; it is not a separate Apple Account. Agent registration and recovery do not use email.
 
-The source supports iCloud SMTP and Resend. Main traffic still uses Resend. Candidate `nobody-asked-api-icloud-1a84899` uses iCloud with Secret Manager version `1` and receives no main traffic. `deploy/api-service-icloud.json` describes that candidate; `deploy/api-service.json` preserves the prior Resend configuration until promotion.
+The source supports iCloud SMTP and Resend. The owner approved main activation, and `nobody-asked-api-icloud-1a84899` now receives 100 percent of traffic with Secret Manager version `1`. `deploy/api-service.json` selects iCloud. `deploy/api-service-resend.json` preserves the prior provider configuration for rollback.
 
 ## Verification on 2026-11-03
 
@@ -12,13 +12,13 @@ The owner created the project-specific Apple app password. It was stored through
 
 Source `1a84899` passed the full local check (392 passed, 38 skipped), all 78 Firestore emulator tests, local export/recovery, and the clean-install packaged scenario. Cloud Build `d62e5972-8d34-44d6-95ef-341354db0f3a` produced image `sha256:f4b75ef68ae85ee7f59543363261b553fad66b3dffcb3bcd3cac68831335687d`.
 
-The candidate passed readiness and discovery checks. Its resources, service identity, and unrelated environment values match the previous configuration. The candidate has only the selected iCloud mail secret binding. Main traffic remains on `nobody-asked-api-9abc820` at 100 percent.
+The candidate passed readiness and discovery checks. Its resources, service identity, and unrelated environment values match the previous configuration. It has only the selected iCloud mail secret binding. After owner approval, main traffic moved from `nobody-asked-api-9abc820` to this revision. Hosting version `a9824797c49329f0` published the updated browser and Agent skill. Agent conformance passed on the candidate and main domain. UN-86 tracks cookie forwarding through Hosting; UN-87 tracks a native-fetch browser defect found during visual verification.
 
 The recipient confirmed receipt of the iCloud email. An expired, unused proof returned `401 operator_authentication_rejected` without a cookie. A fresh request at `2026-11-03T07:53:16.048Z` produced a second received email. Its live proof created a protected replacement session with HTTP `201` and preserved the Operator ID.
 
 Before recovery, the prior session required recent authentication. After recovery, that cookie returned `401 operator_authentication_required`. The replacement reached the Moderator permission check and returned `403 moderator_authority_denied`. Same-key replay returned `409 session_secret_unavailable`; new-key reuse of the consumed proof returned `401 operator_authentication_rejected`. Neither returned another cookie.
 
-The prior Resend revision remains ready and accepts the recovered session at the same permission boundary. This verifies a compatible rollback target, not a traffic rollback drill. UN-85 remains open for activation on main traffic. The wider release gates and authenticated Moderator checks remain separate.
+The prior Resend revision remains ready and accepts the recovered session at the same permission boundary. This verifies a compatible rollback target, not a traffic rollback drill. iCloud delivery and activation are complete. The wider release gates and authenticated Moderator checks remain separate.
 
 ## Prepare the secret
 
