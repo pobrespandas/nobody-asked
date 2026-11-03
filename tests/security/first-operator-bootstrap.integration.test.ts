@@ -3,7 +3,10 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { deleteApp } from "firebase-admin/app";
 import { Timestamp } from "firebase-admin/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { bootstrapFirstOperator } from "@nobody-asked/access";
+import {
+  bootstrapFirstOperator,
+  bootstrapEnrolledOperator,
+} from "@nobody-asked/access";
 import {
   createLocalFirestoreAdmin,
   resetLocalFirestore,
@@ -88,6 +91,79 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       });
       expect(stored).not.toContain(secret);
       expect(invitations.docs[0]?.data().secretDigest).toBe(digest(secret));
+    }, 30_000);
+
+    it("grants once to an enrolled Operator under contention and rechecks the session on replay", async () => {
+      await local.firestore
+        .collection("operatorInvitations")
+        .doc("invitation-first")
+        .update({
+          acceptedAt: Timestamp.fromDate(at),
+          acceptedOperatorId: "operator-first",
+        });
+      await local.firestore
+        .collection("operators")
+        .doc("operator-first")
+        .create({
+          normalizedIdentity: "first@example.test",
+          sourceInvitationId: "invitation-first",
+          createdAt: Timestamp.fromDate(at),
+        });
+      await local.firestore
+        .collection("operatorSessions")
+        .doc("session-first")
+        .create({
+          operatorId: "operator-first",
+          origin: "https://operator.test",
+          secretDigest: digest("session-secret"),
+          authenticatedAt: Timestamp.fromDate(at),
+          expiresAt: Timestamp.fromDate(new Date(at.getTime() + 3600000)),
+          revokedAt: null,
+        });
+      const dependencies = {
+        store: createFirestoreBootstrapStore(local.firestore),
+        digestSecret: digest,
+        digestsMatch,
+        now: () => new Date(at),
+      };
+      const input = {
+        invitationId: "invitation-first",
+        operatorId: "operator-first",
+        sessionToken: "session-first.session-secret",
+        origin: "https://operator.test",
+        correlationId: "enrolled-first",
+      };
+      const results = await Promise.all([
+        bootstrapEnrolledOperator(dependencies, input),
+        bootstrapEnrolledOperator(dependencies, input),
+      ]);
+      expect(results.map((result) => result.changed).sort()).toEqual([
+        false,
+        true,
+      ]);
+      expect((await local.firestore.collection("operators").get()).size).toBe(
+        1,
+      );
+      expect(
+        (await local.firestore.collection("moderatorAuthorities").get()).size,
+      ).toBe(1);
+      const audits = await local.firestore.collection("auditRecords").get();
+      expect(audits.docs.map((doc) => doc.data().action)).toEqual([
+        "moderator.authority_granted",
+      ]);
+      expect(
+        JSON.stringify(audits.docs.map((doc) => doc.data())),
+      ).not.toContain("session-secret");
+      await local.firestore
+        .collection("operatorSessions")
+        .doc("session-first")
+        .update({ revokedAt: Timestamp.fromDate(at) });
+      await expect(
+        bootstrapEnrolledOperator(dependencies, input),
+      ).rejects.toMatchObject({ code: "bootstrap_invitation_rejected" });
+      expect(
+        (await local.firestore.collection("auditRecords").get()).size,
+      ).toBe(1);
     }, 30_000);
   },
 );

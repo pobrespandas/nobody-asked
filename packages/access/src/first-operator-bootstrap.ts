@@ -1,3 +1,5 @@
+import type { OperatorSessionRecord } from "./operator-session.js";
+
 export interface OperatorInvitationRecord {
   readonly id: string;
   readonly intendedIdentity: string;
@@ -14,6 +16,9 @@ export interface OperatorRecord {
   readonly normalizedIdentity: string;
   readonly sourceInvitationId: string;
   readonly createdAt: Date;
+  readonly active?: boolean;
+  readonly revokedAt?: Date | null;
+  readonly disabledAt?: Date | null;
 }
 
 export interface ModeratorAuthorityRecord {
@@ -50,6 +55,7 @@ export interface FirstOperatorBootstrapState {
 }
 
 export interface FirstOperatorBootstrapTransaction {
+  readSession?(sessionId: string): Promise<OperatorSessionRecord | null>;
   readState(
     invitationId: string,
     operatorId: string,
@@ -136,8 +142,7 @@ export async function bootstrapFirstOperator(
       !suppliedDigest ||
       !dependencies.digestsMatch(invitation.secretDigest, suppliedDigest) ||
       invitation.revokedAt !== null ||
-      invitation.recipientProofAt === null ||
-      invitation.expiresAt.getTime() <= at.getTime()
+      invitation.recipientProofAt === null
     ) {
       throw new BootstrapInvitationRejectedError();
     }
@@ -151,6 +156,10 @@ export async function bootstrapFirstOperator(
         throw new FirstModeratorAlreadyGrantedError();
       }
       return result(false, state.bootstrap);
+    }
+
+    if (invitation.expiresAt.getTime() <= at.getTime()) {
+      throw new BootstrapInvitationRejectedError();
     }
 
     if (
@@ -210,6 +219,128 @@ export async function bootstrapFirstOperator(
         }),
       );
     }
+    return result(true, bootstrap);
+  });
+}
+
+export interface BootstrapEnrolledOperatorInput {
+  readonly invitationId: string;
+  readonly operatorId: string;
+  readonly sessionToken: string;
+  readonly origin: string;
+  readonly correlationId: string;
+}
+
+export async function bootstrapEnrolledOperator(
+  dependencies: BootstrapFirstOperatorDependencies,
+  input: BootstrapEnrolledOperatorInput,
+): Promise<BootstrapFirstOperatorResult> {
+  assertIdentifier(input.invitationId);
+  assertIdentifier(input.operatorId);
+  assertIdentifier(input.correlationId);
+  const separator = input.sessionToken.indexOf(".");
+  if (separator < 1 || separator === input.sessionToken.length - 1)
+    throw new BootstrapInvitationRejectedError();
+  const sessionId = input.sessionToken.slice(0, separator);
+  assertIdentifier(sessionId);
+  const suppliedDigest = dependencies.digestSecret(
+    input.sessionToken.slice(separator + 1),
+  );
+  const at = dependencies.now();
+  let origin: URL;
+  try {
+    origin = new URL(input.origin);
+  } catch {
+    throw new BootstrapInvitationRejectedError();
+  }
+  if (
+    origin.origin !== input.origin ||
+    !(
+      origin.protocol === "https:" ||
+      (origin.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname))
+    )
+  )
+    throw new BootstrapInvitationRejectedError();
+  return dependencies.store.transact(async (transaction) => {
+    const state = await transaction.readState(
+      input.invitationId,
+      input.operatorId,
+    );
+    const session = await transaction.readSession?.(sessionId);
+    const invitation = state.invitation;
+    const operator = state.operator;
+    if (
+      !session ||
+      !suppliedDigest ||
+      !dependencies.digestsMatch(session.secretDigest, suppliedDigest) ||
+      session.operatorId !== input.operatorId ||
+      session.origin !== input.origin ||
+      session.revokedAt !== null ||
+      !Number.isFinite(session.expiresAt.getTime()) ||
+      session.expiresAt <= at ||
+      !Number.isFinite(session.authenticatedAt.getTime()) ||
+      session.authenticatedAt > at ||
+      at.getTime() - session.authenticatedAt.getTime() > 600_000 ||
+      !invitation ||
+      invitation.id !== input.invitationId ||
+      invitation.revokedAt !== null ||
+      !invitation.recipientProofAt ||
+      !invitation.acceptedAt ||
+      !Number.isFinite(invitation.recipientProofAt.getTime()) ||
+      !Number.isFinite(invitation.acceptedAt.getTime()) ||
+      !Number.isFinite(invitation.expiresAt.getTime()) ||
+      invitation.recipientProofAt > invitation.acceptedAt ||
+      invitation.acceptedAt > invitation.expiresAt ||
+      invitation.acceptedAt > at ||
+      invitation.acceptedOperatorId !== input.operatorId ||
+      !operator ||
+      operator.id !== input.operatorId ||
+      operator.active === false ||
+      operator.revokedAt ||
+      operator.disabledAt ||
+      operator.sourceInvitationId !== invitation.id ||
+      operator.normalizedIdentity !== invitation.intendedIdentity
+    )
+      throw new BootstrapInvitationRejectedError();
+    if (state.bootstrap) {
+      if (
+        state.bootstrap.invitationId !== input.invitationId ||
+        state.bootstrap.operatorId !== input.operatorId ||
+        state.moderatorAuthority?.operatorId !== input.operatorId ||
+        (state.anyModeratorAuthority &&
+          state.anyModeratorAuthority.operatorId !== input.operatorId)
+      )
+        throw new FirstModeratorAlreadyGrantedError();
+      return result(false, state.bootstrap);
+    }
+    if (state.moderatorAuthority || state.anyModeratorAuthority)
+      throw new FirstModeratorAlreadyGrantedError();
+    const bootstrap = {
+      invitationId: input.invitationId,
+      operatorId: input.operatorId,
+      completedAt: at,
+    };
+    transaction.createModeratorAuthority({
+      operatorId: input.operatorId,
+      grantedAt: at,
+      source: "first_operator_bootstrap",
+    });
+    transaction.createBootstrapRecord(bootstrap);
+    const expireAt = new Date(at);
+    expireAt.setUTCFullYear(expireAt.getUTCFullYear() + 1);
+    transaction.createAuditRecord({
+      id: `${input.invitationId}-moderator-authority-granted`,
+      actorType: "system",
+      actorId: "deployment-bootstrap",
+      action: "moderator.authority_granted",
+      subjectType: "operator",
+      subjectId: input.operatorId,
+      result: "completed",
+      correlationId: input.correlationId,
+      createdAt: at,
+      expireAt,
+    });
     return result(true, bootstrap);
   });
 }

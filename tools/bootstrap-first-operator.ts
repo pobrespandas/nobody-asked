@@ -15,6 +15,7 @@ import {
 } from "firebase-admin/firestore";
 import {
   bootstrapFirstOperator,
+  bootstrapEnrolledOperator,
   type BootstrapAuditRecord,
   type FirstOperatorBootstrapRecord,
   type FirstOperatorBootstrapState,
@@ -23,20 +24,51 @@ import {
   type ModeratorAuthorityRecord,
   type OperatorInvitationRecord,
   type OperatorRecord,
+  type OperatorSessionRecord,
 } from "@nobody-asked/access";
 
 export async function runFirstOperatorBootstrap(
   environment: NodeJS.ProcessEnv = process.env,
+  authentication?: {
+    readonly mode: "enrolled-session";
+    readonly sessionToken: string;
+    readonly origin: string;
+  },
 ) {
+  if (authentication && authentication.mode !== "enrolled-session")
+    throw new Error("Unknown bootstrap authentication mode.");
   const projectId = required(environment, "BOOTSTRAP_FIREBASE_PROJECT_ID");
   const databaseId = required(environment, "BOOTSTRAP_FIRESTORE_DATABASE_ID");
   const expectedTarget = `${projectId}/${databaseId}`;
+  if (
+    authentication &&
+    expectedTarget !== "gen-lang-client-0607406471/nobody-asked-dev"
+  )
+    throw new Error(
+      "Enrolled bootstrap requires the reviewed project and database.",
+    );
   if (required(environment, "BOOTSTRAP_CONFIRM_TARGET") !== expectedTarget) {
     throw new Error("BOOTSTRAP_CONFIRM_TARGET must equal project/database.");
   }
 
   const app = initializeApp({ projectId, credential: applicationDefault() });
   try {
+    if (authentication)
+      return await bootstrapEnrolledOperator(
+        {
+          store: createFirestoreBootstrapStore(getFirestore(app, databaseId)),
+          digestSecret: digest,
+          digestsMatch,
+          now: () => new Date(),
+        },
+        {
+          invitationId: required(environment, "FIRST_OPERATOR_INVITATION_ID"),
+          operatorId: required(environment, "FIRST_OPERATOR_ID"),
+          correlationId: required(environment, "BOOTSTRAP_CORRELATION_ID"),
+          sessionToken: authentication.sessionToken,
+          origin: authentication.origin,
+        },
+      );
     return await bootstrapFirstOperator(
       {
         store: createFirestoreBootstrapStore(getFirestore(app, databaseId)),
@@ -77,6 +109,24 @@ class FirestoreBootstrapTransaction implements FirstOperatorBootstrapTransaction
     private readonly firestore: Firestore,
     private readonly transaction: Transaction,
   ) {}
+
+  async readSession(sessionId: string): Promise<OperatorSessionRecord | null> {
+    const snapshot = await this.transaction.get(
+      this.firestore.collection("operatorSessions").doc(sessionId),
+    );
+    const data = snapshot.data();
+    return data
+      ? {
+          id: sessionId,
+          operatorId: String(data.operatorId),
+          secretDigest: String(data.secretDigest),
+          origin: String(data.origin),
+          authenticatedAt: asDate(data.authenticatedAt),
+          expiresAt: asDate(data.expiresAt),
+          revokedAt: nullableDate(data.revokedAt),
+        }
+      : null;
+  }
 
   async readState(
     invitationId: string,
@@ -221,6 +271,9 @@ function mapOperator(id: string, data: DocumentData): OperatorRecord {
     normalizedIdentity: String(data.normalizedIdentity),
     sourceInvitationId: String(data.sourceInvitationId),
     createdAt: asDate(data.createdAt),
+    active: data.active !== false,
+    revokedAt: nullableDate(data.revokedAt),
+    disabledAt: nullableDate(data.disabledAt),
   });
 }
 
