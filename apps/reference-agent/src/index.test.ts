@@ -3,9 +3,30 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { AgentApiError, AgentClient, OperatorClient } from "./index.js";
+import { AgentApiError, AgentClient } from "./index.js";
+
+const contract = JSON.parse(
+  readFileSync(new URL("../../api/openapi/v1.json", import.meta.url), "utf8"),
+) as {
+  paths: Record<string, Record<string, unknown>>;
+};
+
+function supportsOperation(method: string, path: string): boolean {
+  const pathname = new URL(path, "https://network.test").pathname;
+  return Object.entries(contract.paths).some(
+    ([template, methods]) =>
+      method.toLowerCase() in methods &&
+      new RegExp(
+        `^${template
+          .split("/")
+          .map((part) => (part.startsWith("{") ? "[^/]+" : part))
+          .join("/")}$`,
+      ).test(pathname),
+  );
+}
 
 interface ReceivedRequest {
   readonly method: string;
@@ -21,7 +42,6 @@ const credential = "credential-1.local-test-secret";
 let requests: ReceivedRequest[];
 let server: ReturnType<typeof createServer>;
 let client: AgentClient;
-let operatorClient: OperatorClient;
 
 beforeEach(async () => {
   requests = [];
@@ -33,17 +53,18 @@ beforeEach(async () => {
     baseUrl: `http://127.0.0.1:${address.port}`,
     credential: () => credential,
   });
-  operatorClient = new OperatorClient({
-    baseUrl: `http://127.0.0.1:${address.port}`,
-    session: () => "session-1.secret",
-    origin: "https://operator.test/path",
-  });
 });
 
 afterEach(async () => {
   await new Promise<void>((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve())),
   );
+  for (const request of requests) {
+    expect(
+      supportsOperation(request.method, request.path),
+      `${request.method} ${request.path} is absent from OpenAPI`,
+    ).toBe(true);
+  }
 });
 
 describe("reference agent client", () => {
@@ -179,30 +200,8 @@ describe("reference agent client", () => {
     expect(requests).toHaveLength(0);
   });
 
-  it("registers an agent with operator authority and idempotency", async () => {
-    await operatorClient.registerAgent(
-      {
-        handle: "new_agent",
-        displayName: "New Agent",
-        description: null,
-      },
-      "register-1",
-    );
-
-    expect(requests).toEqual([
-      {
-        method: "POST",
-        path: "/v1/operator/agents",
-        cookie: "operator_session=session-1.secret",
-        origin: "https://operator.test",
-        idempotencyKey: "register-1",
-        body: {
-          handle: "new_agent",
-          displayName: "New Agent",
-          description: null,
-        },
-      },
-    ]);
+  it("does not accept the retired Operator registration operation as supported", () => {
+    expect(supportsOperation("POST", "/v1/operator/agents")).toBe(false);
   });
 });
 

@@ -4,33 +4,6 @@ export interface AgentClientConfig {
   readonly fetch?: typeof fetch;
 }
 
-export interface OperatorClientConfig {
-  readonly baseUrl: URL | string;
-  readonly session: () => string | Promise<string>;
-  readonly origin: string;
-  readonly fetch?: typeof fetch;
-}
-
-export interface RegisterAgentInput {
-  readonly handle: string;
-  readonly displayName: string;
-  readonly description?: string | null;
-}
-
-export interface RegisteredAgentEnvelope {
-  readonly data: {
-    readonly agentId: string;
-    readonly credentialId: string;
-    readonly handle: string;
-    readonly displayName: string;
-    readonly description: string | null;
-    readonly status: "active";
-    readonly createdAt: string;
-    readonly credentialReturned: true;
-    readonly credential: string;
-  };
-}
-
 export interface PageOptions {
   readonly cursor?: string;
   readonly limit?: number;
@@ -320,48 +293,6 @@ export class AgentClient {
     const value = await readJson(response);
     if (!response.ok) throw toApiError(response.status, value);
     return value as T;
-  }
-}
-
-export class OperatorClient {
-  private readonly baseUrl: URL;
-  private readonly request: typeof fetch;
-  private readonly origin: string;
-
-  constructor(private readonly config: OperatorClientConfig) {
-    this.baseUrl = normalizeBaseUrl(config.baseUrl);
-    this.request = config.fetch ?? globalThis.fetch;
-    if (typeof this.request !== "function") {
-      throw new TypeError("A Fetch API implementation is required.");
-    }
-    this.origin = new URL(config.origin).origin;
-  }
-
-  async registerAgent(
-    input: RegisterAgentInput,
-    idempotencyKey: string,
-  ): Promise<RegisteredAgentEnvelope> {
-    const session = (await this.config.session()).trim();
-    const key = idempotencyKey.trim();
-    if (!session) throw new TypeError("The operator session is empty.");
-    if (!key) throw new TypeError("The idempotency key is empty.");
-    const response = await this.request(
-      new URL("v1/operator/agents", this.baseUrl),
-      {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-          cookie: `operator_session=${session}`,
-          origin: this.origin,
-          "idempotency-key": key,
-        },
-        body: JSON.stringify(input),
-      },
-    );
-    const value = await readJson(response);
-    if (!response.ok) throw toApiError(response.status, value);
-    return value as RegisteredAgentEnvelope;
   }
 }
 
