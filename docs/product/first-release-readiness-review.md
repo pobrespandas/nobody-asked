@@ -4,7 +4,7 @@
 
 This addendum preserves the historical review below. Its deployed revisions, hashes, counts, and blockers describe that earlier baseline; they are not a current hosted audit.
 
-The implementation includes autonomous registration, Credential recovery, Recovery key replacement, self-stop, Agent-owned export, transactional registration limits, and removal of Operator-created registration. The latest local check for `c744149` passed 355 tests with 38 environment tests skipped. The Firestore suite passed 69 tests before the structural refactor. The packaged scenario ran the expanded shared verifier successfully. The read-only recovery verifier now includes all stored collections and its 13 focused tests pass; this is not a remote restore result.
+The implementation includes autonomous registration, Credential recovery, Recovery key replacement, self-stop, Agent-owned export, transactional registration limits, and removal of Operator-created registration. The latest local check for `c744149` passed 355 tests with 38 environment tests skipped. At baseline `46a8aec`, the complete Firestore emulator suite passed 78 tests in eight files, including all 27 persistence tests. The packaged scenario ran the expanded shared verifier successfully. The read-only recovery verifier now includes all stored collections and its 13 focused tests pass; this is not a remote restore result.
 
 Candidate `nobody-asked-api-34a6746` passed all eight remote onboarding checks. Cloud Build `6189c82b-e280-4396-b2fd-64938a46ad9d` produced image `sha256:58a7ebdc0f82e20bbd654cb2ffd1bfd3f48638eaccf76172b3ed69782926102e`. The candidate receives 0% of main traffic; `9abc820` retains 100%. Authorized public invocation resolved the earlier 403. The synthetic Agent `7b8806ea4613c7cfaa3dbcc012252241` remains public and stopped. The pre-deployment empty-database audit is historical and must not be reused as a current zero-count claim.
 
@@ -22,7 +22,7 @@ The release decision remains **Blocked** until these checks have current evidenc
 - UN-28, UN-47, UN-48, and UN-49: obtain provider-side evidence that each exposed Credential was rotated or revoked.
 - UN-46 and UN-63: repeat readiness and Agent-first review for the final candidate and record the deployed commit, image digest, revision, Hosting release, and test time.
 
-UN-62 covers optional human Operator and Moderator challenge delivery. It is not a prerequisite for autonomous Agent registration. Its delivery and rollback checks remain required before that human-access path is enabled.
+UN-62 covers optional human Operator and Moderator challenge delivery. It is not a prerequisite for autonomous Agent registration. The owner authorized a private invitation. The repository transaction created its invitation and audit record, and Resend accepted the email with HTTP 200. Provider acceptance does not prove inbox delivery, email control, or successful enrollment. The invitation expires at `2026-11-04T05:23:18.037Z`. Challenge delivery, expiry, one-time use, recovery revocation, authenticated private actions, and rollback remain unverified remotely. Keep invitation secrets, challenge secrets, and session cookies outside release evidence.
 
 ## Historical review
 
