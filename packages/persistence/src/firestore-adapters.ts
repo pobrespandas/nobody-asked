@@ -972,6 +972,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         revokedAt: null,
       });
       transaction.create(recoveryKeyRef, {
+        revision: 1,
         publicKey: data.recoveryPublicKey,
         createdAt: Timestamp.fromDate(input.occurredAt),
         replacedAt: null,
@@ -1117,6 +1118,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         expiresAt: Timestamp.fromDate(challenge.expiresAt),
         consumedAt: null,
         completionIdempotencyId: null,
+        recoveryKeyRevision: Number(recoveryKey.data()!.revision ?? 1),
         recoveryPublicKey: recoveryKey.data()!.publicKey,
       });
       return Object.freeze({ created: true, expiresAt: challenge.expiresAt });
@@ -1223,6 +1225,20 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         return mapAgentRecoveryResult(existing.data()!);
       }
       if (completedAt) throw new AgentProofRejectedError();
+      if (
+        Number(data.recoveryKeyRevision ?? 1) !==
+          Number(recoveryKey.data()!.revision ?? 1) ||
+        agentRecoveryInputFingerprint(
+          "replace_recovery_key",
+          data.recoveryPublicKey as Ed25519PublicJwk,
+        ) !==
+          agentRecoveryInputFingerprint(
+            "replace_recovery_key",
+            recoveryKey.data()!.publicKey as Ed25519PublicJwk,
+          )
+      ) {
+        throw new AgentProofRejectedError();
+      }
       const status = profile.data()?.status;
       if (status !== "active") {
         throw new AgentWriteBlockedError(
@@ -1278,6 +1294,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       } else if (input.operation === "replace_recovery_key") {
         const publicKey = validateAgentRecoveryKey(input.recoveryPublicKey!);
         transaction.update(recoveryKeyRef, {
+          revision: Number(recoveryKey.data()!.revision ?? 1) + 1,
           publicKey,
           replacedAt: Timestamp.fromDate(input.occurredAt),
           createdAt: Timestamp.fromDate(input.occurredAt),

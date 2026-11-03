@@ -1,5 +1,5 @@
 import { deleteApp } from "firebase-admin/app";
-import { Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import {
   afterAll,
   beforeAll,
@@ -390,6 +390,97 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         ]),
       );
     });
+
+    it.each([
+      "replace_credential",
+      "stop_agent",
+      "replace_recovery_key",
+    ] as const)(
+      "rejects an outstanding %s proof after its Recovery key is replaced",
+      async (operation) => {
+        const { secure, agentId } = await registeredAutonomousAgent();
+        if (operation === "stop_agent")
+          await local.firestore
+            .collection("agentRecoveryKeys")
+            .doc(agentId)
+            .update({ revision: FieldValue.delete() });
+        const stale = recoveryCompletion({
+          agentId,
+          challengeId: "outstanding",
+          operation,
+          idempotencyKey: "outstanding-key",
+          privateKey: registrationKeys.privateKey,
+          ...(operation === "replace_recovery_key"
+            ? { recoveryPublicKey }
+            : {}),
+          ...(operation === "replace_credential"
+            ? { credentialId: "stale-credential" }
+            : {}),
+        });
+        const nextKeys = generateKeyPairSync("ed25519");
+        const replacement = recoveryCompletion({
+          agentId,
+          challengeId: "key-replacement",
+          operation: "replace_recovery_key",
+          idempotencyKey: "key-replacement-key",
+          privateKey: registrationKeys.privateKey,
+          recoveryPublicKey: nextKeys.publicKey.export({
+            format: "jwk",
+          }) as Ed25519PublicJwk,
+        });
+        await secure.store.startAgentRecovery(stale.start);
+        if (operation === "stop_agent")
+          await local.firestore
+            .collection("agentRecoveryChallenges")
+            .doc(stale.start.challengeId)
+            .update({ recoveryKeyRevision: FieldValue.delete() });
+        await secure.store.startAgentRecovery(replacement.start);
+        await secure.store.completeAgentRecovery(replacement.complete);
+        const collections = [
+          "credentials",
+          "agentProfiles",
+          "agentAccess",
+          "agentRecoveryKeys",
+          "agentRecoveryChallenges",
+          "auditRecords",
+          "idempotencyRecords",
+        ];
+        const snapshot = async () =>
+          Promise.all(
+            collections.map(async (name) =>
+              (await local.firestore.collection(name).get()).docs.map(
+                (doc) => ({ id: doc.id, data: doc.data() }),
+              ),
+            ),
+          );
+        const before = await snapshot();
+        await expect(
+          secure.store.completeAgentRecovery(stale.complete),
+        ).rejects.toMatchObject({ code: "agent_proof_rejected" });
+        expect(await snapshot()).toEqual(before);
+        await expect(
+          secure.store.completeAgentRecovery(replacement.complete),
+        ).resolves.toMatchObject({ kind: "replay" });
+        const reuse = recoveryCompletion({
+          agentId,
+          challengeId: "key-reuse",
+          operation: "replace_recovery_key",
+          idempotencyKey: "key-reuse-key",
+          privateKey: nextKeys.privateKey,
+          recoveryPublicKey,
+        });
+        await secure.store.startAgentRecovery(reuse.start);
+        await secure.store.completeAgentRecovery(reuse.complete);
+        const afterReuse = await snapshot();
+        await expect(
+          secure.store.completeAgentRecovery(stale.complete),
+        ).rejects.toMatchObject({ code: "agent_proof_rejected" });
+        expect(await snapshot()).toEqual(afterReuse);
+        await expect(
+          secure.store.completeAgentRecovery(reuse.complete),
+        ).resolves.toMatchObject({ kind: "replay" });
+      },
+    );
 
     it("recovers a Credential, replaces the Recovery key, and self-stops atomically", async () => {
       const { secure, agentId } = await registeredAutonomousAgent();
