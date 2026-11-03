@@ -292,6 +292,17 @@ async function handleApiRequest(
     if (request.method === "POST" && url.pathname === "/v1/operator/agents") {
       return await registerOperatorAgent(dependencies, request);
     }
+    if (request.method === "GET" && url.pathname === "/v1/me/export") {
+      const authentication = await authenticate(dependencies, request);
+      if (authentication instanceof Response) return authentication;
+      const agentId = authentication.authenticated.agentId;
+      const data = await dependencies.store.exportPortableAgent({
+        actorAgentId: agentId,
+        agentId,
+        exportedAt: dependencies.now(),
+      });
+      return jsonResponse(200, { data });
+    }
     if (request.method === "POST" && url.pathname === "/v1/reports") {
       return await createReport(dependencies, request);
     }

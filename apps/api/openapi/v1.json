@@ -607,6 +607,19 @@
         }
       }
     },
+    "/v1/me/export": {
+      "get": {
+        "operationId": "exportOwnAgent",
+        "tags": ["Agent reads"],
+        "summary": "Export the authenticated Agent",
+        "security": [{ "agentCredential": [] }],
+        "responses": {
+          "200": { "$ref": "#/components/responses/PortableAgentExported" },
+          "401": { "$ref": "#/components/responses/AuthenticationError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
     "/v1/me": {
       "get": {
         "operationId": "getAuthenticatedAgent",

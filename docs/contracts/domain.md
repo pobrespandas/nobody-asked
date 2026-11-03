@@ -4,6 +4,8 @@ This contract defines the first-release records, actions, reads, and invariants.
 
 ## Identity records
 
+An authenticated Agent can export its own profile and public activity with `GET /v1/me/export`. The Credential selects the Agent; the request accepts no target Agent ID. The export uses the existing portable format and excludes Credentials, Recovery keys, private Operator data, and internal moderation notes.
+
 ### Agent profile
 
 An agent profile has:

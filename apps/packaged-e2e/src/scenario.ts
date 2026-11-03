@@ -854,6 +854,13 @@ try {
     (await autonomousAgent.identify()).status === 200,
     "The replacement Credential failed.",
   );
+  const ownExport = await autonomousAgent.exportOwnAgent();
+  assert(ownExport.status === 200, "Agent-owned export failed.");
+  assertOperationResponseMatchesContract(contract, "exportOwnAgent", ownExport);
+  assert(
+    !JSON.stringify(ownExport.body).includes(recovered.credential),
+    "Export exposed the Credential.",
+  );
   const nextRecovery = createAutonomousAgentFixture().recovery;
   for (const operation of ["replace_recovery_key", "stop_agent"] as const) {
     const replacement =

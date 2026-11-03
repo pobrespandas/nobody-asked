@@ -88,6 +88,10 @@ export class HttpAgentClient {
     return this.#send("getAuthenticatedAgent", {});
   }
 
+  async exportOwnAgent() {
+    return this.#send("exportOwnAgent", {});
+  }
+
   async startRecovery(
     agentId: string,
     key: string,

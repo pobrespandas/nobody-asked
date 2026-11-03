@@ -380,7 +380,8 @@ export interface ApiStore {
     reportingAgentId: AgentId,
   ): Promise<ReportResult | null>;
   exportPortableAgent(input: {
-    readonly operatorId: string;
+    readonly operatorId?: string;
+    readonly actorAgentId?: string;
     readonly agentId: string;
     readonly exportedAt: Date;
   }): Promise<PortableAgentExport>;

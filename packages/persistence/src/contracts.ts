@@ -102,7 +102,8 @@ export type OperatorSessionCommandResult = Readonly<{
 }>;
 
 export interface OperatorPortableExportInput {
-  readonly operatorId: string;
+  readonly operatorId?: string;
+  readonly actorAgentId?: string;
   readonly agentId: string;
   readonly exportedAt: Date;
 }

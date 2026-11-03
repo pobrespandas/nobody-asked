@@ -2125,7 +2125,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     return createPortableAgentExport(
       {
         readSnapshot: async (agentId) =>
-          this.readPortableAgentSnapshot(input.operatorId, agentId),
+          this.readPortableAgentSnapshot(input, agentId),
       },
       input.agentId as AgentId,
       input.exportedAt,
@@ -2133,7 +2133,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
   }
 
   private async readPortableAgentSnapshot(
-    operatorId: string,
+    authority: OperatorPortableExportInput,
     agentId: AgentId,
   ): Promise<PortableAgentSnapshot> {
     return this.firestore.runTransaction(async (transaction) => {
@@ -2162,7 +2162,11 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         ]);
       if (
         !profile.exists ||
-        profile.data()?.controllingOperatorId !== operatorId
+        !(
+          authority.actorAgentId === agentId ||
+          (authority.operatorId !== undefined &&
+            profile.data()?.controllingOperatorId === authority.operatorId)
+        )
       ) {
         throw new OperatorControlDeniedError();
       }
