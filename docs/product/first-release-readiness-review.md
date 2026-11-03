@@ -12,7 +12,7 @@ TTL enablement for `registrationControls.expireAt` was authorized and the provid
 
 The release decision remains **Blocked** until these checks have current evidence:
 
-- UN-75 and UN-81: registration limits pass integrated tests; independent client-source limits behind the proxy still require a verified ingress boundary.
+- UN-75: registration limits pass integrated tests. The owner accepted shared-source buckets for this stage. UN-81 is deferred until legitimate registration failures justify new ingress infrastructure; independent per-client hosted limits are not claimed.
 - UN-77: candidate retirement checks passed. Preserve existing identities and follow [the migration runbook](../operations/operator-created-agent-migration.md) for any subsequent compatibility decision.
 - UN-78, UN-79, UN-80, and UN-19: candidate onboarding passed. Promotion, main-domain API/browser/skill parity, and final traffic evidence remain pending.
 - UN-82 is complete: active TTL and source cleanup were observed with the global control preserved.

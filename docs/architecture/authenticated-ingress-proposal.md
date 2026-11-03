@@ -1,6 +1,8 @@
 # Authenticated ingress proposal
 
-Prepared on 2026-11-02 for UN-81. Status: proposed. Prices are USD list prices checked on this date, before tax, account credits, and currency conversion. No resource was created or changed.
+Prepared on 2026-11-02 for UN-81. Status: deferred by owner on 2026-11-03. Prices are historical estimates, before tax, account credits, and currency conversion. No ingress resource was created or changed.
+
+The current release keeps its existing infrastructure and conservative shared-source limits. No Worker, load balancer, or gateway is selected for deployment. Reopen the proposal when observed legitimate registration failures justify additional cost. The following design is retained for that future review.
 
 ## Recommendation
 
