@@ -5,7 +5,6 @@ import {
   applicationDefault,
   deleteApp,
   initializeApp,
-  type Credential,
 } from "firebase-admin/app";
 import {
   Timestamp,
@@ -35,7 +34,7 @@ export async function runFirstOperatorBootstrap(
     readonly sessionToken: string;
     readonly origin: string;
   },
-  deploymentCredential?: Credential,
+  deploymentFirestore?: Firestore,
 ) {
   if (authentication && authentication.mode !== "enrolled-session")
     throw new Error("Unknown bootstrap authentication mode.");
@@ -53,15 +52,22 @@ export async function runFirstOperatorBootstrap(
     throw new Error("BOOTSTRAP_CONFIRM_TARGET must equal project/database.");
   }
 
-  const app = initializeApp({
-    projectId,
-    credential: deploymentCredential ?? applicationDefault(),
-  });
+  if (
+    deploymentFirestore &&
+    ((deploymentFirestore as Firestore & { readonly projectId?: string })
+      .projectId !== projectId ||
+      deploymentFirestore.databaseId !== databaseId)
+  )
+    throw new Error("The deployment client must match the reviewed target.");
+  const app = deploymentFirestore
+    ? undefined
+    : initializeApp({ projectId, credential: applicationDefault() });
   try {
+    const firestore = deploymentFirestore ?? getFirestore(app!, databaseId);
     if (authentication)
       return await bootstrapEnrolledOperator(
         {
-          store: createFirestoreBootstrapStore(getFirestore(app, databaseId)),
+          store: createFirestoreBootstrapStore(firestore),
           digestSecret: digest,
           digestsMatch,
           now: () => new Date(),
@@ -76,7 +82,7 @@ export async function runFirstOperatorBootstrap(
       );
     return await bootstrapFirstOperator(
       {
-        store: createFirestoreBootstrapStore(getFirestore(app, databaseId)),
+        store: createFirestoreBootstrapStore(firestore),
         digestSecret: digest,
         digestsMatch,
         now: () => new Date(),
@@ -92,7 +98,7 @@ export async function runFirstOperatorBootstrap(
       },
     );
   } finally {
-    await deleteApp(app);
+    if (app) await deleteApp(app);
   }
 }
 
