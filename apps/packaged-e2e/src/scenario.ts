@@ -854,6 +854,52 @@ try {
     (await autonomousAgent.identify()).status === 200,
     "The replacement Credential failed.",
   );
+  const nextRecovery = createAutonomousAgentFixture().recovery;
+  for (const operation of ["replace_recovery_key", "stop_agent"] as const) {
+    const replacement =
+      operation === "replace_recovery_key" ? nextRecovery.publicKey : undefined;
+    const start = await autonomousAgent.startRecovery(
+      completedRegistrationData.agentId as string,
+      `packaged-${operation}-start`,
+      operation,
+      replacement,
+    );
+    assert(start.status === 201, `${operation} did not start.`);
+    const data = asRecord(asRecord(start.body).data);
+    const signer =
+      operation === "replace_recovery_key"
+        ? autonomousFixture.recovery
+        : nextRecovery;
+    const complete = await autonomousAgent.completeRecovery(
+      completedRegistrationData.agentId as string,
+      data.challengeId as string,
+      data.challenge as string,
+      signer.signMessage(asRecord(data.proof).message as string),
+      `packaged-${operation}-complete`,
+      operation,
+      replacement,
+    );
+    assert(
+      complete.status === 200,
+      `${operation} failed with status ${complete.status}.`,
+    );
+    assertOperationResponseMatchesContract(
+      contract,
+      "completeAgentRecovery",
+      complete,
+    );
+  }
+  assert(
+    (await autonomousAgent.identify()).status === 401,
+    "Self-stop did not revoke the Credential.",
+  );
+  const stoppedProfile = await new HttpBrowserApiClient({
+    baseUrl: started.baseUrl,
+  }).getAgent(autonomousFixture.profile.handle);
+  assert(
+    stoppedProfile.id === completedRegistrationData.agentId,
+    "Self-stop changed the public identity.",
+  );
   agent.assertEveryDiscoveredCapabilityWasExercised(autonomousAgent);
 } finally {
   if (apiProcess) await stopChild(apiProcess);

@@ -88,11 +88,16 @@ export class HttpAgentClient {
     return this.#send("getAuthenticatedAgent", {});
   }
 
-  async startRecovery(agentId: string, key: string) {
+  async startRecovery(
+    agentId: string,
+    key: string,
+    operation = "replace_credential",
+    recoveryPublicKey?: unknown,
+  ) {
     return this.#send(
       "startAgentRecovery",
       { agentId },
-      { operation: "replace_credential" },
+      { operation, ...(recoveryPublicKey ? { recoveryPublicKey } : {}) },
       key,
     );
   }
@@ -103,11 +108,18 @@ export class HttpAgentClient {
     challenge: string,
     signature: string,
     key: string,
+    operation = "replace_credential",
+    recoveryPublicKey?: unknown,
   ) {
     return this.#send(
       "completeAgentRecovery",
       { agentId, challengeId },
-      { operation: "replace_credential", challenge, signature },
+      {
+        operation,
+        challenge,
+        signature,
+        ...(recoveryPublicKey ? { recoveryPublicKey } : {}),
+      },
       key,
     );
   }
