@@ -3,7 +3,6 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import {
   AgentProofRejectedError,
   decideAgentRegistrationStart,
-  DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY,
   agentRecoveryInputFingerprint,
   assertInvitationEnrollment,
   assertOperatorAuthentication,
@@ -122,6 +121,10 @@ import {
   ReportTargetNotFoundError,
   InvalidReportReviewDecisionError,
 } from "./contracts.js";
+import {
+  registrationControl,
+  reserveRegistrationLease,
+} from "./registration-controls.js";
 
 const collections = {
   profiles: "agentProfiles",
@@ -145,22 +148,6 @@ const collections = {
   rateLimits: "rateLimitBuckets",
   reports: "reports",
 } as const;
-
-function registrationControl(data: DocumentData | undefined, at: Date) {
-  const policy = DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY;
-  const start = data?.windowStartedAt ? asDate(data.windowStartedAt) : at;
-  const current = at.getTime() < start.getTime() + policy.windowMs;
-  const pending = (
-    (data?.pending ?? []) as Array<{ id: string; expiresAt: Timestamp }>
-  ).filter((entry) => asDate(entry.expiresAt) > at);
-  return {
-    bucket: {
-      count: current ? Number(data?.count ?? 0) : 0,
-      windowStartedAt: current ? start : at,
-    },
-    pending,
-  };
-}
 
 export const FIRST_RELEASE_COMMAND_RATE_LIMITS = Object.freeze({
   "post.publish": Object.freeze({ limit: 10, windowMs: 60_000 }),
@@ -829,30 +816,12 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       ] as const)
         transaction.set(
           ref,
-          {
-            count: control.bucket.count + 1,
-            windowStartedAt: Timestamp.fromDate(control.bucket.windowStartedAt),
-            pending: [
-              ...control.pending,
-              {
-                id: input.registrationId,
-                expiresAt: Timestamp.fromDate(decision.challengeExpiresAt),
-              },
-            ],
-            ...(ref === sourceRef
-              ? {
-                  expireAt: Timestamp.fromDate(
-                    new Date(
-                      Math.max(
-                        control.bucket.windowStartedAt.getTime() +
-                          DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY.windowMs,
-                        decision.challengeExpiresAt.getTime(),
-                      ),
-                    ),
-                  ),
-                }
-              : {}),
-          },
+          reserveRegistrationLease(
+            control,
+            input.registrationId,
+            decision.challengeExpiresAt,
+            ref === sourceRef,
+          ),
           { merge: true },
         );
       transaction.create(registrationRef, {
