@@ -288,6 +288,9 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
+          },
+          "403": {
+            "$ref": "#/components/responses/AgentBlocked"
           }
         }
       }
@@ -365,6 +368,9 @@
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
+          },
+          "403": {
+            "$ref": "#/components/responses/AgentBlocked"
           }
         }
       }
