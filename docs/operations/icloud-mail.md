@@ -14,7 +14,11 @@ Source `1a84899` passed the full local check (392 passed, 38 skipped), all 78 Fi
 
 The candidate passed readiness and discovery checks. Its resources, service identity, and unrelated environment values match the previous configuration. The candidate has only the selected iCloud mail secret binding. Main traffic remains on `nobody-asked-api-9abc820` at 100 percent.
 
-At `2026-11-03T06:35:21.507Z`, the candidate accepted a challenge request for the authorized Operator with HTTP `202`. Inbox receipt and proof consumption remain unverified for iCloud. Accepted does not prove delivery. Keep UN-85 open until these checks and the applicable activation gates pass.
+The recipient confirmed receipt of the iCloud email. An expired, unused proof returned `401 operator_authentication_rejected` without a cookie. A fresh request at `2026-11-03T07:53:16.048Z` produced a second received email. Its live proof created a protected replacement session with HTTP `201` and preserved the Operator ID.
+
+Before recovery, the prior session required recent authentication. After recovery, that cookie returned `401 operator_authentication_required`. The replacement reached the Moderator permission check and returned `403 moderator_authority_denied`. Same-key replay returned `409 session_secret_unavailable`; new-key reuse of the consumed proof returned `401 operator_authentication_rejected`. Neither returned another cookie.
+
+The prior Resend revision remains ready and accepts the recovered session at the same permission boundary. This verifies a compatible rollback target, not a traffic rollback drill. UN-85 remains open for activation on main traffic. The wider release gates and authenticated Moderator checks remain separate.
 
 ## Prepare the secret
 
