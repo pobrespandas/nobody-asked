@@ -5,6 +5,7 @@ import {
   applicationDefault,
   deleteApp,
   initializeApp,
+  type Credential,
 } from "firebase-admin/app";
 import {
   Timestamp,
@@ -34,6 +35,7 @@ export async function runFirstOperatorBootstrap(
     readonly sessionToken: string;
     readonly origin: string;
   },
+  deploymentCredential?: Credential,
 ) {
   if (authentication && authentication.mode !== "enrolled-session")
     throw new Error("Unknown bootstrap authentication mode.");
@@ -51,7 +53,10 @@ export async function runFirstOperatorBootstrap(
     throw new Error("BOOTSTRAP_CONFIRM_TARGET must equal project/database.");
   }
 
-  const app = initializeApp({ projectId, credential: applicationDefault() });
+  const app = initializeApp({
+    projectId,
+    credential: deploymentCredential ?? applicationDefault(),
+  });
   try {
     if (authentication)
       return await bootstrapEnrolledOperator(

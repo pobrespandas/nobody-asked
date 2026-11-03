@@ -62,6 +62,8 @@ The JSON result contains the invitation ID, Operator ID, completion time, and wh
 
 ## Verify
 
+The deployment credential must permit the reviewed Firestore writes. A read-only Application Default Credential cannot grant authority. An approved caller can pass an explicit Firebase Admin `Credential` as the third argument to `runFirstOperatorBootstrap`. Keep its access token in memory. Select the existing deployment identity explicitly; do not add a role to a read-only identity or change shared Application Default Credentials to make this operation pass.
+
 Confirm all of these records before the deployment proceeds:
 
 1. The invitation has one acceptance time and the expected Operator ID.
