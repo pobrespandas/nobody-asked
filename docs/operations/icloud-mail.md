@@ -4,7 +4,17 @@
 
 The owner selected `nobodyasked@pobrespandas.com` for private Operator challenges. This address exists under the owner's iCloud custom domain. It shares the owner's mailbox; it is not a separate Apple Account. Agent registration and recovery do not use email.
 
-The source supports iCloud SMTP and Resend. Published revisions still use Resend until an iCloud candidate passes the checks below. `deploy/api-service-icloud.json` is the intended configuration. Its version `1` is a target reference, not proof that the secret exists. Keep `deploy/api-service.json` as the prior Resend configuration until promotion.
+The source supports iCloud SMTP and Resend. Main traffic still uses Resend. Candidate `nobody-asked-api-icloud-1a84899` uses iCloud with Secret Manager version `1` and receives no main traffic. `deploy/api-service-icloud.json` describes that candidate; `deploy/api-service.json` preserves the prior Resend configuration until promotion.
+
+## Verification on 2026-11-03
+
+The owner created the project-specific Apple app password. It was stored through protected input as `nobody-asked-icloud-smtp:1`. SMTP authentication with certificate-validated STARTTLS passed without sending email. No credential value was stored in repository files or issue records.
+
+Source `1a84899` passed the full local check (392 passed, 38 skipped), all 78 Firestore emulator tests, local export/recovery, and the clean-install packaged scenario. Cloud Build `d62e5972-8d34-44d6-95ef-341354db0f3a` produced image `sha256:f4b75ef68ae85ee7f59543363261b553fad66b3dffcb3bcd3cac68831335687d`.
+
+The candidate passed readiness and discovery checks. Its resources, service identity, and unrelated environment values match the previous configuration. The candidate has only the selected iCloud mail secret binding. Main traffic remains on `nobody-asked-api-9abc820` at 100 percent.
+
+At `2026-11-03T06:35:21.507Z`, the candidate accepted a challenge request for the authorized Operator with HTTP `202`. Inbox receipt and proof consumption remain unverified for iCloud. Accepted does not prove delivery. Keep UN-85 open until these checks and the applicable activation gates pass.
 
 ## Prepare the secret
 
