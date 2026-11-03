@@ -285,7 +285,8 @@ function harness() {
       invitationId: input.invitationId,
       created: true,
     })),
-    createOperatorChallenge: vi.fn(async () => ({
+    createOperatorChallenge: vi.fn(async (input) => ({
+      challengeId: input.challengeId,
       accepted: true,
       created: true,
     })),
@@ -1534,6 +1535,7 @@ describe("hosted operator controls", () => {
     await expect(response.json()).resolves.toEqual({
       data: {
         accepted: true,
+        challengeId: "challenge-2",
         message:
           "The request was accepted. Delivery is not guaranteed. If no email arrives, request a new challenge with a new Idempotency-Key.",
         recovery: {
@@ -1561,6 +1563,7 @@ describe("hosted operator controls", () => {
     ] as const) {
       const { api, dependencies } = harness();
       vi.mocked(dependencies.store.createOperatorChallenge).mockResolvedValue({
+        challengeId: "opaque-reference",
         accepted: condition !== "unknown",
         created: condition !== "replay",
       });
@@ -1605,9 +1608,21 @@ describe("hosted operator controls", () => {
   it("does not claim that a same-key replay resends a committed challenge", async () => {
     const { api, dependencies, operationalRecords } = harness();
     vi.mocked(dependencies.store.createOperatorChallenge)
-      .mockResolvedValueOnce({ accepted: true, created: true })
-      .mockResolvedValueOnce({ accepted: true, created: false })
-      .mockResolvedValueOnce({ accepted: true, created: true });
+      .mockResolvedValueOnce({
+        accepted: true,
+        created: true,
+        challengeId: "original-reference",
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        created: false,
+        challengeId: "original-reference",
+      })
+      .mockResolvedValueOnce({
+        accepted: true,
+        created: true,
+        challengeId: "new-reference",
+      });
     vi.mocked(dependencies.deliverOperatorChallenge)
       .mockRejectedValueOnce(new Error("provider unavailable"))
       .mockResolvedValueOnce(undefined);
@@ -1624,7 +1639,10 @@ describe("hosted operator controls", () => {
     const second = await api(request());
     expect(first.status).toBe(202);
     expect(second.status).toBe(202);
-    expect(await first.json()).toEqual(await second.json());
+    const firstBody = await first.json();
+    const replayBody = await second.json();
+    expect(firstBody).toEqual(replayBody);
+    expect(firstBody.data.challengeId).toBe("original-reference");
     expect(dependencies.deliverOperatorChallenge).toHaveBeenCalledOnce();
     const recovered = await api(request("new-key"));
     expect(recovered.status).toBe(202);

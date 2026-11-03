@@ -1760,7 +1760,9 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
 
   async createOperatorChallenge(
     input: OperatorChallengeCreationInput,
-  ): Promise<Readonly<{ accepted: boolean; created: boolean }>> {
+  ): Promise<
+    Readonly<{ accepted: boolean; created: boolean; challengeId: string }>
+  > {
     const challengeDigest = await this.digestSecret(input.challengeSecret);
     if (!challengeDigest || challengeDigest === input.challengeSecret)
       throw new UnsafeOperatorSecretDigestError();
@@ -1792,9 +1794,15 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       if (existing.exists) {
         if (existing.data()!.requestFingerprint !== requestFingerprint)
           throw new IdempotencyRequestConflictError();
+        const challengeId = existing.data()!.challengeId;
+        if (typeof challengeId !== "string" || !challengeId)
+          throw new IdempotencyRequestConflictError(
+            "Request a new Operator challenge with a new idempotency key.",
+          );
         return Object.freeze({
           accepted: existing.data()!.accepted === true,
           created: false,
+          challengeId,
         });
       }
       const invitation = invitations.docs[0];
@@ -1829,11 +1837,21 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         route,
         input.idempotencyKey,
         requestFingerprint,
-        { status: 202, body: { data: { accepted: true } } },
+        {
+          status: 202,
+          body: { data: { accepted: true, challengeId: input.challengeId } },
+        },
         input.occurredAt,
       );
-      transaction.update(idempotencyRef, { accepted });
-      return Object.freeze({ accepted, created: true });
+      transaction.update(idempotencyRef, {
+        accepted,
+        challengeId: input.challengeId,
+      });
+      return Object.freeze({
+        accepted,
+        created: true,
+        challengeId: input.challengeId,
+      });
     });
   }
 

@@ -4373,7 +4373,7 @@
         }
       },
       "OperatorChallengeAccepted": {
-        "description": "The identity-independent request result. Accepted does not guarantee delivery. Known identities, unknown identities, same-key replays, and delivery failures return the same response. A same-key replay does not resend a challenge. If no email arrives, request a new challenge with a new Idempotency-Key; do not retry automatically.",
+        "description": "The identity-independent request result. Accepted does not guarantee delivery. Known identities, unknown identities, same-key replays, and delivery failures return the same response shape. A same-key replay does not resend a challenge. If no email arrives, request a new challenge with a new Idempotency-Key; do not retry automatically. Every accepted response includes a non-secret opaque challengeId. Keep it and submit it with the emailed secret to create a session or accept an invitation. Same-key replay returns the original reference. Legacy keys without a stored reference return idempotency_conflict; use a new key.",
         "content": {
           "application/json": {
             "schema": {
@@ -4382,7 +4382,12 @@
               "properties": {
                 "data": {
                   "type": "object",
-                  "required": ["accepted", "message", "recovery"],
+                  "required": [
+                    "accepted",
+                    "message",
+                    "recovery",
+                    "challengeId"
+                  ],
                   "properties": {
                     "accepted": {
                       "const": true
@@ -4413,6 +4418,10 @@
                         }
                       },
                       "additionalProperties": false
+                    },
+                    "challengeId": {
+                      "type": "string",
+                      "description": "Non-secret opaque challenge reference returned for eligible and unknown identities. It does not prove identity eligibility or delivery."
                     }
                   },
                   "additionalProperties": false

@@ -75,3 +75,7 @@ Verify signed removal after Operator stop and during suspension. Preserve activi
 Run the exact flow in the packaged artifact against the local emulator. Record hosted verification separately; local tests and an accepted ADR do not prove deployment.
 
 The general hosted Agent runner must explicitly select the autonomous audience. It discovers all Agent operations, excludes only the closed `optional-operator` audience, and reports the exact unverified operation IDs. Unknown audience values and unclassified new capabilities fail coverage. Default coverage remains strict. The packaged optional Operator flow contributes its actual Agent operation calls to strict coverage; it does not mark operations as tested without sending them.
+
+## Operator challenge reference
+
+An ordinary client must complete Operator authentication with only the challenge ID from the accepted API response and the secret from the delivery adapter. Tests must not query Firestore to obtain the ID. Verify the same response shape for eligible and unknown identities and delivery failures, original reference replay without resend, and new reference for a new key. Legacy idempotency records without a reference must fail explicitly instead of returning an unused ID.

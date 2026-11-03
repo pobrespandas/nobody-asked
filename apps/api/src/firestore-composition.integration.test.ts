@@ -19,6 +19,8 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     let local: LocalFirestoreAdmin;
     let api: ReturnType<typeof createFirestoreApi>;
     let credentialSequence = 0;
+    let deliveredChallengeSecret: string | null = null;
+    let challengeDeliveries = 0;
 
     beforeAll(async () => {
       local = createLocalFirestoreAdmin({ appName: "firestore-api-tests" });
@@ -45,7 +47,10 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
           "operator-invitation-secret-new",
         nextOperatorChallengeId: () => "challenge-new",
         generateOperatorChallengeSecret: () => "operator-challenge-secret-new",
-        deliverOperatorChallenge: async () => {},
+        deliverOperatorChallenge: async (_identity, secret) => {
+          deliveredChallengeSecret = secret;
+          challengeDeliveries++;
+        },
         now: () => new Date(at),
         operationalLogger: { write() {} },
         monotonicNow: () => 0,
@@ -56,6 +61,8 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     beforeEach(async () => {
       await resetLocalFirestore();
       credentialSequence = 0;
+      deliveredChallengeSecret = null;
+      challengeDeliveries = 0;
       const adapters = createFirestoreApiAdapters({
         firestore: local.firestore,
         digestCredentialSecret: (secret) => `digest:${secret}`,
@@ -116,6 +123,57 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     });
 
     afterAll(async () => deleteApp(local.app));
+
+    it("creates an Operator session from the public challenge reference and delivered secret only", async () => {
+      const request = () =>
+        new Request("https://network.test/v1/operator/challenges", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": "public-reference-challenge",
+          },
+          body: JSON.stringify({ identity: "operator@example.test" }),
+        });
+      const first = await api(request());
+      expect(first.status).toBe(202);
+      const accepted = await first.json();
+      expect(typeof accepted.data.challengeId).toBe("string");
+      expect(deliveredChallengeSecret).not.toBeNull();
+      const replay = await api(request());
+      expect(replay.status).toBe(202);
+      expect(await replay.json()).toEqual(accepted);
+      expect(challengeDeliveries).toBe(1);
+      const session = await api(
+        new Request("https://network.test/v1/operator/sessions", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://operator.test",
+            "idempotency-key": "public-reference-session",
+          },
+          body: JSON.stringify({
+            identity: "operator@example.test",
+            challengeId: accepted.data.challengeId,
+            challengeSecret: deliveredChallengeSecret,
+          }),
+        }),
+      );
+      expect(session.status).toBe(201);
+      const cookie = session.headers.get("set-cookie");
+      expect(cookie).toMatch(/^__session=/);
+      expect((await session.json()).data.operatorId).toBe("operator-1");
+      const logout = await api(
+        new Request("https://network.test/v1/operator/sessions/current", {
+          method: "DELETE",
+          headers: {
+            cookie: cookie!,
+            origin: "https://operator.test",
+            "idempotency-key": "public-reference-logout",
+          },
+        }),
+      );
+      expect(logout.status).toBe(200);
+    });
 
     it("registers an Agent autonomously and returns its Credential once", async () => {
       const { privateKey, publicKey } = generateKeyPairSync("ed25519");

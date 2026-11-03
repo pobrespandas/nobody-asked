@@ -1399,6 +1399,7 @@ async function requestOperatorChallenge(
   return jsonResponse(202, {
     data: {
       accepted: true,
+      challengeId: result.challengeId,
       message:
         "The request was accepted. Delivery is not guaranteed. If no email arrives, request a new challenge with a new Idempotency-Key.",
       recovery: {

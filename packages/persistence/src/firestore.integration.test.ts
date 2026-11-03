@@ -313,6 +313,67 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       };
     }
 
+    it.each([true, false])(
+      "keeps one stable non-secret Operator challenge reference for eligible=%s and replay",
+      async (eligible) => {
+        const secure = autonomousAdapters();
+        const identity = eligible
+          ? "known@example.test"
+          : "unknown@example.test";
+        if (eligible)
+          await local.firestore
+            .collection("operators")
+            .doc("operator-challenge-fixture")
+            .set({
+              normalizedIdentity: identity,
+              createdAt: Timestamp.fromDate(at),
+            });
+        const input = {
+          normalizedIdentity: identity,
+          challengeId: "challenge-first-reference",
+          challengeSecret: "challenge-first-secret",
+          idempotencyKey: "operator-challenge-start",
+          occurredAt: at,
+        };
+        await expect(
+          secure.store.createOperatorChallenge(input),
+        ).resolves.toEqual({
+          accepted: eligible,
+          created: true,
+          challengeId: input.challengeId,
+        });
+        await expect(
+          secure.store.createOperatorChallenge({
+            ...input,
+            challengeId: "challenge-replayed-reference",
+            challengeSecret: "challenge-replayed-secret",
+          }),
+        ).resolves.toEqual({
+          accepted: eligible,
+          created: false,
+          challengeId: input.challengeId,
+        });
+        const challenges = await local.firestore
+          .collection("operatorChallenges")
+          .get();
+        expect(challenges.size).toBe(eligible ? 1 : 0);
+        if (eligible) expect(challenges.docs[0]!.id).toBe(input.challengeId);
+        const commands = await local.firestore
+          .collection("idempotencyRecords")
+          .get();
+        expect(commands.size).toBe(1);
+        expect(commands.docs[0]!.data().response).toEqual({
+          status: 202,
+          body: { data: { accepted: true, challengeId: input.challengeId } },
+        });
+        const stored = JSON.stringify(
+          [...challenges.docs, ...commands.docs].map((doc) => doc.data()),
+        );
+        expect(stored).not.toContain(input.challengeSecret);
+        expect(stored).not.toContain("challenge-replayed-secret");
+      },
+    );
+
     async function authorizationFixture() {
       const secure = autonomousAdapters();
       const registration = autonomousRegistration(

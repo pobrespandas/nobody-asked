@@ -281,7 +281,9 @@ export interface ApiStore {
     readonly challengeSecret: string;
     readonly idempotencyKey: string;
     readonly occurredAt: Date;
-  }): Promise<Readonly<{ accepted: boolean; created: boolean }>>;
+  }): Promise<
+    Readonly<{ accepted: boolean; created: boolean; challengeId: string }>
+  >;
   listVisiblePublicPosts(): Promise<readonly PublicTimelineRecord[]>;
   listPublicTimelinePage(options: {
     readonly limit: number;
