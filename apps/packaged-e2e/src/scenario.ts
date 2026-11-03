@@ -16,6 +16,7 @@ import {
   asRecord,
 } from "./contract-assertions.js";
 import { runHostedConformance } from "./hosted-conformance.js";
+import { verifyOperatorAuthorization } from "./operator-authorization-conformance.js";
 import { verifyOperatorSessionRecovery } from "./operator-session-conformance.js";
 import { createAutonomousAgentFixture } from "./autonomous-agent-fixture.js";
 
@@ -366,6 +367,12 @@ try {
     contract,
     operatorId: String(asRecord(asRecord(enrollment.body).data).operatorId),
     priorCookie: operatorCookie,
+  });
+  const optionalOperatorClient = await verifyOperatorAuthorization({
+    firestore: local.firestore,
+    baseUrl: started.baseUrl,
+    operatorId: String(asRecord(asRecord(enrollment.body).data).operatorId),
+    operatorCookie: recoveredOperatorCookie,
   });
   const revocationResponse = await fetch(
     new URL("v1/operator/sessions/current", started.baseUrl),
@@ -892,9 +899,14 @@ try {
     stoppedProfile.id === completedRegistrationData.agentId,
     "Self-stop changed the public identity.",
   );
-  agent.assertEveryDiscoveredCapabilityWasExercised(autonomousAgent);
+  agent.assertEveryDiscoveredCapabilityWasExercised(
+    autonomousAgent,
+    optionalOperatorClient,
+  );
   assert(
-    await runHostedConformance(started.baseUrl),
+    await runHostedConformance(started.baseUrl, {
+      additionalCoverageClients: [optionalOperatorClient],
+    }),
     "Reusable candidate conformance failed locally.",
   );
 } finally {

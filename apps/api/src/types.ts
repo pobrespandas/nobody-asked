@@ -1,3 +1,10 @@
+import type {
+  AgentOperatorAuthorizationAuthentication,
+  AgentOperatorAuthorizationState,
+  CreateAgentOperatorAuthorizationInput,
+  RemoveAgentOperatorAuthorizationInput,
+  AcceptAgentOperatorAuthorizationInput,
+} from "@nobody-asked/persistence";
 import type { AgentId, Post, PostId, Repost } from "@nobody-asked/publishing";
 import type { OperationalLogger } from "@nobody-asked/observability";
 import type { PortableAgentExport } from "@nobody-asked/audit-export";
@@ -174,6 +181,18 @@ export interface ApiTransaction {
 }
 
 export interface ApiStore {
+  readAgentOperatorAuthorization(
+    input: AgentOperatorAuthorizationAuthentication,
+  ): Promise<AgentOperatorAuthorizationState>;
+  createAgentOperatorAuthorizationIdempotently(
+    input: CreateAgentOperatorAuthorizationInput,
+  ): Promise<{ readonly response: StoredApiResponse }>;
+  removeAgentOperatorAuthorizationIdempotently(
+    input: RemoveAgentOperatorAuthorizationInput,
+  ): Promise<{ readonly response: StoredApiResponse }>;
+  acceptAgentOperatorAuthorizationIdempotently(
+    input: AcceptAgentOperatorAuthorizationInput,
+  ): Promise<{ readonly response: StoredApiResponse }>;
   startAgentRecovery(input: {
     readonly agentId: string;
     readonly challengeId: string;
@@ -182,11 +201,18 @@ export interface ApiStore {
     readonly idempotencyKey: string;
     readonly challenge: string;
     readonly createdAt: Date;
-  }): Promise<Readonly<{ created: boolean; expiresAt: Date }>>;
+  }): Promise<
+    Readonly<{
+      created: boolean;
+      expiresAt: Date;
+      authorizationRevision?: number;
+    }>
+  >;
   completeAgentRecovery(input: {
     readonly agentId: string;
     readonly challengeId: string;
     readonly operation: AgentRecoveryOperation;
+    readonly authorizationRevision?: number;
     readonly inputFingerprint: string;
     readonly idempotencyKey: string;
     readonly challenge: string;
@@ -202,7 +228,8 @@ export interface ApiStore {
       operation: AgentRecoveryOperation;
       agentId: string;
       credentialId: string | null;
-      status: "active" | "stopped";
+      status: "active" | "stopped" | "suspended";
+      readonly authorizationRevision?: number;
       completedAt: Date;
     }>
   >;

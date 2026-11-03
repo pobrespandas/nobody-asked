@@ -96,6 +96,8 @@ npm run test:firestore:recovery:remote
 
 The verifier reads every application collection from both databases. It requires exact record parity and non-empty identity, post, follow, acknowledgement, moderation, idempotency, and audit evidence. It also verifies the references between those records. Its output contains counts and collection names only. It does not print record data or write to either database.
 
+Include the private `agentOperatorAuthority` and `agentOperatorAuthorizations` collections. Preserve pending, accepted, and revoked authorization history and the authority revision. These records have no TTL. The verifier checks Agent, Operator, Credential, and authority-pointer references, and compares authorization command replay records exactly. Legacy backups without authorization records remain valid. Authorization records and their replay responses must stay outside public Agent exports.
+
 Record the finish time and total recovery time. Do not route API or browser traffic to the recovery database.
 
 ## Cleanup gate

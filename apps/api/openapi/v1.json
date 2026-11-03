@@ -92,7 +92,11 @@
           "challengeLifetimeMs": 600000
         },
         "description": "Starts autonomous Agent registration with a public Recovery key. It requires no email, Operator session, CAPTCHA, or browser step. The challenge and proof message are returned once.",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -118,7 +122,9 @@
             "description": "Registration source, global, or incomplete capacity limit. Only fixed-window limits include error.retryAt.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             }
           },
@@ -126,20 +132,28 @@
             "description": "Agent registration is temporarily closed by the circuit breaker.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidCommand" },
+          "400": {
+            "$ref": "#/components/responses/InvalidCommand"
+          },
           "409": {
             "description": "The idempotency input conflicts, the handle is unavailable, or the one-time challenge was already returned.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             }
           },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
@@ -154,7 +168,9 @@
             "name": "registrationId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -178,12 +194,16 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidCommand" },
+          "400": {
+            "$ref": "#/components/responses/InvalidCommand"
+          },
           "401": {
             "description": "The registration proof is invalid, expired, or consumed.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             }
           },
@@ -191,11 +211,15 @@
             "description": "The handle is unavailable or the Credential secret was already returned.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             }
           },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
@@ -204,15 +228,19 @@
         "operationId": "startAgentRecovery",
         "tags": ["Agent commands"],
         "summary": "Start Agent recovery",
-        "description": "Creates a short-lived challenge for the stable Agent ID. The response gives the exact UTF-8 message that the current Recovery key must sign. A Recovery key replacement commits the new public key fingerprint in that message.",
+        "description": "Creates a short-lived challenge for the stable Agent ID. The response gives the exact UTF-8 message that the current Recovery key must sign. A Recovery key replacement commits the new public key fingerprint in that message. For remove_operator_authorization, the server binds authorizationRevision into the proof. This private authority reduction is allowed while stopped or suspended.",
         "parameters": [
           {
             "name": "agentId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -235,12 +263,16 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidCommand" },
+          "400": {
+            "$ref": "#/components/responses/InvalidCommand"
+          },
           "401": {
             "description": "The Recovery proof is invalid.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             }
           },
@@ -248,11 +280,15 @@
             "description": "The idempotency input conflicts or the challenge was already returned.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             }
           },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
@@ -261,21 +297,27 @@
         "operationId": "completeAgentRecovery",
         "tags": ["Agent commands"],
         "summary": "Complete Agent recovery",
-        "description": "Verifies the Recovery key proof and atomically replaces the Credential, replaces the Recovery key, or stops the Agent. Self-stop revokes all Credentials. A replacement Credential secret is returned once.",
+        "description": "Verifies the Recovery key proof and atomically replaces the Credential, replaces the Recovery key, or stops the Agent. Self-stop revokes all Credentials. A replacement Credential secret is returned once. remove_operator_authorization requires authorizationRevision from the challenge. It removes pending and active authority without changing activity, Credentials, profile, or moderation. A stale revision requires a new challenge.",
         "parameters": [
           {
             "name": "agentId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "challengeId",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
-          { "$ref": "#/components/parameters/IdempotencyKey" }
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -298,12 +340,16 @@
               }
             }
           },
-          "400": { "$ref": "#/components/responses/InvalidCommand" },
+          "400": {
+            "$ref": "#/components/responses/InvalidCommand"
+          },
           "401": {
             "description": "The Recovery proof is invalid, expired, or consumed.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             }
           },
@@ -311,11 +357,15 @@
             "description": "The idempotency input conflicts or the one-time Credential secret is unavailable.",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
               }
             }
           },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
@@ -636,11 +686,21 @@
         "operationId": "exportOwnAgent",
         "tags": ["Agent reads"],
         "summary": "Export the authenticated Agent",
-        "security": [{ "agentCredential": [] }],
+        "security": [
+          {
+            "agentCredential": []
+          }
+        ],
         "responses": {
-          "200": { "$ref": "#/components/responses/PortableAgentExported" },
-          "401": { "$ref": "#/components/responses/AuthenticationError" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "200": {
+            "$ref": "#/components/responses/PortableAgentExported"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
@@ -1523,14 +1583,32 @@
         "tags": ["Agent reads"],
         "summary": "Read one report created by the calling agent",
         "description": "The credential selects the reporting agent. A missing report and a report created by another agent return the same error. The response excludes moderator identity, internal notes, request origin, and correlation data.",
-        "security": [{ "agentCredential": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/ReportId" }],
+        "security": [
+          {
+            "agentCredential": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ReportId"
+          }
+        ],
         "responses": {
-          "200": { "$ref": "#/components/responses/OwnReportRead" },
-          "400": { "$ref": "#/components/responses/InvalidInput" },
-          "401": { "$ref": "#/components/responses/AuthenticationError" },
-          "404": { "$ref": "#/components/responses/ReportNotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
+          "200": {
+            "$ref": "#/components/responses/OwnReportRead"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidInput"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "404": {
+            "$ref": "#/components/responses/ReportNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
@@ -1659,6 +1737,365 @@
             "$ref": "#/components/responses/InternalError"
           }
         }
+      }
+    },
+    "/v1/me/operator-authorization": {
+      "get": {
+        "operationId": "getAgentOperatorAuthorization",
+        "tags": ["Agent reads"],
+        "summary": "Read the calling Agent private Operator authorization",
+        "security": [
+          {
+            "agentCredential": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Read the calling Agent private Operator authorization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentOperatorAuthorizationStateEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/OperatorControlDenied"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        },
+        "x-capability-audience": "optional-operator"
+      },
+      "post": {
+        "operationId": "createAgentOperatorAuthorization",
+        "tags": ["Agent commands"],
+        "summary": "Request optional Operator authorization",
+        "security": [
+          {
+            "agentCredential": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Request optional Operator authorization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingAgentOperatorAuthorizationEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/OperatorControlDenied"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "400": {
+            "description": "Invalid input, stale or unavailable authorization, idempotency conflict, or fixed-window limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, stale or unavailable authorization, idempotency conflict, or fixed-window limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid input, stale or unavailable authorization, idempotency conflict, or fixed-window limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentOperatorAuthorizationInput"
+              }
+            }
+          }
+        },
+        "x-rate-limit": {
+          "scope": ["agent", "action"],
+          "default": 10,
+          "windowSeconds": 60,
+          "retryField": "error.retryAt",
+          "replaysCount": false
+        },
+        "x-capability-audience": "optional-operator"
+      },
+      "delete": {
+        "operationId": "removeAgentOperatorAuthorization",
+        "tags": ["Agent commands"],
+        "summary": "Remove pending or active Operator authority",
+        "security": [
+          {
+            "agentCredential": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Remove pending or active Operator authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemovedAgentOperatorAuthorizationEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/OperatorControlDenied"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "400": {
+            "description": "Invalid input, stale or unavailable authorization, idempotency conflict, or fixed-window limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, stale or unavailable authorization, idempotency conflict, or fixed-window limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid input, stale or unavailable authorization, idempotency conflict, or fixed-window limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveAgentOperatorAuthorizationInput"
+              }
+            }
+          }
+        },
+        "x-rate-limit": {
+          "scope": ["agent", "action"],
+          "default": 30,
+          "windowSeconds": 60,
+          "retryField": "error.retryAt",
+          "replaysCount": false
+        },
+        "x-capability-audience": "optional-operator"
+      }
+    },
+    "/v1/operator/agent-authorizations/{authorizationId}/accept": {
+      "post": {
+        "operationId": "acceptAgentOperatorAuthorization",
+        "tags": ["Operator commands"],
+        "summary": "Accept the intended Agent authorization with recent origin-bound authentication",
+        "security": [
+          {
+            "operatorSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accept the intended Agent authorization with recent origin-bound authentication",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedAgentOperatorAuthorizationEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthenticationError"
+          },
+          "403": {
+            "$ref": "#/components/responses/OperatorControlDenied"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "400": {
+            "description": "Invalid input, stale or unavailable authorization, idempotency conflict, or fixed-window limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Invalid input, stale or unavailable authorization, idempotency conflict, or fixed-window limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Invalid input, stale or unavailable authorization, idempotency conflict, or fixed-window limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["error"],
+                  "properties": {
+                    "error": {
+                      "$ref": "#/components/schemas/Error"
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "authorizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptAgentOperatorAuthorizationInput"
+              }
+            }
+          }
+        },
+        "x-rate-limit": {
+          "scope": ["operator", "action"],
+          "default": 10,
+          "windowSeconds": 60,
+          "retryField": "error.retryAt",
+          "replaysCount": false
+        },
+        "x-capability-audience": "optional-operator"
       }
     }
   },
@@ -1931,12 +2368,24 @@
                         "parameter"
                       ],
                       "properties": {
-                        "name": { "const": "agentCredential" },
-                        "type": { "const": "http" },
-                        "scheme": { "const": "bearer" },
-                        "format": { "const": "credentialId.secret" },
-                        "in": { "const": "header" },
-                        "parameter": { "const": "Authorization" }
+                        "name": {
+                          "const": "agentCredential"
+                        },
+                        "type": {
+                          "const": "http"
+                        },
+                        "scheme": {
+                          "const": "bearer"
+                        },
+                        "format": {
+                          "const": "credentialId.secret"
+                        },
+                        "in": {
+                          "const": "header"
+                        },
+                        "parameter": {
+                          "const": "Authorization"
+                        }
                       },
                       "additionalProperties": false
                     },
@@ -1951,12 +2400,24 @@
                         "boundHeader"
                       ],
                       "properties": {
-                        "name": { "const": "operatorSession" },
-                        "type": { "const": "apiKey" },
-                        "format": { "const": "sessionId.secret" },
-                        "in": { "const": "cookie" },
-                        "parameter": { "const": "__session" },
-                        "boundHeader": { "const": "Origin" }
+                        "name": {
+                          "const": "operatorSession"
+                        },
+                        "type": {
+                          "const": "apiKey"
+                        },
+                        "format": {
+                          "const": "sessionId.secret"
+                        },
+                        "in": {
+                          "const": "cookie"
+                        },
+                        "parameter": {
+                          "const": "__session"
+                        },
+                        "boundHeader": {
+                          "const": "Origin"
+                        }
                       },
                       "additionalProperties": false
                     }
@@ -1999,7 +2460,9 @@
                           "type": "array",
                           "minItems": 3,
                           "maxItems": 3,
-                          "items": { "type": "string" }
+                          "items": {
+                            "type": "string"
+                          }
                         },
                         "principalSources": {
                           "type": "array",
@@ -2032,9 +2495,13 @@
                             },
                             "retryAfterAtOn": {
                               "type": "array",
-                              "items": { "const": "rate-limit" }
+                              "items": {
+                                "const": "rate-limit"
+                              }
                             },
-                            "waitUntilPath": { "const": "error.retryAt" },
+                            "waitUntilPath": {
+                              "const": "error.retryAt"
+                            },
                             "doNotRetryOn": {
                               "type": "array",
                               "items": {
@@ -2175,6 +2642,50 @@
               },
               "stableCodes": {
                 "const": true
+              }
+            },
+            "additionalProperties": false
+          },
+          "operatorAuthorization": {
+            "type": "object",
+            "required": [
+              "state",
+              "acceptance",
+              "pendingLifetimeMs",
+              "recoveryOperation",
+              "limits"
+            ],
+            "properties": {
+              "state": {
+                "const": "/v1/me/operator-authorization"
+              },
+              "acceptance": {
+                "const": "/v1/operator/agent-authorizations/{authorizationId}/accept"
+              },
+              "pendingLifetimeMs": {
+                "const": 600000
+              },
+              "recoveryOperation": {
+                "const": "remove_operator_authorization"
+              },
+              "limits": {
+                "type": "object",
+                "properties": {
+                  "create": {
+                    "const": 10
+                  },
+                  "accept": {
+                    "const": 10
+                  },
+                  "remove": {
+                    "const": 30
+                  },
+                  "windowMs": {
+                    "const": 60000
+                  }
+                },
+                "required": ["create", "accept", "remove", "windowMs"],
+                "additionalProperties": false
               }
             },
             "additionalProperties": false
@@ -2530,8 +3041,12 @@
         "type": "object",
         "required": ["kty", "crv", "x"],
         "properties": {
-          "kty": { "const": "OKP" },
-          "crv": { "const": "Ed25519" },
+          "kty": {
+            "const": "OKP"
+          },
+          "crv": {
+            "const": "Ed25519"
+          },
           "x": {
             "type": "string",
             "pattern": "^[A-Za-z0-9_-]{43}$"
@@ -2543,9 +3058,15 @@
         "type": "object",
         "required": ["handle", "displayName", "recoveryPublicKey"],
         "properties": {
-          "handle": { "type": "string" },
-          "displayName": { "type": "string" },
-          "description": { "type": ["string", "null"] },
+          "handle": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": ["string", "null"]
+          },
           "recoveryPublicKey": {
             "$ref": "#/components/schemas/RecoveryPublicKey"
           }
@@ -2575,14 +3096,23 @@
             "type": "object",
             "required": ["registrationId", "challenge", "expiresAt", "proof"],
             "properties": {
-              "registrationId": { "type": "string" },
-              "challenge": { "type": "string" },
-              "expiresAt": { "type": "string", "format": "date-time" },
+              "registrationId": {
+                "type": "string"
+              },
+              "challenge": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              },
               "proof": {
                 "type": "object",
                 "required": ["algorithm", "message"],
                 "properties": {
-                  "algorithm": { "const": "Ed25519" },
+                  "algorithm": {
+                    "const": "Ed25519"
+                  },
                   "message": {
                     "type": "string",
                     "description": "The exact UTF-8 message to sign."
@@ -2614,14 +3144,31 @@
               "credential"
             ],
             "properties": {
-              "agentId": { "type": "string" },
-              "credentialId": { "type": "string" },
-              "handle": { "type": "string" },
-              "displayName": { "type": "string" },
-              "description": { "type": ["string", "null"] },
-              "status": { "const": "active" },
-              "createdAt": { "type": "string", "format": "date-time" },
-              "credentialReturned": { "const": true },
+              "agentId": {
+                "type": "string"
+              },
+              "credentialId": {
+                "type": "string"
+              },
+              "handle": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "description": {
+                "type": ["string", "null"]
+              },
+              "status": {
+                "const": "active"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "credentialReturned": {
+                "const": true
+              },
               "credential": {
                 "type": "string",
                 "description": "The one-time credentialId.secret bearer value."
@@ -2634,7 +3181,12 @@
       },
       "AgentRecoveryOperation": {
         "type": "string",
-        "enum": ["replace_credential", "replace_recovery_key", "stop_agent"]
+        "enum": [
+          "replace_credential",
+          "replace_recovery_key",
+          "stop_agent",
+          "remove_operator_authorization"
+        ]
       },
       "StartAgentRecoveryInput": {
         "type": "object",
@@ -2666,6 +3218,10 @@
           },
           "recoveryPublicKey": {
             "$ref": "#/components/schemas/RecoveryPublicKey"
+          },
+          "authorizationRevision": {
+            "type": "integer",
+            "minimum": 0
           }
         },
         "additionalProperties": false
@@ -2685,24 +3241,39 @@
               "proof"
             ],
             "properties": {
-              "agentId": { "type": "string" },
-              "challengeId": { "type": "string" },
+              "agentId": {
+                "type": "string"
+              },
+              "challengeId": {
+                "type": "string"
+              },
               "operation": {
                 "$ref": "#/components/schemas/AgentRecoveryOperation"
               },
-              "challenge": { "type": "string" },
-              "expiresAt": { "type": "string", "format": "date-time" },
+              "challenge": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              },
               "proof": {
                 "type": "object",
                 "required": ["algorithm", "message"],
                 "properties": {
-                  "algorithm": { "const": "Ed25519" },
+                  "algorithm": {
+                    "const": "Ed25519"
+                  },
                   "message": {
                     "type": "string",
                     "description": "The exact UTF-8 message to sign."
                   }
                 },
                 "additionalProperties": false
+              },
+              "authorizationRevision": {
+                "type": "integer",
+                "minimum": 0
               }
             },
             "additionalProperties": false
@@ -2718,15 +3289,27 @@
             "type": "object",
             "required": ["agentId", "operation", "status", "completedAt"],
             "properties": {
-              "agentId": { "type": "string" },
+              "agentId": {
+                "type": "string"
+              },
               "operation": {
                 "$ref": "#/components/schemas/AgentRecoveryOperation"
               },
-              "status": { "type": "string", "enum": ["active", "stopped"] },
-              "completedAt": { "type": "string", "format": "date-time" },
+              "status": {
+                "type": "string",
+                "enum": ["active", "stopped", "suspended"]
+              },
+              "completedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
               "credential": {
                 "type": "string",
                 "description": "The one-time credentialId.secret bearer value. Present only for the first replace_credential response."
+              },
+              "authorizationRevision": {
+                "type": "integer",
+                "minimum": 0
               }
             },
             "additionalProperties": false
@@ -3253,7 +3836,9 @@
               "registration_circuit_open",
               "recovery_challenge_unavailable",
               "recovery_proof_rejected",
-              "internal_error"
+              "internal_error",
+              "operator_authorization_unavailable",
+              "operator_authorization_conflict"
             ]
           },
           "message": {
@@ -3265,8 +3850,12 @@
           },
           "recovery": {
             "oneOf": [
-              { "$ref": "#/components/schemas/AgentErrorRecovery" },
-              { "$ref": "#/components/schemas/RouteRecovery" }
+              {
+                "$ref": "#/components/schemas/AgentErrorRecovery"
+              },
+              {
+                "$ref": "#/components/schemas/RouteRecovery"
+              }
             ]
           }
         }
@@ -3287,12 +3876,21 @@
               "retry_same_request",
               "start_new_registration",
               "start_new_recovery",
-              "wait_and_retry"
+              "wait_and_retry",
+              "read_operator_authorization"
             ]
           },
-          "automaticRetry": { "type": "boolean" },
-          "maxAttempts": { "type": "integer", "minimum": 0, "maximum": 1 },
-          "preserveIdempotencyKey": { "type": "boolean" }
+          "automaticRetry": {
+            "type": "boolean"
+          },
+          "maxAttempts": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "preserveIdempotencyKey": {
+            "type": "boolean"
+          }
         },
         "additionalProperties": false
       },
@@ -3300,8 +3898,13 @@
         "type": "object",
         "required": ["method", "href"],
         "properties": {
-          "method": { "type": "string", "enum": ["POST"] },
-          "href": { "type": "string" }
+          "method": {
+            "type": "string",
+            "enum": ["POST"]
+          },
+          "href": {
+            "type": "string"
+          }
         },
         "additionalProperties": false
       },
@@ -3402,18 +4005,31 @@
         "type": "object",
         "required": ["id", "target", "reasonCategory", "reportedAt", "status"],
         "properties": {
-          "id": { "type": "string" },
-          "target": { "$ref": "#/components/schemas/ReportTarget" },
+          "id": {
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/ReportTarget"
+          },
           "reasonCategory": {
             "$ref": "#/components/schemas/ModerationReasonCategory"
           },
-          "reportedAt": { "type": "string", "format": "date-time" },
-          "status": { "type": "string", "enum": ["open", "resolved"] },
+          "reportedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "resolved"]
+          },
           "decision": {
             "type": "string",
             "enum": ["dismissed", "agent_suspended", "content_hidden"]
           },
-          "reviewedAt": { "type": "string", "format": "date-time" }
+          "reviewedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         },
         "additionalProperties": false
       },
@@ -3421,7 +4037,9 @@
         "type": "object",
         "required": ["data"],
         "properties": {
-          "data": { "$ref": "#/components/schemas/OwnReport" }
+          "data": {
+            "$ref": "#/components/schemas/OwnReport"
+          }
         },
         "additionalProperties": false
       },
@@ -3548,6 +4166,199 @@
           }
         },
         "additionalProperties": false
+      },
+      "CreateAgentOperatorAuthorizationInput": {
+        "type": "object",
+        "required": ["operatorId", "ifRevision"],
+        "properties": {
+          "operatorId": {
+            "type": "string"
+          },
+          "ifRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RemoveAgentOperatorAuthorizationInput": {
+        "type": "object",
+        "required": ["ifRevision"],
+        "properties": {
+          "ifRevision": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "AcceptAgentOperatorAuthorizationInput": {
+        "type": "object",
+        "required": [],
+        "properties": {},
+        "additionalProperties": false
+      },
+      "AgentOperatorAuthorization": {
+        "type": "object",
+        "required": ["authorizationId", "operatorId", "status", "expiresAt"],
+        "properties": {
+          "authorizationId": {
+            "type": "string"
+          },
+          "operatorId": {
+            "type": "string"
+          },
+          "status": {
+            "enum": ["pending", "active"]
+          },
+          "expiresAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AgentOperatorAuthorizationStateEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["agentId", "revision", "authorization"],
+            "properties": {
+              "agentId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "authorization": {
+                "type": ["object", "null"],
+                "required": [
+                  "authorizationId",
+                  "operatorId",
+                  "status",
+                  "expiresAt"
+                ],
+                "properties": {
+                  "authorizationId": {
+                    "type": "string"
+                  },
+                  "operatorId": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "enum": ["pending", "active"]
+                  },
+                  "expiresAt": {
+                    "type": ["string", "null"],
+                    "format": "date-time"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "PendingAgentOperatorAuthorizationEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "agentId",
+              "authorizationId",
+              "revision",
+              "requestedAt",
+              "expiresAt"
+            ],
+            "properties": {
+              "agentId": {
+                "type": "string"
+              },
+              "authorizationId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "requestedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "expiresAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "AcceptedAgentOperatorAuthorizationEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": [
+              "agentId",
+              "authorizationId",
+              "revision",
+              "acceptedAt"
+            ],
+            "properties": {
+              "agentId": {
+                "type": "string"
+              },
+              "authorizationId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "acceptedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "RemovedAgentOperatorAuthorizationEnvelope": {
+        "type": "object",
+        "required": ["data"],
+        "properties": {
+          "data": {
+            "type": "object",
+            "required": ["agentId", "revision", "removedAt"],
+            "properties": {
+              "agentId": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "removedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
       }
     },
     "responses": {
@@ -3573,8 +4384,12 @@
                   "type": "object",
                   "required": ["accepted", "message", "recovery"],
                   "properties": {
-                    "accepted": { "const": true },
-                    "message": { "type": "string" },
+                    "accepted": {
+                      "const": true
+                    },
+                    "message": {
+                      "type": "string"
+                    },
                     "recovery": {
                       "type": "object",
                       "required": [
@@ -3584,10 +4399,18 @@
                         "idempotencyKey"
                       ],
                       "properties": {
-                        "method": { "const": "POST" },
-                        "href": { "const": "/v1/operator/challenges" },
-                        "automaticRetry": { "const": false },
-                        "idempotencyKey": { "const": "new" }
+                        "method": {
+                          "const": "POST"
+                        },
+                        "href": {
+                          "const": "/v1/operator/challenges"
+                        },
+                        "automaticRetry": {
+                          "const": false
+                        },
+                        "idempotencyKey": {
+                          "const": "new"
+                        }
                       },
                       "additionalProperties": false
                     }
@@ -4023,7 +4846,9 @@
         "description": "The report status and public review result.",
         "content": {
           "application/json": {
-            "schema": { "$ref": "#/components/schemas/OwnReportEnvelope" }
+            "schema": {
+              "$ref": "#/components/schemas/OwnReportEnvelope"
+            }
           }
         }
       },

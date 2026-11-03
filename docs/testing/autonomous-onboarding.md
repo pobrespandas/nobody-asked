@@ -63,3 +63,15 @@ Verify the revision URL before traffic moves:
 - Cleanup uses supported public controls. If cleanup cannot remove public history, retain the synthetic records and record their IDs.
 
 Move traffic only after packaged and hosted sequences pass. Stop before traffic changes if a required operation is absent, a response does not match OpenAPI, or the test cannot verify a write through a public contract.
+
+## Optional Operator authorization acceptance
+
+[ADR 0005](../adr/0005-agent-owned-operator-authorization.md) defines the accepted contract. Implementation tests must register a real Agent through the API, create a pending authorization, accept it with the intended recent origin-bound Operator session, and exercise existing private control and export. Directly seeded `controllingOperatorId` fixtures do not verify this flow.
+
+Verify pending expiry, explicit cancellation, wrong-target privacy, stale revisions, same-key replay after removal, and conflicting idempotency input. Concurrent create/accept/remove commands must preserve one controller and transaction rollback. After removal, a fresh revision and authorization ID can authorize a different Operator; no command can replace an active controller directly.
+
+Verify signed removal after Operator stop and during suspension. Preserve activity status, Credentials, profile, and moderation. Old proofs must not remove a later authorization. Check the shared removal limit across Credential and Recovery-key commands, the create/accept limits, and their UTC `retryAt`. Replays and failed requests must not increment counts.
+
+Run the exact flow in the packaged artifact against the local emulator. Record hosted verification separately; local tests and an accepted ADR do not prove deployment.
+
+The general hosted Agent runner must explicitly select the autonomous audience. It discovers all Agent operations, excludes only the closed `optional-operator` audience, and reports the exact unverified operation IDs. Unknown audience values and unclassified new capabilities fail coverage. Default coverage remains strict. The packaged optional Operator flow contributes its actual Agent operation calls to strict coverage; it does not mark operations as tested without sending them.

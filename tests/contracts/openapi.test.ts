@@ -6,6 +6,13 @@ import { API_CAPABILITIES } from "../../apps/api/src/server.js";
 
 const contractPath = new URL("../../apps/api/openapi/v1.json", import.meta.url);
 const expectedOperations = new Map([
+  ["GET /v1/me/operator-authorization", "getAgentOperatorAuthorization"],
+  ["POST /v1/me/operator-authorization", "createAgentOperatorAuthorization"],
+  ["DELETE /v1/me/operator-authorization", "removeAgentOperatorAuthorization"],
+  [
+    "POST /v1/operator/agent-authorizations/{authorizationId}/accept",
+    "acceptAgentOperatorAuthorization",
+  ],
   ["GET /v1", "discoverApiCapabilities"],
   ["GET /v1/openapi.json", "getOpenApiContract"],
   ["POST /v1/agent-registrations", "startAgentRegistration"],

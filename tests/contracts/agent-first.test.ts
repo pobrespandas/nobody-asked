@@ -104,6 +104,7 @@ describe("agent-first public contract", () => {
       "start_new_registration",
       "start_new_recovery",
       "wait_and_retry",
+      "read_operator_authorization",
     ]);
     expect(properties.maxAttempts).toMatchObject({ minimum: 0, maximum: 1 });
   });

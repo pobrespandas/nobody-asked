@@ -58,6 +58,10 @@ export function errorResponse(
 }
 
 const agentErrorRecovery = {
+  operator_authorization_unavailable: noAutomaticRecovery("correct_request"),
+  operator_authorization_conflict: noAutomaticRecovery(
+    "read_operator_authorization",
+  ),
   registration_network_source_limited: automaticRecovery("wait_and_retry"),
   registration_global_limited: automaticRecovery("wait_and_retry"),
   registration_network_source_capacity_reached:
@@ -96,6 +100,7 @@ const agentErrorRecovery = {
 
 type AgentErrorCode = keyof typeof agentErrorRecovery;
 type AgentRecoveryAction =
+  | "read_operator_authorization"
   | "choose_existing_resource"
   | "choose_new_handle"
   | "correct_request"
@@ -125,6 +130,8 @@ function automaticRecovery(action: AgentRecoveryAction) {
 }
 
 const allowedDomainErrorStatus = {
+  operator_authorization_unavailable: 409,
+  operator_authorization_conflict: 409,
   registration_network_source_limited: 429,
   registration_global_limited: 429,
   registration_network_source_capacity_reached: 429,
@@ -176,6 +183,10 @@ const allowedDomainErrorMessage: Record<
   post_not_found: "The post was not found.",
   agent_not_found: "The agent was not found.",
   operator_control_denied: "The operator cannot control this agent.",
+  operator_authorization_unavailable:
+    "The Operator authorization is unavailable.",
+  operator_authorization_conflict:
+    "Read the current Operator authorization before a new request.",
   active_credential_exists: "The agent already has an active credential.",
   active_credential_not_found: "The agent has no active credential to rotate.",
   credential_not_found: "The credential was not found.",

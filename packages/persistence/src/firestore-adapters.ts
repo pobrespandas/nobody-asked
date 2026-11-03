@@ -1,4 +1,17 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import {
+  FirestoreOperatorAuthorizations,
+  authorityRevision,
+  readAuthorityRemoval,
+  writeAuthorityRemoval,
+  readAuthorizationRate,
+} from "./operator-authorizations.js";
+import type {
+  AgentOperatorAuthorizationAuthentication,
+  CreateAgentOperatorAuthorizationInput,
+  RemoveAgentOperatorAuthorizationInput,
+  AcceptAgentOperatorAuthorizationInput,
+} from "./contracts.js";
 
 import {
   AgentProofRejectedError,
@@ -706,6 +719,54 @@ function compareItemSnapshots(
 }
 
 export class FirestoreApiStore extends FirestorePublicReadRepository {
+  private operatorAuthorizations() {
+    return new FirestoreOperatorAuthorizations(
+      this.firestore,
+      this.digestSecret,
+      (transaction, event) => {
+        const audit = createAuditRecordInput({
+          actor: event.operator
+            ? { type: "operator", id: createAuditIdentifier(event.actorId) }
+            : { type: "agent", id: event.actorId as AgentId },
+          action: event.action,
+          subject: { type: "agent", id: createAuditIdentifier(event.agentId) },
+          details: {
+            result: "completed",
+            reasonCategory: null,
+            previousState: null,
+            resultingState: null,
+            correlationId: createAuditCorrelationId(event.correlationId),
+            requestOrigin: createInternalRequestOrigin("hosted-api"),
+            credentialId: null,
+            retentionRange: null,
+          },
+          createdAt: event.at,
+        });
+        const ref = this.firestore.collection(collections.audits).doc();
+        transaction.create(ref, serializeAudit(ref.id, audit));
+      },
+    );
+  }
+  readAgentOperatorAuthorization(
+    input: AgentOperatorAuthorizationAuthentication,
+  ) {
+    return this.operatorAuthorizations().read(input);
+  }
+  createAgentOperatorAuthorizationIdempotently(
+    input: CreateAgentOperatorAuthorizationInput,
+  ) {
+    return this.operatorAuthorizations().create(input);
+  }
+  removeAgentOperatorAuthorizationIdempotently(
+    input: RemoveAgentOperatorAuthorizationInput,
+  ) {
+    return this.operatorAuthorizations().remove(input);
+  }
+  acceptAgentOperatorAuthorizationIdempotently(
+    input: AcceptAgentOperatorAuthorizationInput,
+  ) {
+    return this.operatorAuthorizations().accept(input);
+  }
   constructor(
     firestore: Firestore,
     private readonly digestSecret: (secret: string) => string | Promise<string>,
@@ -1047,9 +1108,13 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     });
   }
 
-  async startAgentRecovery(
-    input: StartAgentRecoveryInput,
-  ): Promise<Readonly<{ created: boolean; expiresAt: Date }>> {
+  async startAgentRecovery(input: StartAgentRecoveryInput): Promise<
+    Readonly<{
+      created: boolean;
+      expiresAt: Date;
+      authorizationRevision?: number;
+    }>
+  > {
     const challenge = createAgentRecoveryChallenge({
       id: input.challengeId,
       agentId: input.agentId,
@@ -1060,6 +1125,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     });
     if (
       input.operation !== "replace_recovery_key" &&
+      input.operation !== "remove_operator_authorization" &&
       agentRecoveryInputFingerprint(input.operation) !== input.inputFingerprint
     ) {
       throw new AgentProofRejectedError();
@@ -1078,17 +1144,38 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       const recoveryKeyRef = this.firestore
         .collection(collections.recoveryKeys)
         .doc(input.agentId);
-      const [existing, profile, recoveryKey] = await Promise.all([
+      const [existing, profile, recoveryKey, authority] = await Promise.all([
         transaction.get(challengeRef),
         transaction.get(profileRef),
         transaction.get(recoveryKeyRef),
+        transaction.get(
+          this.firestore
+            .collection("agentOperatorAuthority")
+            .doc(input.agentId),
+        ),
       ]);
+      const authorizationRevision =
+        input.operation === "remove_operator_authorization"
+          ? Number(
+              existing.exists
+                ? existing.data()!.authorizationRevision
+                : authorityRevision(authority.data()),
+            )
+          : undefined;
+      const inputFingerprint =
+        input.operation === "remove_operator_authorization"
+          ? agentRecoveryInputFingerprint(
+              input.operation,
+              undefined,
+              authorizationRevision,
+            )
+          : input.inputFingerprint;
       if (existing.exists) {
         const data = existing.data()!;
         if (
           data.agentId !== input.agentId ||
           data.operation !== input.operation ||
-          data.inputFingerprint !== input.inputFingerprint ||
+          data.inputFingerprint !== inputFingerprint ||
           data.idempotencyKeyHash !== hash(input.idempotencyKey)
         ) {
           throw new IdempotencyRequestConflictError();
@@ -1096,11 +1183,20 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         return Object.freeze({
           created: false,
           expiresAt: asDate(data.expiresAt),
+          ...(authorizationRevision === undefined
+            ? {}
+            : { authorizationRevision }),
         });
       }
       if (!profile.exists) throw new AgentNotFoundError();
       const status = profile.data()?.status;
-      if (status !== "active") {
+      if (
+        status !== "active" &&
+        !(
+          input.operation === "remove_operator_authorization" &&
+          (status === "stopped" || status === "suspended")
+        )
+      ) {
         throw new AgentWriteBlockedError(
           status === "suspended" ? "suspended" : "stopped",
         );
@@ -1111,7 +1207,10 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       transaction.create(challengeRef, {
         agentId: input.agentId,
         operation: input.operation,
-        inputFingerprint: input.inputFingerprint,
+        inputFingerprint,
+        ...(authorizationRevision === undefined
+          ? {}
+          : { authorizationRevision }),
         idempotencyKeyHash: hash(input.idempotencyKey),
         challengeDigest,
         createdAt: Timestamp.fromDate(challenge.createdAt),
@@ -1121,7 +1220,13 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         recoveryKeyRevision: Number(recoveryKey.data()!.revision ?? 1),
         recoveryPublicKey: recoveryKey.data()!.publicKey,
       });
-      return Object.freeze({ created: true, expiresAt: challenge.expiresAt });
+      return Object.freeze({
+        created: true,
+        expiresAt: challenge.expiresAt,
+        ...(authorizationRevision === undefined
+          ? {}
+          : { authorizationRevision }),
+      });
     });
   }
 
@@ -1132,6 +1237,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     const requestFingerprint = agentRecoveryInputFingerprint(
       input.operation,
       input.recoveryPublicKey,
+      input.authorizationRevision,
     );
     if (requestFingerprint !== input.inputFingerprint) {
       throw new AgentProofRejectedError();
@@ -1240,7 +1346,13 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         throw new AgentProofRejectedError();
       }
       const status = profile.data()?.status;
-      if (status !== "active") {
+      if (
+        status !== "active" &&
+        !(
+          input.operation === "remove_operator_authorization" &&
+          (status === "stopped" || status === "suspended")
+        )
+      ) {
         throw new AgentWriteBlockedError(
           status === "suspended" ? "suspended" : "stopped",
         );
@@ -1249,9 +1361,48 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         credentialIsActive(credential.data(), input.occurredAt),
       );
       let credentialId: string | null = null;
-      let resultingStatus: "active" | "stopped" = "active";
+      let resultingStatus: "active" | "stopped" | "suspended" = "active";
+      let authorizationRevision: number | undefined;
       let audit: AuditRecordInput;
-      if (input.operation === "replace_credential") {
+      if (input.operation === "remove_operator_authorization") {
+        const state = await readAuthorityRemoval(
+          this.firestore,
+          transaction,
+          input.agentId,
+        );
+        if (
+          authorityRevision(state.value) !== input.authorizationRevision ||
+          data.authorizationRevision !== input.authorizationRevision ||
+          (!state.value && profile.data()?.controllingOperatorId)
+        )
+          throw new AgentProofRejectedError();
+        const rate = await readAuthorizationRate(
+          this.firestore,
+          transaction,
+          input.agentId,
+          "remove",
+          input.occurredAt,
+        );
+        authorizationRevision = writeAuthorityRemoval(
+          transaction,
+          state,
+          input.agentId,
+          input.occurredAt,
+        );
+        transaction.set(rate.ref, rate.data);
+        resultingStatus = status as "active" | "stopped" | "suspended";
+        audit = agentRecoveryAudit({
+          agentId: input.agentId,
+          action: "operator.authorization_removed",
+          subjectType: "agent",
+          subjectId: createAuditIdentifier(input.agentId),
+          previousState: { agentStatus: resultingStatus },
+          resultingState: { agentStatus: resultingStatus },
+          occurredAt: input.occurredAt,
+          correlationId: input.correlationId,
+          credentialId: null,
+        });
+      } else if (input.operation === "replace_credential") {
         credentialId = input.credentialId!;
         const credentialRef = this.firestore
           .collection(collections.credentials)
@@ -1354,6 +1505,9 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       transaction.create(idempotencyRef, {
         actorId: input.agentId,
         command: `agent-recovery:${input.operation}`,
+        ...(authorizationRevision === undefined
+          ? {}
+          : { authorizationRevision }),
         requestFingerprint,
         operation: input.operation,
         agentId: input.agentId,
@@ -1373,6 +1527,9 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         credentialId,
         status: resultingStatus,
         completedAt: input.occurredAt,
+        ...(authorizationRevision === undefined
+          ? {}
+          : { authorizationRevision }),
       });
     });
   }
@@ -4113,7 +4270,10 @@ function agentSecurityAudit(value: {
 function agentRecoveryAudit(value: {
   readonly agentId: string;
   readonly action:
-    "credential.rotated" | "recovery_key.replaced" | "agent.stopped";
+    | "credential.rotated"
+    | "recovery_key.replaced"
+    | "agent.stopped"
+    | "operator.authorization_removed";
   readonly subjectType: "credential" | "recovery_key" | "agent";
   readonly subjectId: ReturnType<typeof createAuditIdentifier>;
   readonly previousState: AuditState | null;
@@ -4150,7 +4310,10 @@ function mapAgentRecoveryResult(
     operation: data.operation as AgentRecoveryOperation,
     agentId: String(data.agentId),
     credentialId: data.credentialId ? String(data.credentialId) : null,
-    status: data.status as "active" | "stopped",
+    status: data.status as "active" | "stopped" | "suspended",
+    ...(data.authorizationRevision === undefined
+      ? {}
+      : { authorizationRevision: Number(data.authorizationRevision) }),
     completedAt: asDate(data.completedAt),
   });
 }

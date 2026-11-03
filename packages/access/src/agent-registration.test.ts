@@ -1,8 +1,9 @@
-import { generateKeyPairSync, sign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
   AGENT_PROOF_LIFETIME_MS,
+  agentRecoveryInputFingerprint,
   AgentProofRejectedError,
   consumeAgentRecovery,
   consumeAgentRegistration,
@@ -17,6 +18,57 @@ import {
 const at = new Date("2026-11-02T12:00:00.000Z");
 const keys = generateKeyPairSync("ed25519");
 const publicKey = keys.publicKey.export({ format: "jwk" }) as Ed25519PublicJwk;
+
+describe("Operator removal proof binding", () => {
+  it("binds the authority revision and rejects absent or invalid revisions", () => {
+    expect(
+      agentRecoveryInputFingerprint(
+        "remove_operator_authorization",
+        undefined,
+        0,
+      ),
+    ).not.toBe(
+      agentRecoveryInputFingerprint(
+        "remove_operator_authorization",
+        undefined,
+        1,
+      ),
+    );
+    for (const revision of [undefined, -1, 0.5, Number.NaN])
+      expect(() =>
+        agentRecoveryInputFingerprint(
+          "remove_operator_authorization",
+          undefined,
+          revision,
+        ),
+      ).toThrow(AgentProofRejectedError);
+  });
+  it("preserves every existing recovery fingerprint shape", () => {
+    for (const operation of [
+      "replace_credential",
+      "replace_recovery_key",
+      "stop_agent",
+    ] as const)
+      expect(
+        agentRecoveryInputFingerprint(
+          operation,
+          operation === "replace_recovery_key" ? publicKey : undefined,
+        ),
+      ).toBe(
+        createHash("sha256")
+          .update(
+            JSON.stringify({
+              operation,
+              recoveryPublicKey:
+                operation === "replace_recovery_key"
+                  ? { kty: publicKey.kty, crv: publicKey.crv, x: publicKey.x }
+                  : null,
+            }),
+          )
+          .digest("base64url"),
+      );
+  });
+});
 
 describe("Agent registration proof", () => {
   it("consumes one live proof from the Recovery key", () => {

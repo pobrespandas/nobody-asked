@@ -97,6 +97,51 @@ async function seed(firestore: Firestore): Promise<void> {
   const later = (seconds: number) =>
     Timestamp.fromMillis(at.getTime() + seconds * 1_000);
   const batch = firestore.batch();
+  batch.create(firestore.collection("operators").doc("operator-1"), {
+    active: true,
+  });
+  batch.create(firestore.collection("agentOperatorAuthority").doc("agent-1"), {
+    agentId: "agent-1",
+    revision: 2,
+    pendingAuthorizationId: null,
+    operatorId: "operator-1",
+    activeAuthorizationId: "authorization-recovery",
+    updatedAt: later(1),
+  });
+  batch.create(
+    firestore
+      .collection("agentOperatorAuthorizations")
+      .doc("authorization-recovery"),
+    {
+      agentId: "agent-1",
+      operatorId: "operator-1",
+      revision: 1,
+      requesterCredentialId: "credential-1",
+      requestedAt: later(0),
+      expiresAt: later(600),
+      acceptedAt: later(1),
+      revokedAt: null,
+    },
+  );
+  for (const operation of ["create", "remove", "accept"] as const) {
+    batch.create(
+      firestore
+        .collection("idempotencyRecords")
+        .doc(`authorization-${operation}`),
+      {
+        actorId: operation === "accept" ? "operator-1" : "agent-1",
+        command: `operator-authorization:${operation}`,
+        keyHash: digest(`authorization-${operation}`),
+        requestFingerprint: `authorization-${operation}-fingerprint`,
+        response: {
+          status: operation === "create" ? 201 : 200,
+          body: { data: { agentId: "agent-1", revision: 2 } },
+        },
+        completedAt: later(1),
+        expireAt: later(30 * 86_400),
+      },
+    );
+  }
   batch.create(firestore.collection("publicItems").doc("reply-1"), {
     id: "reply-1",
     type: "reply",
@@ -184,6 +229,8 @@ async function verifyEmptyState(firestore: Firestore): Promise<void> {
       "moderationActions",
       "idempotencyRecords",
       "auditRecords",
+      "agentOperatorAuthority",
+      "agentOperatorAuthorizations",
     ].map(
       async (collection) => (await firestore.collection(collection).get()).size,
     ),
@@ -198,6 +245,48 @@ async function verifyRecoveredState(
   firestore: Firestore,
 ): Promise<PortableAgentExport> {
   const adapters = adaptersFor(firestore);
+  const authority = (
+    await firestore.collection("agentOperatorAuthority").doc("agent-1").get()
+  ).data();
+  const authorization = (
+    await firestore
+      .collection("agentOperatorAuthorizations")
+      .doc("authorization-recovery")
+      .get()
+  ).data();
+  assert(
+    authority?.revision === 2 &&
+      authority?.activeAuthorizationId === "authorization-recovery" &&
+      authority?.operatorId === "operator-1" &&
+      authority?.pendingAuthorizationId === null,
+    "Recovered Operator authority changed.",
+  );
+  assert(
+    authorization?.agentId === "agent-1" &&
+      authorization?.operatorId === "operator-1" &&
+      authorization?.revision === 1 &&
+      authorization?.requesterCredentialId === "credential-1" &&
+      asDate(authorization?.acceptedAt).getTime() === at.getTime() + 1_000 &&
+      authorization?.revokedAt === null,
+    "Recovered Operator authorization history changed.",
+  );
+  for (const operation of ["create", "remove", "accept"] as const) {
+    const replay = (
+      await firestore
+        .collection("idempotencyRecords")
+        .doc(`authorization-${operation}`)
+        .get()
+    ).data();
+    assert(
+      replay?.actorId === (operation === "accept" ? "operator-1" : "agent-1") &&
+        replay?.command === `operator-authorization:${operation}` &&
+        replay?.keyHash === digest(`authorization-${operation}`) &&
+        replay?.requestFingerprint ===
+          `authorization-${operation}-fingerprint` &&
+        replay?.response?.body?.data?.agentId === "agent-1",
+      "Recovered Operator authorization replay changed.",
+    );
+  }
   const observer = await adapters.store.findPublicAgentByHandle("observer");
   assert(
     observer?.id === "agent-1",

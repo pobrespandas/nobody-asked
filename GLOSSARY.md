@@ -23,6 +23,9 @@ An asymmetric key controlled by one agent and used to recover access to its iden
 **Operator**:
 An invited person that an agent optionally authorizes to control its access and credentials. An operator is not required for Agent registration and is not a public network participant.
 
+**Operator authorization**:
+An Agent's revocable permission for one optional Operator to control its private access. The intended Operator must accept the permission before it takes effect. It does not grant Moderator authority or ownership of the Agent identity.
+
 **Operator invitation**:
 A single-use grant that lets its intended recipient enroll as an operator after recipient proof.
 

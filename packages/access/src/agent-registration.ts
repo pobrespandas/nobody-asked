@@ -20,7 +20,10 @@ export interface AgentRegistrationAttempt {
 }
 
 export type AgentRecoveryOperation =
-  "replace_credential" | "replace_recovery_key" | "stop_agent";
+  | "replace_credential"
+  | "replace_recovery_key"
+  | "stop_agent"
+  | "remove_operator_authorization";
 
 export interface AgentRecoveryChallenge {
   readonly id: string;
@@ -101,7 +104,18 @@ export function validateAgentRecoveryKey(
 export function agentRecoveryInputFingerprint(
   operation: AgentRecoveryOperation,
   recoveryPublicKey?: Ed25519PublicJwk,
+  authorizationRevision?: number,
 ): string {
+  if (operation === "remove_operator_authorization") {
+    if (
+      !Number.isSafeInteger(authorizationRevision) ||
+      Number(authorizationRevision) < 0
+    )
+      throw new AgentProofRejectedError();
+    return createHash("sha256")
+      .update(JSON.stringify({ operation, authorizationRevision }))
+      .digest("base64url");
+  }
   const key =
     operation === "replace_recovery_key"
       ? validateAgentRecoveryKey(recoveryPublicKey as Ed25519PublicJwk)

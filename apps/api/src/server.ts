@@ -55,6 +55,18 @@ const OPENAPI_DOCUMENT = readFileSync(
 
 export const API_CAPABILITIES = Object.freeze({
   registrationLimits: DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY,
+  operatorAuthorization: Object.freeze({
+    state: "/v1/me/operator-authorization",
+    acceptance: "/v1/operator/agent-authorizations/{authorizationId}/accept",
+    pendingLifetimeMs: 600_000,
+    recoveryOperation: "remove_operator_authorization",
+    limits: Object.freeze({
+      create: 10,
+      accept: 10,
+      remove: 30,
+      windowMs: 60_000,
+    }),
+  }),
   apiVersion: "v1",
   contract: Object.freeze({
     href: "/v1/openapi.json",
@@ -296,6 +308,22 @@ async function handleApiRequest(
         operatorExportMatch[1],
       );
     }
+    if (
+      url.pathname === "/v1/me/operator-authorization" &&
+      ["GET", "POST", "DELETE"].includes(request.method)
+    ) {
+      return await agentOperatorAuthorization(dependencies, request);
+    }
+    const authorizationAccept = url.pathname.match(
+      /^\/v1\/operator\/agent-authorizations\/([^/]+)\/accept$/,
+    );
+    if (request.method === "POST" && authorizationAccept?.[1]) {
+      return await acceptAgentOperatorAuthorization(
+        dependencies,
+        request,
+        authorizationAccept[1],
+      );
+    }
     if (request.method === "GET" && url.pathname === "/v1/me/export") {
       const authentication = await authenticate(dependencies, request);
       if (authentication instanceof Response) return authentication;
@@ -436,9 +464,121 @@ function readAgentRecoveryOperation(
 ): AgentRecoveryOperation | null {
   return value === "replace_credential" ||
     value === "replace_recovery_key" ||
-    value === "stop_agent"
+    value === "stop_agent" ||
+    value === "remove_operator_authorization"
     ? value
     : null;
+}
+
+async function agentOperatorAuthorization(
+  dependencies: ApiDependencies,
+  request: Request,
+) {
+  const authentication = await authenticate(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  const authenticatedAgentId = authentication.authenticated.agentId;
+  const auth = {
+    authenticatedAgentId,
+    credentialId: authentication.authenticated.credentialId,
+    credentialSecret: authentication.secret,
+    occurredAt: dependencies.now(),
+  };
+  if (request.method === "GET")
+    return jsonResponse(200, {
+      data: await dependencies.store.readAgentOperatorAuthorization(auth),
+    });
+  const key = readIdempotencyKey(request);
+  if (key instanceof Response) return key;
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  const creating = request.method === "POST";
+  if (
+    Object.keys(input).some(
+      (field) =>
+        !(creating ? ["operatorId", "ifRevision"] : ["ifRevision"]).includes(
+          field,
+        ),
+    ) ||
+    !Number.isSafeInteger(input.ifRevision) ||
+    Number(input.ifRevision) < 0 ||
+    (creating &&
+      (typeof input.operatorId !== "string" ||
+        input.operatorId.length > 128 ||
+        !/^[a-z0-9]+(?:[-_:][a-z0-9]+)*$/.test(input.operatorId)))
+  )
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The Operator authorization request is invalid.",
+    );
+  const command = {
+    ...auth,
+    ifRevision: Number(input.ifRevision),
+    idempotencyKey: key,
+    correlationId: dependencies.nextCorrelationId(),
+  };
+  const result = creating
+    ? await dependencies.store.createAgentOperatorAuthorizationIdempotently({
+        ...command,
+        operatorId: String(input.operatorId),
+        authorizationId: createHash("sha256")
+          .update(
+            JSON.stringify([
+              "operator-authorization",
+              authenticatedAgentId,
+              key,
+            ]),
+          )
+          .digest("hex")
+          .slice(0, 32),
+      })
+    : await dependencies.store.removeAgentOperatorAuthorizationIdempotently(
+        command,
+      );
+  return jsonResponse(result.response.status, result.response.body);
+}
+
+async function acceptAgentOperatorAuthorization(
+  dependencies: ApiDependencies,
+  request: Request,
+  encodedId: string,
+) {
+  const authorizationId = decodeIdentifier(encodedId, "authorization ID");
+  if (authorizationId instanceof Response) return authorizationId;
+  const authentication = await authenticateOperator(dependencies, request);
+  if (authentication instanceof Response) return authentication;
+  if (
+    !isRecentOperatorAuthentication(
+      authentication.authenticatedAt,
+      dependencies.now(),
+    )
+  )
+    return errorResponse(
+      401,
+      "recent_operator_authentication_required",
+      "Recent operator authentication is required.",
+    );
+  const key = readIdempotencyKey(request);
+  if (key instanceof Response) return key;
+  const input = await readObject(request);
+  if (input instanceof Response) return input;
+  if (Object.keys(input).length)
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The acceptance request must be empty.",
+    );
+  const result =
+    await dependencies.store.acceptAgentOperatorAuthorizationIdempotently({
+      operatorId: authentication.operatorId,
+      sessionSecret: readCookie(request.headers.get("cookie"), "__session")!,
+      origin: request.headers.get("origin")!,
+      authorizationId,
+      idempotencyKey: key,
+      occurredAt: dependencies.now(),
+      correlationId: dependencies.nextCorrelationId(),
+    });
+  return jsonResponse(result.response.status, result.response.body);
 }
 
 async function startAgentRecovery(
@@ -467,10 +607,20 @@ async function startAgentRecovery(
       "The recovery request is invalid.",
     );
   }
+  if (
+    operation === "remove_operator_authorization" &&
+    Object.keys(input).some((field) => field !== "operation")
+  )
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The recovery request is invalid.",
+    );
   const replacementKey = recoveryPublicKey ?? undefined;
   const inputFingerprint = agentRecoveryInputFingerprint(
     operation,
     replacementKey,
+    operation === "remove_operator_authorization" ? 0 : undefined,
   );
   const challengeId = dependencies.deriveAgentRecoveryChallengeId(
     agentId,
@@ -498,7 +648,14 @@ async function startAgentRecovery(
     id: challengeId,
     agentId,
     operation,
-    inputFingerprint,
+    inputFingerprint:
+      operation === "remove_operator_authorization"
+        ? agentRecoveryInputFingerprint(
+            operation,
+            undefined,
+            result.authorizationRevision,
+          )
+        : inputFingerprint,
     challenge,
     createdAt,
   });
@@ -507,6 +664,9 @@ async function startAgentRecovery(
       agentId,
       challengeId,
       operation,
+      ...(result.authorizationRevision !== undefined
+        ? { authorizationRevision: result.authorizationRevision }
+        : {}),
       challenge,
       expiresAt: result.expiresAt.toISOString(),
       proof: { algorithm: "Ed25519", message: recoveryProofMessage(proof) },
@@ -547,10 +707,45 @@ async function completeAgentRecovery(
       "The recovery proof is invalid.",
     );
   }
+  const authorizationRevision =
+    operation === "remove_operator_authorization"
+      ? input.authorizationRevision
+      : undefined;
+  if (
+    operation === "remove_operator_authorization" &&
+    (!Number.isSafeInteger(authorizationRevision) ||
+      Number(authorizationRevision) < 0 ||
+      Object.keys(input).some(
+        (field) =>
+          ![
+            "operation",
+            "authorizationRevision",
+            "challenge",
+            "signature",
+          ].includes(field),
+      ))
+  )
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The recovery proof is invalid.",
+    );
+  if (
+    operation !== "remove_operator_authorization" &&
+    "authorizationRevision" in input
+  )
+    return errorResponse(
+      400,
+      "invalid_input",
+      "The recovery proof is invalid.",
+    );
   const replacementKey = recoveryPublicKey ?? undefined;
   const inputFingerprint = agentRecoveryInputFingerprint(
     operation,
     replacementKey,
+    authorizationRevision === undefined
+      ? undefined
+      : Number(authorizationRevision),
   );
   let credentialId: string | undefined;
   let credentialSecret: string | undefined;
@@ -568,6 +763,9 @@ async function completeAgentRecovery(
       challengeId,
       operation,
       inputFingerprint,
+      ...(authorizationRevision !== undefined
+        ? { authorizationRevision: Number(authorizationRevision) }
+        : {}),
       idempotencyKey,
       challenge,
       signature,
@@ -602,6 +800,9 @@ async function completeAgentRecovery(
     data: {
       agentId: result.agentId,
       operation: result.operation,
+      ...(result.authorizationRevision !== undefined
+        ? { authorizationRevision: result.authorizationRevision }
+        : {}),
       status: result.status,
       completedAt: result.completedAt.toISOString(),
       ...(credentialSecret && result.credentialId
@@ -807,6 +1008,13 @@ function operationalRoute(request: Request): OperationalRoute {
   if (pathname === "/v1") return "api.discovery.read";
   if (pathname === "/v1/openapi.json") return "api.contract.read";
   if (pathname === "/v1/timeline") return "timeline.read";
+  if (pathname === "/v1/me/operator-authorization") {
+    if (request.method === "GET") return "operator-authorization.read";
+    if (request.method === "POST") return "operator-authorization.create";
+    if (request.method === "DELETE") return "operator-authorization.remove";
+  }
+  if (/^\/v1\/operator\/agent-authorizations\/[^/]+\/accept$/.test(pathname))
+    return "operator-authorization.accept";
   if (pathname === "/v1/feed") return "personal-feed.read";
   if (pathname === "/v1/me") return "agent-self.read";
   if (pathname === "/v1/operator/invitations") {

@@ -19,6 +19,8 @@ export const RECOVERY_COLLECTIONS = Object.freeze([
   "agentRegistrations",
   "agentRecoveryKeys",
   "agentRecoveryChallenges",
+  "agentOperatorAuthority",
+  "agentOperatorAuthorizations",
   "auditRecords",
   "bootstrapControls",
   "credentials",
@@ -211,6 +213,83 @@ function validateReferences(records: Map<string, readonly StoredRecord[]>) {
   const credentialIds = ids(records, "credentials");
   const recoveryKeyIds = ids(records, "agentRecoveryKeys");
   const registrationIds = ids(records, "agentRegistrations");
+  const operatorIds = ids(records, "operators");
+  const authorizations = new Map(
+    (records.get("agentOperatorAuthorizations") ?? []).map((value) => [
+      value.id,
+      value.data,
+    ]),
+  );
+  for (const authorization of authorizations.values()) {
+    requireReference(
+      authorization.agentId,
+      profileIds,
+      "agentOperatorAuthorizations",
+    );
+    requireReference(
+      authorization.operatorId,
+      operatorIds,
+      "agentOperatorAuthorizations",
+    );
+    requireReference(
+      authorization.requesterCredentialId,
+      credentialIds,
+      "agentOperatorAuthorizations",
+    );
+    if (
+      !Number.isSafeInteger(authorization.revision) ||
+      Number(authorization.revision) < 1
+    )
+      throw new RemoteRecoveryVerificationError(
+        "remote_recovery_reference_invalid",
+        "agentOperatorAuthorizations",
+      );
+  }
+  for (const authority of records.get("agentOperatorAuthority") ?? []) {
+    const data = authority.data;
+    requireReference(authority.id, profileIds, "agentOperatorAuthority");
+    if (
+      data.agentId !== authority.id ||
+      !Number.isSafeInteger(data.revision) ||
+      Number(data.revision) < 0
+    )
+      throw new RemoteRecoveryVerificationError(
+        "remote_recovery_reference_invalid",
+        "agentOperatorAuthority",
+      );
+    for (const field of [
+      "pendingAuthorizationId",
+      "activeAuthorizationId",
+    ] as const) {
+      if (data[field] == null) continue;
+      const authorization = authorizations.get(String(data[field]));
+      if (
+        !authorization ||
+        authorization.agentId !== authority.id ||
+        authorization.revokedAt != null ||
+        (field === "pendingAuthorizationId"
+          ? authorization.acceptedAt != null ||
+            authorization.revision !== data.revision ||
+            data.operatorId != null ||
+            data.activeAuthorizationId != null
+          : authorization.acceptedAt == null ||
+            authorization.operatorId !== data.operatorId ||
+            data.pendingAuthorizationId != null)
+      )
+        throw new RemoteRecoveryVerificationError(
+          "remote_recovery_reference_invalid",
+          "agentOperatorAuthority",
+        );
+    }
+    if (data.operatorId != null) {
+      requireReference(data.operatorId, operatorIds, "agentOperatorAuthority");
+      if (data.activeAuthorizationId == null)
+        throw new RemoteRecoveryVerificationError(
+          "remote_recovery_reference_invalid",
+          "agentOperatorAuthority",
+        );
+    }
+  }
   for (const key of records.get("agentRecoveryKeys") ?? []) {
     requireReference(key.id, profileIds, "agentRecoveryKeys");
   }
@@ -286,7 +365,37 @@ function validateReferences(records: Map<string, readonly StoredRecord[]>) {
   for (const idempotency of records.get("idempotencyRecords") ?? []) {
     requireString(idempotency.data.command, "idempotencyRecords");
     const command = String(idempotency.data.command);
-    if (/^(POST|DELETE) \/v1\/(operator|moderator)\//.test(command)) {
+    if (command.startsWith("operator-authorization:")) {
+      if (
+        ![
+          "operator-authorization:create",
+          "operator-authorization:remove",
+          "operator-authorization:accept",
+        ].includes(command)
+      )
+        throw new RemoteRecoveryVerificationError(
+          "remote_recovery_reference_invalid",
+          "idempotencyRecords",
+        );
+      requireReference(
+        idempotency.data.actorId,
+        command === "operator-authorization:accept" ? operatorIds : profileIds,
+        "idempotencyRecords",
+      );
+      requireString(idempotency.data.keyHash, "idempotencyRecords");
+      requireString(idempotency.data.requestFingerprint, "idempotencyRecords");
+      const response = asRecord(idempotency.data.response);
+      if (
+        !Number.isInteger(response.status) ||
+        response.status !==
+          (command === "operator-authorization:create" ? 201 : 200)
+      )
+        throw new RemoteRecoveryVerificationError(
+          "remote_recovery_reference_invalid",
+          "idempotencyRecords",
+        );
+      asRecord(response.body);
+    } else if (/^(POST|DELETE) \/v1\/(operator|moderator)\//.test(command)) {
       requireString(
         idempotency.data.actorId ?? idempotency.data.agentId,
         "idempotencyRecords",
@@ -305,6 +414,7 @@ function validateReferences(records: Map<string, readonly StoredRecord[]>) {
           "agent-recovery:replace_credential",
           "agent-recovery:replace_recovery_key",
           "agent-recovery:stop_agent",
+          "agent-recovery:remove_operator_authorization",
         ].includes(command)
       ) {
         requireString(
@@ -313,6 +423,33 @@ function validateReferences(records: Map<string, readonly StoredRecord[]>) {
         );
       } else requireString(idempotency.data.keyHash, "idempotencyRecords");
     }
+  }
+  for (const bucket of records.get("rateLimitBuckets") ?? []) {
+    if (
+      !String(bucket.data.command ?? "").startsWith("operator_authorization.")
+    )
+      continue;
+    const expectedKind =
+      bucket.data.command === "operator_authorization.accept"
+        ? "operator"
+        : "agent";
+    if (
+      ![
+        "operator_authorization.create",
+        "operator_authorization.remove",
+        "operator_authorization.accept",
+      ].includes(String(bucket.data.command)) ||
+      bucket.data.actorKind !== expectedKind
+    )
+      throw new RemoteRecoveryVerificationError(
+        "remote_recovery_reference_invalid",
+        "rateLimitBuckets",
+      );
+    requireReference(
+      bucket.data.actorId,
+      expectedKind === "operator" ? operatorIds : profileIds,
+      "rateLimitBuckets",
+    );
   }
   for (const audit of records.get("auditRecords") ?? []) {
     requireString(audit.data.actorId, "auditRecords");

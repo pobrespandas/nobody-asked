@@ -12,6 +12,9 @@ export type AuditCorrelationId = string & {
 };
 
 export type AuditAction =
+  | "operator.authorization_requested"
+  | "operator.authorization_accepted"
+  | "operator.authorization_removed"
   | "operator.invitation_created"
   | "operator.enrolled"
   | "agent.registered"
@@ -163,6 +166,9 @@ export async function runAuditedMutation<
 export const SECURITY_AUDIT_RETENTION_YEARS = 1;
 
 const auditActions = new Set<AuditAction>([
+  "operator.authorization_requested",
+  "operator.authorization_accepted",
+  "operator.authorization_removed",
   "operator.invitation_created",
   "operator.enrolled",
   "agent.registered",

@@ -19,6 +19,48 @@ export interface AuthenticatedOperatorRecord {
   readonly authenticatedAt: Date;
 }
 
+export interface AgentOperatorAuthorizationAuthentication {
+  readonly authenticatedAgentId: string;
+  readonly credentialId: string;
+  readonly credentialSecret: string;
+  readonly occurredAt: Date;
+}
+
+export interface AgentOperatorAuthorizationState {
+  readonly agentId: string;
+  readonly revision: number;
+  readonly authorization: null | {
+    readonly authorizationId: string;
+    readonly operatorId: string;
+    readonly status: "pending" | "active";
+    readonly expiresAt: string | null;
+  };
+}
+
+export interface CreateAgentOperatorAuthorizationInput extends AgentOperatorAuthorizationAuthentication {
+  readonly operatorId: string;
+  readonly ifRevision: number;
+  readonly authorizationId: string;
+  readonly idempotencyKey: string;
+  readonly correlationId: string;
+}
+
+export interface RemoveAgentOperatorAuthorizationInput extends AgentOperatorAuthorizationAuthentication {
+  readonly ifRevision: number;
+  readonly idempotencyKey: string;
+  readonly correlationId: string;
+}
+
+export interface AcceptAgentOperatorAuthorizationInput {
+  readonly operatorId: string;
+  readonly sessionSecret: string;
+  readonly origin: string;
+  readonly authorizationId: string;
+  readonly idempotencyKey: string;
+  readonly occurredAt: Date;
+  readonly correlationId: string;
+}
+
 export type OperatorCredentialCommand = "issue" | "rotate" | "revoke";
 
 export interface OperatorCredentialCommandInput {
@@ -166,6 +208,7 @@ export interface StartAgentRecoveryInput {
   readonly idempotencyKey: string;
   readonly challenge: string;
   readonly createdAt: Date;
+  readonly authorizationRevision?: number;
 }
 
 export interface CompleteAgentRecoveryInput {
@@ -179,6 +222,7 @@ export interface CompleteAgentRecoveryInput {
   readonly credentialId?: string;
   readonly credentialSecretDigest?: string;
   readonly recoveryPublicKey?: Ed25519PublicJwk;
+  readonly authorizationRevision?: number;
   readonly occurredAt: Date;
   readonly correlationId: string;
 }
@@ -188,7 +232,8 @@ export type CompleteAgentRecoveryResult = Readonly<{
   readonly operation: AgentRecoveryOperation;
   readonly agentId: string;
   readonly credentialId: string | null;
-  readonly status: "active" | "stopped";
+  readonly status: "active" | "stopped" | "suspended";
+  readonly authorizationRevision?: number;
   readonly completedAt: Date;
 }>;
 

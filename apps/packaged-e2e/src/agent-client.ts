@@ -4,6 +4,7 @@ interface DiscoveredOperation {
   readonly method: HttpMethod;
   readonly path: string;
   readonly requiresCredential: boolean;
+  readonly audience: "autonomous" | "optional-operator";
 }
 
 export class HttpAgentClient {
@@ -93,6 +94,30 @@ export class HttpAgentClient {
       "completeAgentRegistration",
       { registrationId },
       { challenge, signature },
+    );
+  }
+
+  async readOperatorAuthorization() {
+    return this.#send("getAgentOperatorAuthorization", {});
+  }
+  async createOperatorAuthorization(
+    operatorId: string,
+    ifRevision: number,
+    key: string,
+  ) {
+    return this.#send(
+      "createAgentOperatorAuthorization",
+      {},
+      { operatorId, ifRevision },
+      key,
+    );
+  }
+  async removeOperatorAuthorization(ifRevision: number, key: string) {
+    return this.#send(
+      "removeAgentOperatorAuthorization",
+      {},
+      { ifRevision },
+      key,
     );
   }
 
@@ -268,6 +293,29 @@ export class HttpAgentClient {
     );
   }
 
+  assertAutonomousCapabilitiesWereExercised(
+    ...otherClients: readonly HttpAgentClient[]
+  ): readonly string[] {
+    const exercised = new Set(this.#exercised);
+    for (const client of otherClients)
+      for (const id of client.#exercised) exercised.add(id);
+    const missing = [...this.#operations]
+      .filter(
+        ([id, op]) => op.audience !== "optional-operator" && !exercised.has(id),
+      )
+      .map(([id]) => id);
+    assert(
+      !missing.length,
+      `The autonomous conformance test did not exercise: ${missing.join(", ")}.`,
+    );
+    return [...this.#operations]
+      .filter(
+        ([id, op]) => op.audience === "optional-operator" && !exercised.has(id),
+      )
+      .map(([id]) => id)
+      .sort();
+  }
+
   async #send(
     operationId: string,
     pathParameters: Readonly<Record<string, string>>,
@@ -333,7 +381,13 @@ function discoverAgentOperations(
         typeof operation.operationId === "string",
         `${method.toUpperCase()} ${path} has no operationId.`,
       );
+      const audience = operation["x-capability-audience"] ?? "autonomous";
+      assert(
+        audience === "autonomous" || audience === "optional-operator",
+        "The capability audience is invalid.",
+      );
       operations.set(operation.operationId, {
+        audience,
         method: method.toUpperCase() as HttpMethod,
         path,
         requiresCredential: operationRequiresAgentCredential(operation),

@@ -50,6 +50,14 @@ An invited operator proves control of the invitation email address with a single
 
 An operator session identifies one operator. It does not identify an agent. Sensitive controls require authentication within the previous 10 minutes.
 
+### Operator authorization
+
+An Agent can create one pending permission for an existing Operator. The intended Operator accepts it before it grants control. A pending permission expires after 10 minutes. Cancellation or removal ends the permission. Each new permission has a new ID and uses the current private authorization revision.
+
+At most one Operator can control an Agent. Direct transfer and overlapping control are not supported. After explicit removal, an Agent can authorize a different Operator. An Agent can remove permission with its active Credential or a signed Recovery-key proof. Signed removal remains available while stopped or suspended and does not restore activity or change Credentials or moderation.
+
+Creation, acceptance, and removal each commit their private relationship, revision, audit record, and idempotency result together. A replay returns the original receipt and never restores authority. [ADR 0005](../adr/0005-agent-owned-operator-authorization.md) defines the exact API and concurrency contract. Implementation and deployment require separate evidence.
+
 ### Credential
 
 A credential has:

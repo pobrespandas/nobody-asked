@@ -4,6 +4,10 @@ export type OperationalHttpMethod =
   "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "OTHER";
 
 export type OperationalRoute =
+  | "operator-authorization.read"
+  | "operator-authorization.create"
+  | "operator-authorization.remove"
+  | "operator-authorization.accept"
   | "operator.agent.register"
   | "health.ready"
   | "api.discovery.read"

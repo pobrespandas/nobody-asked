@@ -1,3 +1,4 @@
+import { agentRecoveryInputFingerprint } from "@nobody-asked/access";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -232,6 +233,50 @@ function harness() {
       }),
   );
   const store: ApiStore = {
+    readAgentOperatorAuthorization: vi.fn(async () => ({
+      agentId: "agent-1",
+      revision: 0,
+      authorization: null,
+    })),
+    createAgentOperatorAuthorizationIdempotently: vi.fn(async () => ({
+      response: {
+        status: 201,
+        body: {
+          data: {
+            agentId: "agent-1",
+            authorizationId: "authorization-1",
+            revision: 1,
+            requestedAt: at.toISOString(),
+            expiresAt: new Date(at.getTime() + 600_000).toISOString(),
+          },
+        },
+      },
+    })),
+    removeAgentOperatorAuthorizationIdempotently: vi.fn(async () => ({
+      response: {
+        status: 200,
+        body: {
+          data: {
+            agentId: "agent-1",
+            revision: 2,
+            removedAt: at.toISOString(),
+          },
+        },
+      },
+    })),
+    acceptAgentOperatorAuthorizationIdempotently: vi.fn(async () => ({
+      response: {
+        status: 200,
+        body: {
+          data: {
+            agentId: "agent-1",
+            authorizationId: "authorization-1",
+            revision: 2,
+            acceptedAt: at.toISOString(),
+          },
+        },
+      },
+    })),
     startAgentRecovery,
     completeAgentRecovery,
     startAgentRegistration,
@@ -2074,5 +2119,242 @@ describe("report and moderator review API", () => {
     const body = JSON.stringify(await response.json());
     expect(body).toContain("visible");
     expect(body).not.toMatch(/moderator|internalNote|reportingAgent/);
+  });
+});
+
+describe("Agent-owned Operator authorization API", () => {
+  const command = (
+    path: string,
+    method: string,
+    body: unknown,
+    operator = false,
+  ) =>
+    new Request(`https://network.test${path}`, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": "authorization-key",
+        ...(operator
+          ? {
+              origin: "https://operator.test",
+              cookie: "__session=session-1.secret",
+            }
+          : { authorization: "Bearer valid-secret" }),
+      },
+      body: JSON.stringify(body),
+    });
+  it("uses only the authenticated Agent and passes expected revision to the transaction", async () => {
+    const { api, dependencies } = harness();
+    const response = await api(
+      command("/v1/me/operator-authorization", "POST", {
+        operatorId: "operator-1",
+        ifRevision: 0,
+      }),
+    );
+    expect(response.status).toBe(201);
+    expect(
+      dependencies.store.createAgentOperatorAuthorizationIdempotently,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authenticatedAgentId: "agent-1",
+        credentialId: "credential-1",
+        credentialSecret: "valid-secret",
+        operatorId: "operator-1",
+        ifRevision: 0,
+        authorizationId: expect.stringMatching(/^[a-f0-9]{32}$/),
+      }),
+    );
+    const read = await api(
+      new Request("https://network.test/v1/me/operator-authorization", {
+        headers: { authorization: "Bearer valid-secret" },
+      }),
+    );
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual({
+      data: { agentId: "agent-1", revision: 0, authorization: null },
+    });
+  });
+  it.each([
+    { operatorId: "operator-1", ifRevision: 0, agentId: "other" },
+    { operatorId: "operator-1", ifRevision: -1 },
+    { operatorId: "operator-1", ifRevision: 1.5 },
+    { operatorId: "operator-1" },
+  ])(
+    "rejects unknown fields and invalid revisions before mutation: %j",
+    async (body) => {
+      const { api, dependencies } = harness();
+      expect(
+        (await api(command("/v1/me/operator-authorization", "POST", body)))
+          .status,
+      ).toBe(400);
+      expect(
+        dependencies.store.createAgentOperatorAuthorizationIdempotently,
+      ).not.toHaveBeenCalled();
+    },
+  );
+  it("removes only the authenticated Agent authorization", async () => {
+    const { api, dependencies } = harness();
+    expect(
+      (
+        await api(
+          command("/v1/me/operator-authorization", "DELETE", { ifRevision: 2 }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      dependencies.store.removeAgentOperatorAuthorizationIdempotently,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authenticatedAgentId: "agent-1",
+        ifRevision: 2,
+      }),
+    );
+  });
+  it("binds acceptance to the recent Operator session and Origin", async () => {
+    const { api, dependencies } = harness();
+    expect(
+      (
+        await api(
+          command(
+            "/v1/operator/agent-authorizations/authorization-1/accept",
+            "POST",
+            {},
+            true,
+          ),
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      dependencies.store.acceptAgentOperatorAuthorizationIdempotently,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operatorId: "operator-1",
+        authorizationId: "authorization-1",
+        sessionSecret: "session-1.secret",
+        origin: "https://operator.test",
+      }),
+    );
+    vi.mocked(
+      dependencies.operatorAuthenticator.authenticate,
+    ).mockResolvedValue({
+      operatorId: "operator-1",
+      authenticatedAt: new Date(at.getTime() - 600_001),
+    });
+    expect(
+      (
+        await api(
+          command(
+            "/v1/operator/agent-authorizations/authorization-1/accept",
+            "POST",
+            {},
+            true,
+          ),
+        )
+      ).status,
+    ).toBe(401);
+    expect(
+      dependencies.store.acceptAgentOperatorAuthorizationIdempotently,
+    ).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    "operator_authorization_unavailable",
+    "operator_authorization_conflict",
+  ])("maps safe machine recovery for %s", async (code) => {
+    const { api, dependencies } = harness();
+    vi.mocked(
+      dependencies.store.createAgentOperatorAuthorizationIdempotently,
+    ).mockRejectedValue(
+      Object.assign(new Error("private target details"), { code }),
+    );
+    const response = await api(
+      command("/v1/me/operator-authorization", "POST", {
+        operatorId: "operator-1",
+        ifRevision: 0,
+      }),
+    );
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.error.recovery).toMatchObject({
+      automaticRetry: false,
+      maxAttempts: 0,
+    });
+    expect(JSON.stringify(body)).not.toContain("private target details");
+  });
+  it("rejects wrong-origin and actor-selecting acceptance before storage", async () => {
+    const { api, dependencies } = harness();
+    const path = "/v1/operator/agent-authorizations/authorization-1/accept";
+    const wrongOrigin = command(path, "POST", {}, true);
+    wrongOrigin.headers.set("origin", "https://other.example");
+    expect((await api(wrongOrigin)).status).toBe(401);
+    expect(
+      (
+        await api(
+          command(path, "POST", { operatorId: "another-operator" }, true),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      dependencies.store.acceptAgentOperatorAuthorizationIdempotently,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("binds signed removal to the server revision and preserves suspended status", async () => {
+    const { api, dependencies } = harness();
+    vi.mocked(dependencies.store.startAgentRecovery).mockResolvedValue({
+      created: true,
+      expiresAt: new Date(at.getTime() + 600_000),
+      authorizationRevision: 7,
+    });
+    const started = await api(
+      command("/v1/agents/agent-1/recovery-challenges", "POST", {
+        operation: "remove_operator_authorization",
+      }),
+    );
+    expect(started.status).toBe(201);
+    const challenge = await started.json();
+    expect(challenge.data.authorizationRevision).toBe(7);
+    expect(challenge.data.proof.message).toContain(
+      agentRecoveryInputFingerprint(
+        "remove_operator_authorization",
+        undefined,
+        7,
+      ),
+    );
+    vi.mocked(dependencies.store.completeAgentRecovery).mockResolvedValue({
+      kind: "created",
+      agentId: "agent-1",
+      operation: "remove_operator_authorization",
+      credentialId: null,
+      status: "suspended",
+      completedAt: at,
+      authorizationRevision: 8,
+    });
+    const completed = await api(
+      command(
+        "/v1/agents/agent-1/recovery-challenges/challenge-1/complete",
+        "POST",
+        {
+          operation: "remove_operator_authorization",
+          authorizationRevision: 7,
+          challenge: "challenge-value",
+          signature: "signature-value",
+        },
+      ),
+    );
+    expect(completed.status).toBe(200);
+    expect((await completed.json()).data).toMatchObject({
+      status: "suspended",
+      authorizationRevision: 8,
+    });
+    expect(dependencies.store.completeAgentRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authorizationRevision: 7,
+        inputFingerprint: agentRecoveryInputFingerprint(
+          "remove_operator_authorization",
+          undefined,
+          7,
+        ),
+      }),
+    );
   });
 });

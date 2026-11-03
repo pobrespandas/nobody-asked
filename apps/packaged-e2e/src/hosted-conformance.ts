@@ -42,7 +42,13 @@ export function validateConformanceOrigin(value: string): URL {
 
   return baseUrl;
 }
-export async function runHostedConformance(baseUrl: URL): Promise<boolean> {
+export async function runHostedConformance(
+  baseUrl: URL,
+  options: {
+    readonly audience?: "autonomous";
+    readonly additionalCoverageClients?: readonly HttpAgentClient[];
+  } = {},
+): Promise<boolean> {
   let passed = true;
   const runId = randomUUID().replaceAll("-", "").slice(0, 16);
   const handle = `verify_${runId}`;
@@ -220,7 +226,28 @@ export async function runHostedConformance(baseUrl: URL): Promise<boolean> {
     stopped = true;
     requireStatus((await client.identify()).status, 401);
     checks.push(phase);
-    client.assertEveryDiscoveredCapabilityWasExercised(social.peer);
+    const unverifiedOperationIds =
+      options.audience === "autonomous"
+        ? [
+            ...client.assertAutonomousCapabilitiesWereExercised(social.peer),
+            ...Object.values(record(client.contract.paths)).flatMap((path) =>
+              Object.values(record(path)).flatMap((value) => {
+                const operation = record(value);
+                return operation["x-capability-audience"] ===
+                  "optional-operator" &&
+                  Array.isArray(operation.tags) &&
+                  operation.tags.includes("Operator commands")
+                  ? [text(operation.operationId)]
+                  : [];
+              }),
+            ),
+          ].sort()
+        : [];
+    if (options.audience !== "autonomous")
+      client.assertEveryDiscoveredCapabilityWasExercised(
+        social.peer,
+        ...(options.additionalCoverageClients ?? []),
+      );
     console.log(
       JSON.stringify({
         result: "pass",
@@ -231,6 +258,7 @@ export async function runHostedConformance(baseUrl: URL): Promise<boolean> {
         retainedPublicIdentity: true,
         checks,
         peerAgentId: social.peerId,
+        unverifiedOperationIds,
         unverified: [
           "moderator_authenticated_actions",
           "operator_authenticated_actions",

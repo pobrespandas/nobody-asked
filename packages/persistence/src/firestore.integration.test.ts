@@ -17,6 +17,7 @@ import type { LocalFirestoreAdmin } from "@nobody-asked/firestore-support";
 
 import { createFirestoreApiAdapters } from "./firestore-adapters.js";
 import { FIRESTORE_PUBLISH_OPERATION_BUDGET } from "./firestore-adapters.js";
+import { FirestoreOperatorAuthorizations } from "./operator-authorizations.js";
 import {
   InvalidFeedCursorError,
   InvalidFeedLimitError,
@@ -311,6 +312,759 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         },
       };
     }
+
+    async function authorizationFixture() {
+      const secure = autonomousAdapters();
+      const registration = autonomousRegistration(
+        "optional-control-registration",
+      );
+      await secure.store.startAgentRegistration(registration.start);
+      const created = await secure.store.completeAgentRegistration({
+        ...registration.complete,
+        credentialSecretDigest: createHash("sha256")
+          .update("authorization-secret")
+          .digest("base64url"),
+      });
+      const agentId = created.registration.agentId;
+      const now = new Date(at.getTime() + 3_000);
+      const auth = {
+        authenticatedAgentId: agentId,
+        credentialId: created.registration.credentialId,
+        credentialSecret: `${created.registration.credentialId}.authorization-secret`,
+        occurredAt: now,
+      };
+      for (const id of ["operator-one", "operator-two"]) {
+        await local.firestore
+          .collection("operators")
+          .doc(id)
+          .set({ createdAt: Timestamp.fromDate(at) });
+        await local.firestore
+          .collection("operatorSessions")
+          .doc(`session-${id}`)
+          .set({
+            operatorId: id,
+            secretDigest: createHash("sha256")
+              .update("session-secret")
+              .digest("base64url"),
+            origin: "https://operator.test",
+            authenticatedAt: Timestamp.fromDate(at),
+            expiresAt: Timestamp.fromDate(new Date(at.getTime() + 3_600_000)),
+            revokedAt: null,
+          });
+      }
+      const create = {
+        ...auth,
+        operatorId: "operator-one",
+        authorizationId: "authorization-one",
+        ifRevision: 0,
+        idempotencyKey: "create-one",
+        correlationId: "create-one",
+      };
+      const accept = {
+        operatorId: "operator-one",
+        sessionSecret: "session-operator-one.session-secret",
+        origin: "https://operator.test",
+        authorizationId: "authorization-one",
+        idempotencyKey: "accept-one",
+        occurredAt: now,
+        correlationId: "accept-one",
+      };
+      return { secure, agentId, auth, create, accept, now };
+    }
+
+    it("grants exclusive optional authority only after acceptance and permits a distinct Operator after removal", async () => {
+      const { secure, agentId, auth, create, accept } =
+        await authorizationFixture();
+      expect(
+        await secure.store.readAgentOperatorAuthorization(auth),
+      ).toMatchObject({ revision: 0, authorization: null });
+      await secure.store.createAgentOperatorAuthorizationIdempotently(create);
+      await expect(
+        secure.store.runOperatorAgentControl({
+          operatorId: "operator-one",
+          agentId,
+          operation: "stop",
+          occurredAt: auth.occurredAt,
+          correlationId: "pending-stop",
+        }),
+      ).rejects.toMatchObject({ code: "operator_control_denied" });
+      await secure.store.acceptAgentOperatorAuthorizationIdempotently(accept);
+      expect(
+        await secure.store.readAgentOperatorAuthorization(auth),
+      ).toMatchObject({
+        revision: 2,
+        authorization: { operatorId: "operator-one", status: "active" },
+      });
+      const removal = {
+        ...auth,
+        ifRevision: 2,
+        idempotencyKey: "remove-one",
+        correlationId: "remove-one",
+      };
+      await secure.store.removeAgentOperatorAuthorizationIdempotently(removal);
+      const state = await secure.store.readAgentOperatorAuthorization(auth);
+      expect(state).toMatchObject({ revision: 3, authorization: null });
+      await secure.store.acceptAgentOperatorAuthorizationIdempotently(accept);
+      await secure.store.createAgentOperatorAuthorizationIdempotently(create);
+      expect(await secure.store.readAgentOperatorAuthorization(auth)).toEqual(
+        state,
+      );
+      await secure.store.createAgentOperatorAuthorizationIdempotently({
+        ...create,
+        operatorId: "operator-two",
+        authorizationId: "authorization-two",
+        ifRevision: 3,
+        idempotencyKey: "create-two",
+      });
+      await secure.store.acceptAgentOperatorAuthorizationIdempotently({
+        ...accept,
+        operatorId: "operator-two",
+        sessionSecret: "session-operator-two.session-secret",
+        authorizationId: "authorization-two",
+        idempotencyKey: "accept-two",
+      });
+      expect(
+        await secure.store.readAgentOperatorAuthorization(auth),
+      ).toMatchObject({
+        revision: 5,
+        authorization: { operatorId: "operator-two", status: "active" },
+      });
+      await expect(
+        secure.store.exportPortableAgent({
+          agentId,
+          operatorId: "operator-one",
+          exportedAt: auth.occurredAt,
+        }),
+      ).rejects.toMatchObject({ code: "operator_control_denied" });
+      const exported = await secure.store.exportPortableAgent({
+        agentId,
+        actorAgentId: agentId,
+        exportedAt: auth.occurredAt,
+      });
+      expect(JSON.stringify(exported)).not.toContain("operator-two");
+    });
+
+    it("rejects wrong targets, stale revisions, expired acceptance and invalid sessions without partial authority", async () => {
+      const { secure, auth, create, accept, now } =
+        await authorizationFixture();
+      await expect(
+        secure.store.createAgentOperatorAuthorizationIdempotently({
+          ...create,
+          operatorId: "missing-operator",
+        }),
+      ).rejects.toMatchObject({ code: "operator_authorization_unavailable" });
+      await secure.store.createAgentOperatorAuthorizationIdempotently(create);
+      await expect(
+        secure.store.createAgentOperatorAuthorizationIdempotently({
+          ...create,
+          operatorId: "operator-two",
+        }),
+      ).rejects.toMatchObject({ code: "idempotency_conflict" });
+      await expect(
+        secure.store.removeAgentOperatorAuthorizationIdempotently({
+          ...auth,
+          ifRevision: 0,
+          idempotencyKey: "stale-remove",
+          correlationId: "stale-remove",
+        }),
+      ).rejects.toMatchObject({ code: "operator_authorization_conflict" });
+      await expect(
+        secure.store.acceptAgentOperatorAuthorizationIdempotently({
+          ...accept,
+          operatorId: "operator-two",
+          sessionSecret: "session-operator-two.session-secret",
+        }),
+      ).rejects.toMatchObject({ code: "operator_authorization_unavailable" });
+      await expect(
+        secure.store.acceptAgentOperatorAuthorizationIdempotently({
+          ...accept,
+          origin: "https://wrong.test",
+        }),
+      ).rejects.toMatchObject({ code: "operator_authentication_rejected" });
+      await local.firestore
+        .collection("operatorSessions")
+        .doc("session-operator-one")
+        .update({
+          authenticatedAt: Timestamp.fromDate(
+            new Date(now.getTime() + 600_000),
+          ),
+        });
+      await expect(
+        secure.store.acceptAgentOperatorAuthorizationIdempotently({
+          ...accept,
+          occurredAt: new Date(now.getTime() + 600_000),
+        }),
+      ).rejects.toMatchObject({ code: "operator_authorization_unavailable" });
+      await local.firestore
+        .collection("operatorSessions")
+        .doc("session-operator-one")
+        .update({ authenticatedAt: Timestamp.fromDate(at) });
+      expect(
+        await secure.store.readAgentOperatorAuthorization(auth),
+      ).toMatchObject({ revision: 1, authorization: { status: "pending" } });
+      await secure.store.removeAgentOperatorAuthorizationIdempotently({
+        ...auth,
+        ifRevision: 1,
+        idempotencyKey: "cancel",
+        correlationId: "cancel",
+      });
+      await expect(
+        secure.store.acceptAgentOperatorAuthorizationIdempotently(accept),
+      ).rejects.toMatchObject({ code: "operator_authorization_unavailable" });
+    });
+
+    it("serializes competing requests and acceptance against removal", async () => {
+      const { secure, auth, create, accept } = await authorizationFixture();
+      const starts = await Promise.allSettled([
+        secure.store.createAgentOperatorAuthorizationIdempotently(create),
+        secure.store.createAgentOperatorAuthorizationIdempotently({
+          ...create,
+          authorizationId: "racing-request",
+          idempotencyKey: "racing-create",
+        }),
+      ]);
+      expect(
+        starts.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(1);
+      const state = await secure.store.readAgentOperatorAuthorization(auth);
+      const results = await Promise.allSettled([
+        secure.store.acceptAgentOperatorAuthorizationIdempotently({
+          ...accept,
+          authorizationId: state.authorization!.authorizationId,
+        }),
+        secure.store.removeAgentOperatorAuthorizationIdempotently({
+          ...auth,
+          ifRevision: 1,
+          idempotencyKey: "racing-remove",
+          correlationId: "racing-remove",
+        }),
+      ]);
+      expect(
+        results.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(1);
+      expect(
+        (await secure.store.readAgentOperatorAuthorization(auth)).revision,
+      ).toBe(2);
+    });
+
+    it.each(["create", "accept", "remove"] as const)(
+      "enforces the %s authority command bucket without counting replay or rejection",
+      async (operation) => {
+        const { secure, auth, create, accept, now } =
+          await authorizationFixture();
+        if (operation !== "create")
+          await secure.store.createAgentOperatorAuthorizationIdempotently(
+            create,
+          );
+        if (operation === "remove")
+          await secure.store.acceptAgentOperatorAuthorizationIdempotently(
+            accept,
+          );
+        const actorId =
+          operation === "accept" ? "operator-one" : auth.authenticatedAgentId;
+        const start = new Date(Math.floor(now.getTime() / 60_000) * 60_000);
+        const bucketId = createHash("sha256")
+          .update(
+            JSON.stringify([
+              actorId,
+              "operator-authorization",
+              operation,
+              start.toISOString(),
+            ]),
+          )
+          .digest("hex");
+        const limit = operation === "remove" ? 30 : 10;
+        const bucket = local.firestore
+          .collection("rateLimitBuckets")
+          .doc(bucketId);
+        await bucket.set({
+          actorId,
+          actorKind: operation === "accept" ? "operator" : "agent",
+          command: `operator_authorization.${operation}`,
+          count: limit,
+          windowStartedAt: Timestamp.fromDate(start),
+        });
+        const command = (occurredAt: Date) =>
+          operation === "create"
+            ? secure.store.createAgentOperatorAuthorizationIdempotently({
+                ...create,
+                occurredAt,
+              })
+            : operation === "accept"
+              ? secure.store.acceptAgentOperatorAuthorizationIdempotently({
+                  ...accept,
+                  occurredAt,
+                })
+              : secure.store.removeAgentOperatorAuthorizationIdempotently({
+                  ...auth,
+                  occurredAt,
+                  ifRevision: 2,
+                  idempotencyKey: "rate-remove",
+                  correlationId: "rate-remove",
+                });
+        await expect(command(now)).rejects.toMatchObject({
+          code: "rate_limit_exceeded",
+          retryAt: new Date(start.getTime() + 60_000),
+        });
+        expect((await bucket.get()).data()?.count).toBe(limit);
+        const next = new Date(start.getTime() + 60_000);
+        await command(next);
+        await command(next);
+        const nextBucket = createHash("sha256")
+          .update(
+            JSON.stringify([
+              actorId,
+              "operator-authorization",
+              operation,
+              next.toISOString(),
+            ]),
+          )
+          .digest("hex");
+        expect(
+          (
+            await local.firestore
+              .collection("rateLimitBuckets")
+              .doc(nextBucket)
+              .get()
+          ).data()?.count,
+        ).toBe(1);
+      },
+    );
+
+    it("rejects an old signed removal revision after explicit cancellation and a new request", async () => {
+      const { secure, agentId, auth, create, now } =
+        await authorizationFixture();
+      await secure.store.createAgentOperatorAuthorizationIdempotently(create);
+      const started = await secure.store.startAgentRecovery({
+        agentId,
+        challengeId: "old-remove-proof",
+        operation: "remove_operator_authorization",
+        inputFingerprint: agentRecoveryInputFingerprint(
+          "remove_operator_authorization",
+          undefined,
+          0,
+        ),
+        idempotencyKey: "old-remove-proof",
+        challenge: "old-remove-challenge",
+        createdAt: now,
+      });
+      const inputFingerprint = agentRecoveryInputFingerprint(
+        "remove_operator_authorization",
+        undefined,
+        started.authorizationRevision,
+      );
+      const proof = createAgentRecoveryChallenge({
+        id: "old-remove-proof",
+        agentId,
+        operation: "remove_operator_authorization",
+        inputFingerprint,
+        challenge: "old-remove-challenge",
+        createdAt: now,
+      });
+      await secure.store.removeAgentOperatorAuthorizationIdempotently({
+        ...auth,
+        ifRevision: 1,
+        idempotencyKey: "cancel-before-new",
+        correlationId: "cancel-before-new",
+      });
+      await secure.store.createAgentOperatorAuthorizationIdempotently({
+        ...create,
+        operatorId: "operator-two",
+        authorizationId: "later-request",
+        ifRevision: 2,
+        idempotencyKey: "later-create",
+      });
+      await expect(
+        secure.store.completeAgentRecovery({
+          agentId,
+          challengeId: "old-remove-proof",
+          operation: "remove_operator_authorization",
+          inputFingerprint,
+          authorizationRevision: started.authorizationRevision!,
+          idempotencyKey: "old-remove-complete",
+          challenge: "old-remove-challenge",
+          signature: sign(
+            null,
+            Buffer.from(recoveryProofMessage(proof)),
+            registrationKeys.privateKey,
+          ).toString("base64url"),
+          occurredAt: now,
+          correlationId: "old-remove-complete",
+        }),
+      ).rejects.toMatchObject({ code: "agent_proof_rejected" });
+      expect(
+        await secure.store.readAgentOperatorAuthorization(auth),
+      ).toMatchObject({
+        revision: 3,
+        authorization: {
+          authorizationId: "later-request",
+          operatorId: "operator-two",
+          status: "pending",
+        },
+      });
+    });
+
+    it.each(["revoked", "expired", "stale", "future"] as const)(
+      "rechecks an %s Operator session inside acceptance",
+      async (condition) => {
+        const { secure, auth, create, accept, now } =
+          await authorizationFixture();
+        await secure.store.createAgentOperatorAuthorizationIdempotently(create);
+        const data =
+          condition === "revoked"
+            ? { revokedAt: Timestamp.fromDate(now) }
+            : condition === "expired"
+              ? { expiresAt: Timestamp.fromDate(now) }
+              : {
+                  authenticatedAt: Timestamp.fromDate(
+                    new Date(
+                      now.getTime() + (condition === "future" ? 1 : -600_001),
+                    ),
+                  ),
+                };
+        await local.firestore
+          .collection("operatorSessions")
+          .doc("session-operator-one")
+          .update(data);
+        await expect(
+          secure.store.acceptAgentOperatorAuthorizationIdempotently(accept),
+        ).rejects.toMatchObject({ code: "operator_authentication_rejected" });
+        expect(
+          await secure.store.readAgentOperatorAuthorization(auth),
+        ).toMatchObject({ revision: 1, authorization: { status: "pending" } });
+      },
+    );
+
+    it("rejects inactive target Operators without disclosing their state", async () => {
+      const { secure, create } = await authorizationFixture();
+      await local.firestore
+        .collection("operators")
+        .doc("operator-one")
+        .update({ active: false });
+      await expect(
+        secure.store.createAgentOperatorAuthorizationIdempotently(create),
+      ).rejects.toMatchObject({ code: "operator_authorization_unavailable" });
+      expect(
+        (await local.firestore.collection("agentOperatorAuthority").get())
+          .empty,
+      ).toBe(true);
+      expect(
+        (await local.firestore.collection("agentOperatorAuthorizations").get())
+          .empty,
+      ).toBe(true);
+    });
+
+    it.each(["create", "accept", "remove"] as const)(
+      "rolls back every %s authority write when its audit append fails",
+      async (operation) => {
+        const { secure, auth, create, accept } = await authorizationFixture();
+        if (operation !== "create")
+          await secure.store.createAgentOperatorAuthorizationIdempotently(
+            create,
+          );
+        if (operation === "remove")
+          await secure.store.acceptAgentOperatorAuthorizationIdempotently(
+            accept,
+          );
+        const names = [
+          "agentProfiles",
+          "agentAccess",
+          "credentials",
+          "agentOperatorAuthority",
+          "agentOperatorAuthorizations",
+          "auditRecords",
+          "idempotencyRecords",
+          "rateLimitBuckets",
+        ];
+        const snapshot = () =>
+          Promise.all(
+            names.map(async (name) =>
+              (await local.firestore.collection(name).get()).docs.map(
+                (doc) => ({ id: doc.id, data: doc.data() }),
+              ),
+            ),
+          );
+        const before = await snapshot();
+        const failing = new FirestoreOperatorAuthorizations(
+          local.firestore,
+          (secret) => createHash("sha256").update(secret).digest("base64url"),
+          () => {
+            throw new Error("injected-atomic-failure");
+          },
+        );
+        await expect(
+          operation === "create"
+            ? failing.create(create)
+            : operation === "accept"
+              ? failing.accept(accept)
+              : failing.remove({
+                  ...auth,
+                  ifRevision: 2,
+                  idempotencyKey: "rollback-remove",
+                  correlationId: "rollback-remove",
+                }),
+        ).rejects.toThrow("injected-atomic-failure");
+        expect(await snapshot()).toEqual(before);
+      },
+    );
+
+    it.each(["issue", "rotate", "stop", "restore", "export"] as const)(
+      "orders signed removal atomically against Operator %s",
+      async (operation) => {
+        const { secure, agentId, auth, create, accept, now } =
+          await authorizationFixture();
+        await secure.store.createAgentOperatorAuthorizationIdempotently(create);
+        await secure.store.acceptAgentOperatorAuthorizationIdempotently(accept);
+        if (operation === "issue")
+          await secure.store.runOperatorCredentialCommand({
+            operatorId: "operator-one",
+            agentId,
+            operation: "revoke",
+            credentialId: auth.credentialId,
+            occurredAt: now,
+            correlationId: "prepare-issue",
+          });
+        if (operation === "restore")
+          await secure.store.runOperatorAgentControl({
+            operatorId: "operator-one",
+            agentId,
+            operation: "stop",
+            occurredAt: now,
+            correlationId: "prepare-restore",
+          });
+        const challenge = "race-removal-challenge";
+        const started = await secure.store.startAgentRecovery({
+          agentId,
+          challengeId: "race-removal",
+          operation: "remove_operator_authorization",
+          inputFingerprint: agentRecoveryInputFingerprint(
+            "remove_operator_authorization",
+            undefined,
+            0,
+          ),
+          idempotencyKey: "race-removal",
+          challenge,
+          createdAt: now,
+        });
+        const inputFingerprint = agentRecoveryInputFingerprint(
+          "remove_operator_authorization",
+          undefined,
+          started.authorizationRevision,
+        );
+        const proof = createAgentRecoveryChallenge({
+          agentId,
+          id: "race-removal",
+          operation: "remove_operator_authorization",
+          inputFingerprint,
+          challenge,
+          createdAt: now,
+        });
+        const completion = {
+          agentId,
+          challengeId: "race-removal",
+          operation: "remove_operator_authorization" as const,
+          inputFingerprint,
+          authorizationRevision: 2,
+          idempotencyKey: "race-completion",
+          challenge,
+          signature: sign(
+            null,
+            Buffer.from(recoveryProofMessage(proof)),
+            registrationKeys.privateKey,
+          ).toString("base64url"),
+          occurredAt: now,
+          correlationId: "race-completion",
+        };
+        const operatorCommand = () =>
+          operation === "export"
+            ? secure.store.exportPortableAgent({
+                operatorId: "operator-one",
+                agentId,
+                exportedAt: now,
+              })
+            : operation === "stop" || operation === "restore"
+              ? secure.store.runOperatorAgentControl({
+                  operatorId: "operator-one",
+                  agentId,
+                  operation,
+                  occurredAt: now,
+                  correlationId: "race-control",
+                })
+              : secure.store.runOperatorCredentialCommand({
+                  operatorId: "operator-one",
+                  agentId,
+                  operation,
+                  credentialId: "race-credential",
+                  secretDigest: "race-digest",
+                  occurredAt: now,
+                  correlationId: "race-control",
+                });
+        const results = await Promise.allSettled([
+          secure.store.completeAgentRecovery(completion),
+          operatorCommand(),
+        ]);
+        expect(results[0]).toMatchObject({
+          status: "fulfilled",
+          value: { authorizationRevision: 3 },
+        });
+        if (results[1]!.status === "rejected")
+          expect(results[1]!.reason).toMatchObject({
+            code: "operator_control_denied",
+          });
+        const profile = (
+          await local.firestore.collection("agentProfiles").doc(agentId).get()
+        ).data()!;
+        expect(profile).not.toHaveProperty("controllingOperatorId");
+        if (
+          results[1]!.status === "fulfilled" &&
+          (operation === "stop" || operation === "restore")
+        )
+          expect(profile.status).toBe(
+            operation === "stop" ? "stopped" : "active",
+          );
+        expect(
+          (
+            await local.firestore
+              .collection("agentOperatorAuthority")
+              .doc(agentId)
+              .get()
+          ).data(),
+        ).toMatchObject({
+          revision: 3,
+          pendingAuthorizationId: null,
+          activeAuthorizationId: null,
+          operatorId: null,
+        });
+        await expect(
+          secure.store.exportPortableAgent({
+            operatorId: "operator-one",
+            agentId,
+            exportedAt: now,
+          }),
+        ).rejects.toMatchObject({ code: "operator_control_denied" });
+      },
+    );
+
+    it.each(["stopped", "suspended"] as const)(
+      "removes private Operator authority with a Recovery proof while %s without changing access state",
+      async (status) => {
+        const { secure, agentId, create, accept, now } =
+          await authorizationFixture();
+        await secure.store.createAgentOperatorAuthorizationIdempotently(create);
+        await secure.store.acceptAgentOperatorAuthorizationIdempotently(accept);
+        if (status === "stopped")
+          await secure.store.runOperatorAgentControl({
+            operatorId: "operator-one",
+            agentId,
+            operation: "stop",
+            occurredAt: now,
+            correlationId: "optional-stop",
+          });
+        else
+          await local.firestore
+            .collection("agentProfiles")
+            .doc(agentId)
+            .update({
+              status,
+              moderationReasonCategory: "abuse",
+              moderatedAt: Timestamp.fromDate(now),
+            });
+        await local.firestore
+          .collection("agentAccess")
+          .doc(agentId)
+          .update({ stopped: true });
+        const challenge = "private-removal-proof";
+        const started = await secure.store.startAgentRecovery({
+          agentId,
+          challengeId: "remove-proof",
+          operation: "remove_operator_authorization",
+          inputFingerprint: agentRecoveryInputFingerprint(
+            "remove_operator_authorization",
+            undefined,
+            0,
+          ),
+          idempotencyKey: "remove-proof",
+          challenge,
+          createdAt: now,
+        });
+        expect(started.authorizationRevision).toBe(2);
+        const inputFingerprint = agentRecoveryInputFingerprint(
+          "remove_operator_authorization",
+          undefined,
+          started.authorizationRevision,
+        );
+        const proof = createAgentRecoveryChallenge({
+          id: "remove-proof",
+          agentId,
+          operation: "remove_operator_authorization",
+          inputFingerprint,
+          challenge,
+          createdAt: now,
+        });
+        const signature = sign(
+          null,
+          Buffer.from(recoveryProofMessage(proof)),
+          registrationKeys.privateKey,
+        ).toString("base64url");
+        const beforeCredentials = (
+          await local.firestore.collection("credentials").get()
+        ).docs.map((doc) => doc.data());
+        const beforeAccess = (
+          await local.firestore.collection("agentAccess").doc(agentId).get()
+        ).data();
+        const completion = {
+          agentId,
+          challengeId: "remove-proof",
+          operation: "remove_operator_authorization" as const,
+          inputFingerprint,
+          authorizationRevision: 2,
+          idempotencyKey: "complete-remove-proof",
+          challenge,
+          signature,
+          occurredAt: now,
+          correlationId: "remove-proof",
+        };
+        await expect(
+          secure.store.completeAgentRecovery(completion),
+        ).resolves.toMatchObject({ status, authorizationRevision: 3 });
+        await expect(
+          secure.store.completeAgentRecovery(completion),
+        ).resolves.toMatchObject({
+          kind: "replay",
+          status,
+          authorizationRevision: 3,
+        });
+        expect(
+          (
+            await local.firestore.collection("agentProfiles").doc(agentId).get()
+          ).data(),
+        ).toMatchObject({ status });
+        expect(
+          (
+            await local.firestore.collection("agentProfiles").doc(agentId).get()
+          ).data(),
+        ).not.toHaveProperty("controllingOperatorId");
+        expect(
+          (
+            await local.firestore.collection("agentAccess").doc(agentId).get()
+          ).data(),
+        ).toEqual(beforeAccess);
+        expect(
+          (await local.firestore.collection("credentials").get()).docs.map(
+            (doc) => doc.data(),
+          ),
+        ).toEqual(beforeCredentials);
+        await expect(
+          secure.store.runOperatorAgentControl({
+            operatorId: "operator-one",
+            agentId,
+            operation: "restore",
+            occurredAt: now,
+            correlationId: "removed-restore",
+          }),
+        ).rejects.toMatchObject({ code: "operator_control_denied" });
+      },
+    );
 
     it("creates one autonomous Agent identity atomically without raw secrets", async () => {
       const secure = autonomousAdapters();
