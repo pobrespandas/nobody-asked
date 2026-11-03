@@ -77,6 +77,12 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "registrationControls",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "agentProfiles",
       "fieldPath": "description",
       "indexes": []
