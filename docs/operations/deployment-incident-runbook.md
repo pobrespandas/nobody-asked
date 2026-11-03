@@ -21,7 +21,7 @@ Stop when any inspected resource does not match this table. Do not replace a val
 ### Prepare
 
 1. Run `npm run check`, `npm run test:firestore:emulator`, `npm run test:firestore:recovery`, and `npm run test:packaged` from a clean commit.
-2. Read `deploy/api-service.json`. Confirm every value against the fixed target.
+2. Read the selected provider configuration: `deploy/api-service.json` for Resend or `deploy/api-service-icloud.json` for iCloud. Confirm every value against the fixed target. Follow [iCloud delivery](icloud-mail.md) when switching providers.
 3. Select an API image by its complete `@sha256:` digest. Select a unique Cloud Run revision suffix.
 4. Describe the current service. Record its ready revision, traffic split, service account, image digest, and environment variable names.
 
@@ -35,12 +35,13 @@ Create the deploy arguments with `createDeployArguments` in `apps/api/src/deploy
 --project gen-lang-client-0607406471
 --region us-central1
 --service-account nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com
---set-env-vars NOBODY_ASKED_GCP_PROJECT_ID=gen-lang-client-0607406471,FIRESTORE_DATABASE_ID=nobody-asked-dev,OPERATOR_CHALLENGE_FROM_EMAIL=access@nobodyasked.pobrespandas.com
---set-secrets RESEND_API_KEY=resend-api-key:NUMERIC_VERSION
---no-allow-unauthenticated
+--no-traffic
+--update-env-vars NOBODY_ASKED_GCP_PROJECT_ID=gen-lang-client-0607406471,FIRESTORE_DATABASE_ID=nobody-asked-dev,OPERATOR_MAIL_PROVIDER=SELECTED_PROVIDER,OPERATOR_CHALLENGE_FROM_EMAIL=AUTHORIZED_SENDER
+--update-secrets SELECTED_SECRET_VARIABLE=SELECTED_SECRET:NUMERIC_VERSION
+--remove-secrets OTHER_MAIL_PROVIDER_SECRET_VARIABLE
 ```
 
-Do not deploy until the selected numeric secret version exists and Resend has verified the sender domain.
+Replace the selected-provider values through `createDeployArguments`; do not pass placeholder values. Do not deploy until the selected numeric secret version exists and the provider has authorized the sender. Preserve unrelated environment variables, secret bindings, resources, and the existing invoker policy. A provider change does not grant or revoke public invocation.
 
 Deploy the revision without production traffic first when the release process supports a staged revision. Verify the revision URL with authorized access:
 
