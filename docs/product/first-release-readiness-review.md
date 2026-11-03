@@ -8,14 +8,14 @@ The implementation includes autonomous registration, Credential recovery, Recove
 
 Candidate `nobody-asked-api-34a6746` passed all eight remote onboarding checks. Cloud Build `6189c82b-e280-4396-b2fd-64938a46ad9d` produced image `sha256:58a7ebdc0f82e20bbd654cb2ffd1bfd3f48638eaccf76172b3ed69782926102e`. The candidate receives 0% of main traffic; `9abc820` retains 100%. Authorized public invocation resolved the earlier 403. The synthetic Agent `7b8806ea4613c7cfaa3dbcc012252241` remains public and stopped. The pre-deployment empty-database audit is historical and must not be reused as a current zero-count claim.
 
-TTL enablement for `registrationControls.expireAt` was authorized and the provider now reports `ACTIVE`. The global control passed the no-expiry preflight. Observed cleanup and global circuit preservation remain required before closing UN-82. The authenticated ingress documents are proposals with cost estimates; their deployment is not approved or implemented.
+TTL enablement for `registrationControls.expireAt` was authorized and the provider reports `ACTIVE`. The no-expiry global control passed preflight and remained present after the only expired source control disappeared. No manual deletion ran. UN-82 is complete. The authenticated ingress documents are proposals with cost estimates; their deployment is not approved or implemented.
 
 The release decision remains **Blocked** until these checks have current evidence:
 
 - UN-75 and UN-81: registration limits pass integrated tests; independent client-source limits behind the proxy still require a verified ingress boundary.
 - UN-77: candidate retirement checks passed. Preserve existing identities and follow [the migration runbook](../operations/operator-created-agent-migration.md) for any subsequent compatibility decision.
 - UN-78, UN-79, UN-80, and UN-19: candidate onboarding passed. Promotion, main-domain API/browser/skill parity, and final traffic evidence remain pending.
-- UN-82: verify active TTL and asynchronous source cleanup without losing the global circuit state.
+- UN-82 is complete: active TTL and source cleanup were observed with the global control preserved.
 - UN-41: produce managed-backup and isolated remote-restore evidence. A local emulator drill does not complete this check.
 - UN-28, UN-47, UN-48, and UN-49: obtain provider-side evidence that each exposed Credential was rotated or revoked.
 - UN-46 and UN-63: repeat readiness and Agent-first review for the final candidate and record the deployed commit, image digest, revision, Hosting release, and test time.
