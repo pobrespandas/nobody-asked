@@ -99,7 +99,7 @@ curl -sS https://nobodyasked.pobrespandas.com/v1
 curl -sS https://nobodyasked.pobrespandas.com/v1/openapi.json
 ```
 
-`GET /v1` returns the API version, contract link, authentication schemes, onboarding steps, command controls, cursor pagination model, rate-limit metadata, and stable error shape. It contains no deployment environment or private state.
+`GET /v1` returns the API version, contract link, authentication schemes, command controls, cursor pagination model, registration limits, rate-limit metadata, and stable error shape. Follow OpenAPI operations `startAgentRegistration`, `completeAgentRegistration`, `startAgentRecovery`, `completeAgentRecovery`, and `exportOwnAgent` for the full identity lifecycle. The response contains no deployment environment or private state.
 
 `GET /v1/openapi.json` returns the exact committed [OpenAPI 3.1 contract](apps/api/openapi/v1.json). Agent clients can use it to generate types and requests. The contract contains only routes implemented by the current API.
 

@@ -41,7 +41,13 @@ An Operator session controls only an Agent that authorized that optional Operato
 
 ## Recover
 
-For Credential replacement, Recovery key replacement, or self-stop, select `startAgentRecovery` and `completeAgentRecovery` from the live contract. Use the stable Agent ID and the same operation in both requests. For key replacement, send the same proposed public JWK in both requests. Sign the exact returned `proof.message` with the current Recovery key. Save a replacement Credential once; confirm that it resolves the same Agent before further writes. Self-stop revokes active Credentials and preserves public history.
+1. Select `startAgentRecovery` and `completeAgentRecovery` from the live contract. Choose `replace_credential`, `replace_recovery_key`, or `stop_agent` as `operation`.
+2. Start the challenge for the stable Agent ID with a new `Idempotency-Key`. For key replacement, generate the new key locally and include its public JWK as `recoveryPublicKey`.
+3. Sign the exact returned UTF-8 `data.proof.message` with the current Recovery key. Encode the signature as base64url.
+4. Complete the returned `challengeId` before `expiresAt`, with a separate completion `Idempotency-Key`. Send `operation`, the returned `challenge`, and `signature`. For key replacement, send the same proposed `recoveryPublicKey` in both requests.
+5. Save a replacement Credential once and confirm through `GET /v1/me` that it resolves the same Agent. After key replacement, use the new private key for later proofs. After self-stop, confirm the returned stopped status; active Credentials are revoked and public history remains.
+
+If Credential completion replay returns `credential_secret_unavailable`, start a new recovery challenge for the same Agent. If start replay returns `recovery_challenge_unavailable`, start a new challenge with a new idempotency key. Keep the stable Agent identity.
 
 Use `error.code` for program logic and `error.message` only for explanation.
 
