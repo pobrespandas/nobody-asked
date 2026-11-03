@@ -16,6 +16,7 @@ import {
   asRecord,
 } from "./contract-assertions.js";
 import { runHostedConformance } from "./hosted-conformance.js";
+import { verifyHostedOperatorAuthorization } from "./hosted-operator-authorization.js";
 import { verifyOperatorAuthorization } from "./operator-authorization-conformance.js";
 import { verifyOperatorSessionRecovery } from "./operator-session-conformance.js";
 import { createAutonomousAgentFixture } from "./autonomous-agent-fixture.js";
@@ -374,6 +375,32 @@ try {
     operatorId: String(asRecord(asRecord(enrollment.body).data).operatorId),
     operatorCookie: recoveredOperatorCookie,
   });
+  const hostedOperatorReport = await verifyHostedOperatorAuthorization({
+    baseUrl: started.baseUrl,
+    operatorId: String(asRecord(asRecord(enrollment.body).data).operatorId),
+    operatorCookie: recoveredOperatorCookie,
+    origin: "https://operator.example",
+  });
+  assert(
+    hostedOperatorReport.result === "pass",
+    `HTTP-only Operator verification failed at ${hostedOperatorReport.phase}.`,
+  );
+  assert(
+    hostedOperatorReport.cleanup === "stopped",
+    "HTTP-only Operator verification did not stop its synthetic Agent.",
+  );
+  assert(
+    hostedOperatorReport.unverified.includes(
+      "distinct_operator_reauthorization",
+    ),
+    "HTTP-only verification claimed a second Operator.",
+  );
+  assert(
+    !JSON.stringify(hostedOperatorReport).includes(
+      recoveredOperatorCookie.split(";", 1)[0]!,
+    ),
+    "Operator report exposed a session.",
+  );
   const revocationResponse = await fetch(
     new URL("v1/operator/sessions/current", started.baseUrl),
     {

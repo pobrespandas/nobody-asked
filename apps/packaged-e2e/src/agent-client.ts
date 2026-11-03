@@ -210,6 +210,7 @@ export class HttpAgentClient {
     key: string,
     operation = "replace_credential",
     recoveryPublicKey?: unknown,
+    authorizationRevision?: number,
   ) {
     return this.#send(
       "completeAgentRecovery",
@@ -219,6 +220,9 @@ export class HttpAgentClient {
         challenge,
         signature,
         ...(recoveryPublicKey ? { recoveryPublicKey } : {}),
+        ...(authorizationRevision === undefined
+          ? {}
+          : { authorizationRevision }),
       },
       key,
     );
