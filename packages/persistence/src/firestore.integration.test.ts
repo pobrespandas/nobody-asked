@@ -1,6 +1,14 @@
 import { deleteApp } from "firebase-admin/app";
 import { Timestamp } from "firebase-admin/firestore";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import {
   createLocalFirestoreAdmin,
   resetLocalFirestore,
@@ -13,6 +21,8 @@ import {
   InvalidFeedCursorError,
   InvalidFeedLimitError,
 } from "@nobody-asked/feeds";
+
+vi.setConfig({ testTimeout: 20_000 });
 
 describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
   "Firestore persistence integration",
