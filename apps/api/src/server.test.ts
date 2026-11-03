@@ -1624,78 +1624,54 @@ describe("hosted operator controls", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
   });
-  it("registers one agent and returns its credential secret once", async () => {
-    const { api, registerOperatorAgent } = harness();
-    const registration = request("/v1/operator/agents");
-    registration.headers.set("idempotency-key", "register-1");
-    registration.headers.set("content-type", "application/json");
-    const response = await api(
-      new Request(registration, {
-        body: JSON.stringify({
-          handle: " New_Agent ",
-          displayName: " New Agent ",
-          description: " First agent. ",
+  it.each([
+    ["registration_network_source_limited", 429, true],
+    ["registration_global_limited", 429, true],
+    ["registration_network_source_capacity_reached", 429, false],
+    ["registration_global_capacity_reached", 429, false],
+    ["registration_circuit_open", 503, false],
+  ] as const)(
+    "returns stable registration failure %s",
+    async (code, status, timed) => {
+      const { api, startAgentRegistration } = harness();
+      startAgentRegistration.mockRejectedValueOnce(
+        Object.assign(new Error("private storage error"), {
+          code,
+          retryAt: timed ? new Date("2026-11-01T12:10:00Z") : null,
         }),
-      }),
-    );
-
-    expect(response.status).toBe(201);
-    expect(registerOperatorAgent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operatorId: "operator-1",
-        handle: "new_agent",
-        displayName: "New Agent",
-        description: "First agent.",
-        idempotencyKey: "register-1",
-        credentialSecretDigest: "digest:generated-secret",
-      }),
-    );
-    await expect(response.json()).resolves.toMatchObject({
-      data: {
-        agentId: "agent-new",
-        credentialId: "credential-new",
-        credential: "credential-new.generated-secret",
-        credentialReturned: true,
-      },
-    });
-  });
-
-  it("does not return a credential secret on an idempotent replay", async () => {
-    const { api, registerOperatorAgent } = harness();
-    registerOperatorAgent.mockImplementationOnce(async (input) => ({
-      kind: "replay",
-      registration: {
-        agentId: "agent-new",
-        credentialId: "credential-new",
-        handle: input.handle,
-        displayName: input.displayName,
-        description: input.description,
-        status: "active",
-        createdAt: input.occurredAt,
-      },
-    }));
-    const base = request("/v1/operator/agents");
-    base.headers.set("idempotency-key", "register-1");
-    base.headers.set("content-type", "application/json");
-    const response = await api(
-      new Request(base, {
-        body: JSON.stringify({ handle: "new", displayName: "New" }),
-      }),
-    );
-    const body = await response.json();
-
-    expect(response.status).toBe(409);
-    expect(body).toMatchObject({
-      error: {
-        code: "credential_secret_unavailable",
-        recovery: {
+      );
+      const response = await api(
+        new Request("https://network.test/v1/agent-registrations", {
           method: "POST",
-          href: "/v1/operator/agents/agent-new/credentials/rotate",
-        },
-      },
-      data: { credentialReturned: false },
-    });
-    expect(JSON.stringify(body)).not.toContain("generated-secret");
+          headers: {
+            "content-type": "application/json",
+            "idempotency-key": "limited",
+          },
+          body: JSON.stringify({
+            handle: "limited_agent",
+            displayName: "Limited Agent",
+            recoveryPublicKey: {
+              kty: "OKP",
+              crv: "Ed25519",
+              x: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            },
+          }),
+        }),
+      );
+      const body = await response.json();
+      expect(response.status).toBe(status);
+      expect(body.error.code).toBe(code);
+      expect(body.error.recovery.automaticRetry).toBe(timed);
+      expect("retryAt" in body.error).toBe(timed);
+      expect(JSON.stringify(body)).not.toContain("private storage error");
+    },
+  );
+
+  it("rejects the retired Operator registration route", async () => {
+    const { api, registerOperatorAgent } = harness();
+    const response = await api(request("/v1/operator/agents"));
+    expect(response.status).toBe(404);
+    expect(registerOperatorAgent).not.toHaveBeenCalled();
   });
 
   it("issues a one-time credential for the authenticated operator", async () => {

@@ -616,59 +616,16 @@ try {
     ),
     "The packaged Agent export exposed private data.",
   );
-  const registered = await operatorCommand(
+  const retiredRegistration = await operatorCommand(
     started.baseUrl,
     "/v1/operator/agents",
     "POST",
-    { ...operatorHeaders, "idempotency-key": "register-packaged" },
-    {
-      handle: "packaged_agent",
-      displayName: "Packaged Agent",
-      description: "Created through the packaged API.",
-    },
-  );
-  assert(registered.status === 201, "The packaged Agent registration failed.");
-  assertResponseMatchesContract(
-    contract,
-    "/v1/operator/agents",
-    "post",
-    registered,
-  );
-  const registeredData = asRecord(asRecord(registered.body).data);
-  const registeredCredential = registeredData.credential;
-  assert(
-    typeof registeredCredential === "string",
-    "Agent registration did not return the first credential once.",
-  );
-  const registrationReplay = await operatorCommand(
-    started.baseUrl,
-    "/v1/operator/agents",
-    "POST",
-    { ...operatorHeaders, "idempotency-key": "register-packaged" },
-    {
-      handle: "packaged_agent",
-      displayName: "Packaged Agent",
-      description: "Created through the packaged API.",
-    },
+    operatorHeaders,
+    { handle: "retired_agent", displayName: "Retired Agent" },
   );
   assert(
-    registrationReplay.status === 409 &&
-      asRecord(asRecord(registrationReplay.body).error).code ===
-        "credential_secret_unavailable",
-    "Registration replay did not require credential rotation.",
-  );
-  assert(
-    !JSON.stringify(registrationReplay.body).includes(registeredCredential),
-    "Registration replay returned the credential secret.",
-  );
-  const idempotencyRecords = await local.firestore
-    .collection("idempotencyRecords")
-    .get();
-  assert(
-    !JSON.stringify(idempotencyRecords.docs.map((doc) => doc.data())).includes(
-      registeredCredential,
-    ),
-    "Registration persisted the raw credential secret.",
+    retiredRegistration.status === 404,
+    "Operator registration is still available.",
   );
 
   const report = await agent.report(

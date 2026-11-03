@@ -95,6 +95,143 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       };
     }
 
+    it("limits concurrent incomplete registrations and releases completed capacity", async () => {
+      const secure = autonomousAdapters();
+      const proofs = Array.from({ length: 6 }, (_, index) =>
+        autonomousRegistration(`bounded-${index}`, `bounded_${index}`),
+      );
+      const results = await Promise.allSettled(
+        proofs.map((proof) =>
+          secure.store.startAgentRegistration({
+            ...proof.start,
+            networkSourceKey: "source-one",
+          }),
+        ),
+      );
+      expect(
+        results.filter((result) => result.status === "fulfilled"),
+      ).toHaveLength(5);
+      expect(
+        results.find((result) => result.status === "rejected"),
+      ).toMatchObject({
+        reason: {
+          code: "registration_network_source_capacity_reached",
+          retryAt: null,
+        },
+      });
+      const accepted = results.findIndex(
+        (result) => result.status === "fulfilled",
+      );
+      await secure.store.completeAgentRegistration(proofs[accepted]!.complete);
+      const next = autonomousRegistration("bounded-next", "bounded_next");
+      await expect(
+        secure.store.startAgentRegistration({
+          ...next.start,
+          networkSourceKey: "source-one",
+        }),
+      ).resolves.toMatchObject({ created: true });
+      const global = await local.firestore
+        .collection("registrationControls")
+        .doc("global")
+        .get();
+      expect(global.data()?.pending).toHaveLength(5);
+      const expired = autonomousRegistration(
+        "bounded-expired",
+        "bounded_expired",
+      );
+      await expect(
+        secure.store.startAgentRegistration({
+          ...expired.start,
+          networkSourceKey: "source-one",
+          createdAt: new Date(at.getTime() + 600_001),
+        }),
+      ).resolves.toMatchObject({ created: true });
+      expect(
+        (
+          await local.firestore
+            .collection("registrationControls")
+            .doc("global")
+            .get()
+        ).data()?.pending,
+      ).toHaveLength(1);
+    }, 20_000);
+
+    it("persists the registration circuit and expires capacity without cleanup jobs", async () => {
+      const secure = autonomousAdapters();
+      const control = local.firestore
+        .collection("registrationControls")
+        .doc("global");
+      await control.set({ circuitOpen: true });
+      const proof = autonomousRegistration("circuit", "circuit_agent");
+      await expect(
+        secure.store.startAgentRegistration(proof.start),
+      ).rejects.toMatchObject({
+        code: "registration_circuit_open",
+        retryAt: null,
+      });
+      await control.set({
+        circuitOpen: false,
+        count: 500,
+        windowStartedAt: Timestamp.fromDate(at),
+        pending: [],
+      });
+      await expect(
+        secure.store.startAgentRegistration(proof.start),
+      ).rejects.toMatchObject({
+        code: "registration_global_limited",
+        retryAt: new Date(at.getTime() + 600_000),
+      });
+      await expect(
+        secure.store.startAgentRegistration({
+          ...proof.start,
+          createdAt: new Date(at.getTime() + 600_001),
+        }),
+      ).resolves.toMatchObject({ created: true });
+    });
+
+    it("bounds global capacity and returns a source window retry time", async () => {
+      const secure = autonomousAdapters();
+      const global = local.firestore
+        .collection("registrationControls")
+        .doc("global");
+      const expiresAt = Timestamp.fromDate(new Date(at.getTime() + 600_000));
+      await global.set({
+        pending: Array.from({ length: 100 }, (_, id) => ({
+          id: String(id),
+          expiresAt,
+        })),
+      });
+      const proof = autonomousRegistration(
+        "global-capacity",
+        "global_capacity",
+      );
+      await expect(
+        secure.store.startAgentRegistration(proof.start),
+      ).rejects.toMatchObject({
+        code: "registration_global_capacity_reached",
+        retryAt: null,
+      });
+      await global.set({ pending: [] });
+      const source = createHash("sha256").update("source-window").digest("hex");
+      await local.firestore
+        .collection("registrationControls")
+        .doc(`source-${source}`)
+        .set({
+          count: 10,
+          windowStartedAt: Timestamp.fromDate(at),
+          pending: [],
+        });
+      await expect(
+        secure.store.startAgentRegistration({
+          ...proof.start,
+          networkSourceKey: "source-window",
+        }),
+      ).rejects.toMatchObject({
+        code: "registration_network_source_limited",
+        retryAt: new Date(at.getTime() + 600_000),
+      });
+    });
+
     async function registeredAutonomousAgent() {
       const secure = autonomousAdapters();
       const proof = autonomousRegistration("registration-recovery");
@@ -444,7 +581,7 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       expect(
         attempts.docs.filter((document) => document.data().consumedAt),
       ).toHaveLength(1);
-    });
+    }, 20_000);
 
     it("rolls back every identity write when Agent proof is invalid", async () => {
       const secure = autonomousAdapters();

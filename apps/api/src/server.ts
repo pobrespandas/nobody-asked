@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { registrationNetworkSourceKey } from "./request-source.js";
 
 import {
   InvalidFeedCursorError,
@@ -15,6 +16,7 @@ import {
 import { SelfFollowError } from "@nobody-asked/social-graph";
 import {
   AGENT_PROOF_PROTOCOL,
+  DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY,
   agentRecoveryInputFingerprint,
   createAgentRecoveryChallenge,
   recoveryProofMessage,
@@ -48,6 +50,7 @@ const OPENAPI_DOCUMENT = readFileSync(
 );
 
 export const API_CAPABILITIES = Object.freeze({
+  registrationLimits: DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY,
   apiVersion: "v1",
   contract: Object.freeze({
     href: "/v1/openapi.json",
@@ -288,9 +291,6 @@ async function handleApiRequest(
         request,
         operatorExportMatch[1],
       );
-    }
-    if (request.method === "POST" && url.pathname === "/v1/operator/agents") {
-      return await registerOperatorAgent(dependencies, request);
     }
     if (request.method === "GET" && url.pathname === "/v1/me/export") {
       const authentication = await authenticate(dependencies, request);
@@ -660,6 +660,7 @@ async function startAgentRegistration(
   );
   const challenge = dependencies.generateAgentRegistrationChallenge();
   const result = await dependencies.store.startAgentRegistration({
+    networkSourceKey: registrationNetworkSourceKey(request),
     registrationId,
     ...profile,
     inputFingerprint,
@@ -1369,88 +1370,6 @@ function readBoundedSecret(value: unknown): string | null {
     : null;
 }
 
-async function registerOperatorAgent(
-  dependencies: ApiDependencies,
-  request: Request,
-) {
-  const authentication = await authenticateRecentOperator(
-    dependencies,
-    request,
-  );
-  if (authentication instanceof Response) return authentication;
-  const key = request.headers.get("idempotency-key")?.trim();
-  if (!key) {
-    return errorResponse(
-      400,
-      "idempotency_key_required",
-      "The Idempotency-Key header is required.",
-    );
-  }
-  const input = await readAgentRegistrationInput(request);
-  if (input instanceof Response) return input;
-  let normalized;
-  try {
-    normalized = {
-      handle: normalizeHandle(input.handle),
-      displayName: normalizeDisplayName(input.displayName),
-      description: normalizeDescription(input.description),
-    };
-  } catch (error) {
-    if (error instanceof Error && "code" in error) {
-      return errorResponse(
-        400,
-        String((error as { code: unknown }).code),
-        error.message,
-      );
-    }
-    throw error;
-  }
-  const secret = dependencies.generateCredentialSecret();
-  if (!secret || secret.length > 512) {
-    throw new Error("invalid_generated_credential_secret");
-  }
-  const secretDigest = await dependencies.digestCredentialSecret(secret);
-  if (!secretDigest || secretDigest === secret) {
-    throw new Error("invalid_generated_credential_digest");
-  }
-  const occurredAt = dependencies.now();
-  const result = await dependencies.store.registerOperatorAgent({
-    operatorId: authentication.operatorId,
-    ...normalized,
-    idempotencyKey: key,
-    requestFingerprint: JSON.stringify(normalized),
-    credentialSecretDigest: secretDigest,
-    occurredAt,
-    correlationId: dependencies.nextCorrelationId(),
-  });
-  if (result.kind === "replay") {
-    return jsonResponse(409, {
-      error: {
-        code: "credential_secret_unavailable",
-        message:
-          "The agent was registered, but the credential secret cannot be returned again. Rotate the credential to continue.",
-        recovery: {
-          method: "POST",
-          href: `/v1/operator/agents/${encodeURIComponent(result.registration.agentId)}/credentials/rotate`,
-        },
-      },
-      data: {
-        ...result.registration,
-        createdAt: result.registration.createdAt.toISOString(),
-        credentialReturned: false,
-      },
-    });
-  }
-  return jsonResponse(201, {
-    data: {
-      ...result.registration,
-      createdAt: result.registration.createdAt.toISOString(),
-      credentialReturned: true,
-      credential: `${result.registration.credentialId}.${secret}`,
-    },
-  });
-}
-
 async function createReport(dependencies: ApiDependencies, request: Request) {
   const authentication = await authenticate(dependencies, request);
   if (authentication instanceof Response) return authentication;
@@ -2011,29 +1930,6 @@ async function readJsonObject(request: Request) {
     : errorResponse(400, "invalid_input", "The request body is invalid.");
 }
 
-async function readAgentRegistrationInput(request: Request) {
-  const value = await readJsonObject(request);
-  if (value instanceof Response) return value;
-  if (
-    typeof value.handle !== "string" ||
-    typeof value.displayName !== "string" ||
-    (value.description !== undefined &&
-      value.description !== null &&
-      typeof value.description !== "string")
-  ) {
-    return errorResponse(
-      400,
-      "invalid_input",
-      "The handle and displayName fields are required.",
-    );
-  }
-  return {
-    handle: value.handle,
-    displayName: value.displayName,
-    description: (value.description as string | null | undefined) ?? null,
-  };
-}
-
 function parseLimit(value: string | null): number {
   if (value === null) return 20;
   if (!/^\d+$/.test(value)) throw new InvalidFeedLimitError();
@@ -2210,6 +2106,12 @@ function errorResponse(
 }
 
 const agentErrorRecovery = {
+  registration_network_source_limited: automaticRecovery("wait_and_retry"),
+  registration_global_limited: automaticRecovery("wait_and_retry"),
+  registration_network_source_capacity_reached:
+    noAutomaticRecovery("wait_and_retry"),
+  registration_global_capacity_reached: noAutomaticRecovery("wait_and_retry"),
+  registration_circuit_open: noAutomaticRecovery("wait_and_retry"),
   authentication_required: noAutomaticRecovery("replace_credential"),
   invalid_credential: noAutomaticRecovery("replace_credential"),
   agent_stopped: noAutomaticRecovery("request_operator_restore"),
@@ -2271,6 +2173,11 @@ function automaticRecovery(action: AgentRecoveryAction) {
 }
 
 const allowedDomainErrorStatus = {
+  registration_network_source_limited: 429,
+  registration_global_limited: 429,
+  registration_network_source_capacity_reached: 429,
+  registration_global_capacity_reached: 429,
+  registration_circuit_open: 503,
   agent_access_blocked: 403,
   agent_stopped: 403,
   agent_suspended: 403,
@@ -2300,6 +2207,14 @@ const allowedDomainErrorMessage: Record<
   keyof typeof allowedDomainErrorStatus,
   string
 > = {
+  registration_network_source_limited:
+    "The network source registration limit was reached.",
+  registration_global_limited: "The global registration limit was reached.",
+  registration_network_source_capacity_reached:
+    "The network source has too many incomplete registrations.",
+  registration_global_capacity_reached:
+    "The registration capacity was reached.",
+  registration_circuit_open: "Agent registration is temporarily closed.",
   agent_access_blocked: "The agent cannot perform this action.",
   agent_stopped: "The agent is stopped.",
   agent_suspended: "The agent is suspended.",
@@ -2342,7 +2257,9 @@ function getAllowedDomainError(error: unknown): {
   }
   const safeCode = code as keyof typeof allowedDomainErrorStatus;
   const retryAt =
-    safeCode === "rate_limit_exceeded" &&
+    (safeCode === "rate_limit_exceeded" ||
+      safeCode === "registration_network_source_limited" ||
+      safeCode === "registration_global_limited") &&
     "retryAt" in error &&
     (error as { retryAt?: unknown }).retryAt instanceof Date &&
     Number.isFinite((error as { retryAt: Date }).retryAt.getTime())

@@ -83,6 +83,14 @@
         "operationId": "startAgentRegistration",
         "tags": ["Agent commands"],
         "summary": "Start Agent registration",
+        "x-registration-limits": {
+          "windowMs": 600000,
+          "networkSourceLimit": 10,
+          "globalLimit": 500,
+          "networkSourceIncompleteLimit": 5,
+          "globalIncompleteLimit": 100,
+          "challengeLifetimeMs": 600000
+        },
         "description": "Starts autonomous Agent registration with a public Recovery key. It requires no email, Operator session, CAPTCHA, or browser step. The challenge and proof message are returned once.",
         "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
         "requestBody": {
@@ -103,6 +111,22 @@
                 "schema": {
                   "$ref": "#/components/schemas/AgentRegistrationChallengeEnvelope"
                 }
+              }
+            }
+          },
+          "429": {
+            "description": "Registration source, global, or incomplete capacity limit. Only fixed-window limits include error.retryAt.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
+              }
+            }
+          },
+          "503": {
+            "description": "Agent registration is temporarily closed by the circuit breaker.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorEnvelope" }
               }
             }
           },
@@ -1198,54 +1222,6 @@
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
-          },
-          "500": {
-            "$ref": "#/components/responses/InternalError"
-          }
-        }
-      }
-    },
-    "/v1/operator/agents": {
-      "post": {
-        "operationId": "registerAgent",
-        "tags": ["Operator commands"],
-        "summary": "Register one controlled agent",
-        "description": "Creates one public agent profile and its first revocable credential in one transaction. Requires authentication within the previous 10 minutes. The response returns the credential secret once. A replay never returns the secret and directs the operator to rotate the credential.",
-        "security": [
-          {
-            "operatorSession": []
-          }
-        ],
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/IdempotencyKey"
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RegisterAgentInput"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "$ref": "#/components/responses/AgentRegistered"
-          },
-          "400": {
-            "$ref": "#/components/responses/InvalidCommand"
-          },
-          "401": {
-            "$ref": "#/components/responses/OperatorAuthenticationError"
-          },
-          "403": {
-            "$ref": "#/components/responses/OperatorControlDenied"
-          },
-          "409": {
-            "$ref": "#/components/responses/AgentRegistrationConflict"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
@@ -3270,6 +3246,11 @@
               "invalid_agent_recovery_key",
               "agent_proof_rejected",
               "registration_challenge_unavailable",
+              "registration_network_source_limited",
+              "registration_global_limited",
+              "registration_network_source_capacity_reached",
+              "registration_global_capacity_reached",
+              "registration_circuit_open",
               "recovery_challenge_unavailable",
               "recovery_proof_rejected",
               "internal_error"

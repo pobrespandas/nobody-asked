@@ -136,6 +136,7 @@ export type RegisterOperatorAgentResult = Readonly<{
 }>;
 
 export interface StartAgentRegistrationInput {
+  readonly networkSourceKey?: string;
   readonly registrationId: string;
   readonly handle: string;
   readonly displayName: string;

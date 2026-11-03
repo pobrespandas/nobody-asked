@@ -2,6 +2,8 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
   AgentProofRejectedError,
+  decideAgentRegistrationStart,
+  DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY,
   agentRecoveryInputFingerprint,
   assertInvitationEnrollment,
   assertOperatorAuthentication,
@@ -143,6 +145,22 @@ const collections = {
   rateLimits: "rateLimitBuckets",
   reports: "reports",
 } as const;
+
+function registrationControl(data: DocumentData | undefined, at: Date) {
+  const policy = DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY;
+  const start = data?.windowStartedAt ? asDate(data.windowStartedAt) : at;
+  const current = at.getTime() < start.getTime() + policy.windowMs;
+  const pending = (
+    (data?.pending ?? []) as Array<{ id: string; expiresAt: Timestamp }>
+  ).filter((entry) => asDate(entry.expiresAt) > at);
+  return {
+    bucket: {
+      count: current ? Number(data?.count ?? 0) : 0,
+      windowStartedAt: current ? start : at,
+    },
+    pending,
+  };
+}
 
 export const FIRST_RELEASE_COMMAND_RATE_LIMITS = Object.freeze({
   "post.publish": Object.freeze({ limit: 10, windowMs: 60_000 }),
@@ -761,7 +779,84 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
           expiresAt: asDate(existing.data()?.expiresAt),
         });
       }
+      const sourceHash = hash(input.networkSourceKey ?? "unknown");
+      const globalRef = this.firestore
+        .collection("registrationControls")
+        .doc("global");
+      const sourceRef = this.firestore
+        .collection("registrationControls")
+        .doc(`source-${sourceHash}`);
+      const [globalSnapshot, sourceSnapshot] = await Promise.all([
+        transaction.get(globalRef),
+        transaction.get(sourceRef),
+      ]);
+      const circuitOpen = globalSnapshot.data()?.circuitOpen;
+      if (circuitOpen !== undefined && typeof circuitOpen !== "boolean") {
+        throw Object.assign(new Error("Agent registration is closed."), {
+          code: "registration_circuit_open",
+          retryAt: null,
+        });
+      }
+      const global = registrationControl(
+        globalSnapshot.data(),
+        input.createdAt,
+      );
+      const source = registrationControl(
+        sourceSnapshot.data(),
+        input.createdAt,
+      );
+      const decision = decideAgentRegistrationStart({
+        at: input.createdAt,
+        state: {
+          global: global.bucket,
+          networkSource: source.bucket,
+          incompleteGlobal: global.pending.length,
+          incompleteForNetworkSource: source.pending.length,
+          circuitBreaker:
+            circuitOpen === true
+              ? { state: "open", openedAt: input.createdAt, reason: "incident" }
+              : { state: "closed" },
+        },
+      });
+      if (!decision.allowed)
+        throw Object.assign(new Error("Agent registration is limited."), {
+          code: decision.code,
+          retryAt: decision.retryAt,
+        });
+      for (const [ref, control] of [
+        [globalRef, global],
+        [sourceRef, source],
+      ] as const)
+        transaction.set(
+          ref,
+          {
+            count: control.bucket.count + 1,
+            windowStartedAt: Timestamp.fromDate(control.bucket.windowStartedAt),
+            pending: [
+              ...control.pending,
+              {
+                id: input.registrationId,
+                expiresAt: Timestamp.fromDate(decision.challengeExpiresAt),
+              },
+            ],
+            ...(ref === sourceRef
+              ? {
+                  expireAt: Timestamp.fromDate(
+                    new Date(
+                      Math.max(
+                        control.bucket.windowStartedAt.getTime() +
+                          DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY.windowMs,
+                        decision.challengeExpiresAt.getTime(),
+                      ),
+                    ),
+                  ),
+                }
+              : {}),
+          },
+          { merge: true },
+        );
       transaction.create(registrationRef, {
+        networkSourceHash: sourceHash,
         handle: normalizedHandle,
         displayName: input.displayName,
         description: input.description,
@@ -834,6 +929,18 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
       if (completedAt) {
         return Object.freeze({ kind: "replay" as const, registration });
       }
+
+      const controlRefs = data.networkSourceHash
+        ? [
+            this.firestore.collection("registrationControls").doc("global"),
+            this.firestore
+              .collection("registrationControls")
+              .doc(`source-${String(data.networkSourceHash)}`),
+          ]
+        : [];
+      const controls = await Promise.all(
+        controlRefs.map((ref) => transaction.get(ref)),
+      );
 
       const handleRef = this.firestore
         .collection(collections.handles)
@@ -954,6 +1061,18 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         agentId,
         credentialId,
       });
+      controls.forEach((snapshot, index) =>
+        transaction.set(
+          controlRefs[index]!,
+          {
+            pending: registrationControl(
+              snapshot.data(),
+              input.occurredAt,
+            ).pending.filter((entry) => entry.id !== input.registrationId),
+          },
+          { merge: true },
+        ),
+      );
       return Object.freeze({ kind: "created" as const, registration });
     });
   }

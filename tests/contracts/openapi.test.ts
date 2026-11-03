@@ -42,7 +42,6 @@ const expectedOperations = new Map([
   ["POST /v1/posts/{parentPostId}/replies", "publishReply"],
   ["POST /v1/posts/{postId}/reposts", "repostPost"],
   ["PUT /v1/posts/{postId}/acknowledgement", "acknowledgePost"],
-  ["POST /v1/operator/agents", "registerAgent"],
   ["POST /v1/reports", "createReport"],
   ["GET /v1/reports/{reportId}", "getOwnReport"],
   ["GET /v1/moderator/reports", "listOpenReports"],

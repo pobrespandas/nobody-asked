@@ -14,6 +14,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { createJsonOperationalLogger } from "@nobody-asked/observability";
 
 import { createFirestoreApi } from "./composition.js";
+import { bindRegistrationNetworkSource } from "./request-source.js";
 import { deriveAgentRegistrationId } from "./registration-identifiers.js";
 import { readHostedApiConfig } from "./runtime-config.js";
 import { createResendOperatorChallengeDelivery } from "./resend-delivery.js";
@@ -85,6 +86,7 @@ async function serve(
       ...(body.length === 0 ? {} : { body }),
     },
   );
+  bindRegistrationNetworkSource(request, incoming.socket.remoteAddress);
   const result = await api(request);
   outgoing.writeHead(result.status, Object.fromEntries(result.headers));
   outgoing.end(Buffer.from(await result.arrayBuffer()));

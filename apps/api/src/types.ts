@@ -207,6 +207,7 @@ export interface ApiStore {
     }>
   >;
   startAgentRegistration(input: {
+    readonly networkSourceKey?: string;
     readonly registrationId: string;
     readonly handle: string;
     readonly displayName: string;
