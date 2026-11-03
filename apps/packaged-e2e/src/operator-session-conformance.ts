@@ -62,10 +62,24 @@ export async function verifyOperatorSessionRecovery(input: {
     );
     return { ...result, cookie: response.headers.get("set-cookie") };
   };
+  // Firebase Hosting forwards only __session. Model that boundary after issuance.
+  const hostingCookie = (issued: string) => {
+    const pair = issued.split(";", 1)[0] ?? "";
+    assert(
+      pair.startsWith("__session="),
+      "The issued session cannot cross Firebase Hosting.",
+    );
+    return ["unrelated=discarded", pair, "operator_session=legacy-discarded"]
+      .filter((cookie) => cookie.startsWith("__session="))
+      .join("; ");
+  };
   const probe = async (cookie: string) => {
     const response = await fetch(
       new URL("v1/moderator/reports", input.baseUrl),
-      { headers: { origin, cookie }, signal: AbortSignal.timeout(15_000) },
+      {
+        headers: { origin, cookie: hostingCookie(cookie) },
+        signal: AbortSignal.timeout(15_000),
+      },
     );
     return { status: response.status, body: asRecord(await response.json()) };
   };

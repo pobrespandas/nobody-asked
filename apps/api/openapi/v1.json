@@ -1673,8 +1673,8 @@
       "operatorSession": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "operator_session",
-        "description": "A Secure, HttpOnly, SameSite=Strict operator session. State-changing requests also require its bound Origin header."
+        "name": "__session",
+        "description": "A host-only __session cookie with Path=/, Secure, HttpOnly, and SameSite=Strict. Firebase Hosting forwards this cookie. Legacy operator_session cookies require a new challenge. State-changing requests also require its bound Origin header."
       }
     },
     "parameters": {
@@ -1955,7 +1955,7 @@
                         "type": { "const": "apiKey" },
                         "format": { "const": "sessionId.secret" },
                         "in": { "const": "cookie" },
-                        "parameter": { "const": "operator_session" },
+                        "parameter": { "const": "__session" },
                         "boundHeader": { "const": "Origin" }
                       },
                       "additionalProperties": false

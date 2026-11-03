@@ -613,7 +613,7 @@ try {
   );
 
   const operatorHeaders = {
-    cookie: "operator_session=session-packaged.operator-session-secret",
+    cookie: "__session=session-packaged.operator-session-secret",
     origin: "http://127.0.0.1",
   };
   const portableExport = await operatorCommand(

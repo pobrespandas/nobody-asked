@@ -1180,7 +1180,7 @@ describe("operational endpoints and logs", () => {
             name: "operatorSession",
             type: "apiKey",
             in: "cookie",
-            parameter: "operator_session",
+            parameter: "__session",
             boundHeader: "Origin",
           },
         ],
@@ -1467,7 +1467,7 @@ describe("hosted operator controls", () => {
     new Request(`https://network.test${path}`, {
       method,
       headers: {
-        cookie: "operator_session=session-1.secret",
+        cookie: "__session=session-1.secret",
         origin: "https://operator.test",
       },
     });
@@ -1627,6 +1627,10 @@ describe("hosted operator controls", () => {
     );
 
     expect(response.status).toBe(201);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^__session=[^;]+; Path=\//,
+    );
+    expect(response.headers.get("set-cookie")).not.toContain("Domain=");
     expect(response.headers.get("set-cookie")).toContain(
       "Max-Age=43200; HttpOnly; Secure; SameSite=Strict",
     );
@@ -1643,7 +1647,7 @@ describe("hosted operator controls", () => {
       new Request("https://network.test/v1/operator/invitations", {
         method: "POST",
         headers: {
-          cookie: "operator_session=session-1.secret",
+          cookie: "__session=session-1.secret",
           origin: "https://operator.test",
           "content-type": "application/json",
           "idempotency-key": "invitation-replay",
@@ -1715,13 +1719,32 @@ describe("hosted operator controls", () => {
     });
   });
 
+  it("rejects legacy cookies without calling the Operator authenticator", async () => {
+    const { api, dependencies } = harness();
+    const response = await api(
+      new Request("https://network.test/v1/moderator/reports", {
+        headers: {
+          origin: "https://operator.test",
+          cookie: "operator_session=session-1.secret",
+        },
+      }),
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({
+      error: { code: "operator_authentication_required" },
+    });
+    expect(
+      dependencies.operatorAuthenticator.authenticate,
+    ).not.toHaveBeenCalled();
+  });
+
   it("revokes the current session and clears its cookie", async () => {
     const { api } = harness();
     const response = await api(
       new Request("https://network.test/v1/operator/sessions/current", {
         method: "DELETE",
         headers: {
-          cookie: "operator_session=session-1.secret",
+          cookie: "__session=session-1.secret",
           origin: "https://operator.test",
           "idempotency-key": "signout-1",
         },
@@ -1729,7 +1752,9 @@ describe("hosted operator controls", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(response.headers.get("set-cookie")).toBe(
+      "__session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict",
+    );
   });
   it.each([
     ["registration_network_source_limited", 429, true],
@@ -1908,7 +1933,7 @@ describe("report and moderator review API", () => {
     new Request(`https://network.test${path}`, {
       method: body === undefined ? "GET" : "POST",
       headers: {
-        cookie: "operator_session=session-1.secret",
+        cookie: "__session=session-1.secret",
         origin: "https://operator.test",
         ...(body === undefined
           ? {}

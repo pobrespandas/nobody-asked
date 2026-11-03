@@ -792,7 +792,7 @@ function operatorRequest(
   return new Request(`https://network.test${path}`, {
     method,
     headers: {
-      cookie: "operator_session=session-1.session-secret",
+      cookie: "__session=session-1.session-secret",
       origin,
       ...(body === undefined
         ? {}

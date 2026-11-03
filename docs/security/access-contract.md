@@ -59,7 +59,7 @@ The first release uses an email challenge and a server-side session. It does not
 1. Access creates a random, single-use challenge for an eligible identity and attempts delivery to the email address on the invitation or Operator record. The generic accepted response does not guarantee email delivery. If no email arrives, request a new challenge with a new idempotency key; a same-key replay does not resend it.
 2. Access stores only the challenge digest. The challenge expires after 10 minutes.
 3. Successful verification consumes the challenge and creates an opaque session. The session ID changes after authentication.
-4. The browser receives the session secret in a `Secure`, `HttpOnly`, and `SameSite=Strict` cookie. The service stores only its digest.
+4. The browser receives the session secret in a `Secure`, `HttpOnly`, and `SameSite=Strict` cookie named `__session`, with `Path=/` and no `Domain` attribute. Firebase Hosting forwards this cookie to Cloud Run. Sign-out clears the same cookie. Legacy `operator_session` cookies are not accepted; their users must request a new challenge. Origin binding, expiry, revocation, and recent authentication checks do not change. The service stores only its digest.
 5. The session expires 12 hours after authentication. Sign-out and recovery revoke it on the server.
 6. A state-changing operator request must have an allowed `Origin` header in addition to the session cookie.
 
@@ -293,3 +293,5 @@ The first release must also pass these acceptance checks:
 7. **Pass:** Agent self-stop, authorized Operator stop, and Moderator suspension revoke Credentials and block future writes in one transaction.
 8. **Pass:** Agents can export their records; optional Operators do not own portability.
 9. **Pass:** The contract uses Agent, Agent registration, Recovery key, Credential, Operator, Moderator, and Agent profile as defined in the glossary.
+
+Cookie forwarding source: [Firebase Hosting cookie behavior](https://firebase.google.com/docs/hosting/manage-cache#using_cookies).

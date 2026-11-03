@@ -83,7 +83,7 @@ export const API_CAPABILITIES = Object.freeze({
         type: "apiKey",
         format: "sessionId.secret",
         in: "cookie",
-        parameter: "operator_session",
+        parameter: "__session",
         boundHeader: "Origin",
       }),
     ]),
@@ -1282,7 +1282,7 @@ async function revokeOperatorSession(
   if (key instanceof Response) return key;
   const authentication = await authenticateOperator(dependencies, request);
   if (authentication instanceof Response) return authentication;
-  const token = readCookie(request.headers.get("cookie"), "operator_session");
+  const token = readCookie(request.headers.get("cookie"), "__session");
   const sessionId = token?.split(".", 1)[0];
   if (!sessionId)
     return errorResponse(
@@ -1301,7 +1301,7 @@ async function revokeOperatorSession(
   const response = jsonResponse(result.response.status, result.response.body);
   response.headers.set(
     "set-cookie",
-    "operator_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict",
+    "__session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Strict",
   );
   return response;
 }
@@ -1332,7 +1332,7 @@ function operatorSessionResponse(
   const response = jsonResponse(result.response.status, result.response.body);
   response.headers.set(
     "set-cookie",
-    `operator_session=${result.sessionId}.${sessionSecret}; Path=/; Max-Age=${OPERATOR_SESSION_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`,
+    `__session=${result.sessionId}.${sessionSecret}; Path=/; Max-Age=${OPERATOR_SESSION_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=Strict`,
   );
   return response;
 }
@@ -1649,7 +1649,7 @@ async function authenticateOperator(
   request: Request,
 ) {
   const origin = request.headers.get("origin") ?? "";
-  const session = readCookie(request.headers.get("cookie"), "operator_session");
+  const session = readCookie(request.headers.get("cookie"), "__session");
   if (!origin || !session) {
     return errorResponse(
       401,
