@@ -4,7 +4,7 @@
 
 This section records the current deployment on 2026-11-03. The review below is historical and must not be used as current traffic or empty-database evidence.
 
-The owner approved deployment of the UN-96 Recovery-key challenge correction. Cloud Run revision `nobody-asked-api-recovery-379cca2` receives 100 percent of traffic. Frozen source `379cca2` includes fix `ee95f55`. Cloud Build `817b07b3-8de5-4463-b5f8-f0fc527a1a15` produced image `sha256:b7995ecfdd64e3375c1ed15b9d7213325f9cb42e1d9eede553338633cc6d769e`. Hosting version `9c810b1ff398a5b5` remains unchanged. The [UN-96 release record](../operations/recovery-key-revocation-release.md) contains candidate, main-domain, configuration, and cleanup evidence.
+The owner approved UN-95 deployment. Cloud Run revision `nobody-asked-api-operator-0bbc3dd` receives 100 percent of traffic. Cloud Build `57411a17-29c7-4058-b222-ea7eed66f05a` produced image `sha256:708bb2fd9464429a9921992a86c32f6dba7cb0f014ec848909ddef721517035e` from frozen source `0bbc3dd`. It includes the UN-96 Recovery-key fix and the UN-98 usable challenge reference. No Hosting deployment was performed. The [UN-95 release record](../operations/operator-authorization-release.md) separates verified deployment from pending private operational checks. The [UN-96 record](../operations/recovery-key-revocation-release.md) preserves the prior release evidence.
 
 The clean source passed `npm run check` (394 passed, 38 environment tests skipped), all 78 Firestore emulator tests, local export/recovery, and the clean-install packaged scenario. These results do not prove an isolated managed-backup restore.
 
@@ -20,7 +20,8 @@ Deployment is active, but the full first-release readiness decision remains **Bl
 
 - UN-41: complete an isolated managed-backup restore with representative data and record parity. A READY backup alone is insufficient.
 - UN-28, UN-47, UN-48, and UN-49: provider-side rotation or revocation evidence remains open by owner instruction.
-- UN-95: deploy and verify optional Operator authorization. The owner approved a different Operator after explicit removal. ADR-0005 is accepted. Local implementation passed 429 general tests, 119 Firestore emulator tests, and a clean-install packaged lifecycle with real Agent registration, acceptance, control, removal, and a new Operator. The general suite skipped 63 environment tests; separate emulator and packaged commands supplied their evidence. The deployed API has no such flow; local results and existing hosted Operator control evidence do not prove hosted Agent authorization.
+- UN-95: finish hosted optional Operator verification. The API is deployed and main Agent conformance passed. Real single-Operator HTTP verification passed on the candidate. The owner approved a distinct second Operator, but its hosted enrollment and reauthorization remain pending. Local distinct-Operator HTTP/emulator verification passed.
+- UN-97 and UN-98: finish the authorized first Moderator grant and main-domain login proof. The source fixes and operational tools passed local checks; role authorization and email delivery are not evidence of completed proof consumption or a grant.
 - UN-62, UN-78, and UN-19: finish the remaining authenticated Operator/Moderator capability checks, hosted suspension evidence, and any required rollback drill. Successful Agent conformance does not certify those private actions.
 - UN-46 and UN-63: reconcile every remaining first-release outcome and operational gate with current evidence.
 - UN-81 remains deferred by owner choice. Shared-source registration limits are in use; independent per-client limits are not claimed. UN-82 is complete: TTL cleanup was observed with the global control preserved.
