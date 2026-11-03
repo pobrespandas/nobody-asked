@@ -10,6 +10,8 @@ No record migration is required. Do not create a Recovery key for a nonexistent 
 
 ## Hosted evidence
 
+The aggregate preflight was repeated after implementation baseline `14a3834`: `agentProfiles=0` and profiles with a non-null `controllingOperatorId=0`. The queries used Application Default Credentials with the project and named database fixed below. Only counts were printed. The removal is implemented in source; hosted revision `nobody-asked-api-9abc820` still requires deployment and verification. Repeat this preflight immediately before that deployment.
+
 The audit ran on 2026-11-02 against these fixed resources:
 
 - Google Cloud project: `gen-lang-client-0607406471`
