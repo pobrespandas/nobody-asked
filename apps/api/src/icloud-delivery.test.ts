@@ -1,3 +1,5 @@
+import { createServer, type Socket } from "node:net";
+import nodemailer from "nodemailer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createIcloudOperatorChallengeDelivery,
@@ -100,6 +102,63 @@ describe("iCloud operator challenge delivery", () => {
     expect(transport.close).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("destroys the real SMTP socket at the deadline during an active reply", async () => {
+    const sockets = new Set<Socket>();
+    let commands = "";
+    let closed = false;
+    const server = createServer((socket) => {
+      sockets.add(socket);
+      socket.write("220 fixture ESMTP\r\n");
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
+      socket.on("data", (data) => {
+        commands += data.toString();
+        if (!heartbeat) {
+          socket.write("250-fixture\r\n");
+          heartbeat = setInterval(
+            () => socket.write("250-still-waiting\r\n"),
+            500,
+          );
+        }
+      });
+      socket.on("close", () => {
+        closed = true;
+        clearInterval(heartbeat);
+        sockets.delete(socket);
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("Missing fixture port");
+    try {
+      const deliver = createIcloudOperatorChallengeDelivery({
+        credentials,
+        fromEmail: ICLOUD_FROM_EMAIL,
+        createTransport(configuration) {
+          return nodemailer.createTransport({
+            ...configuration,
+            host: "127.0.0.1",
+            port: address.port,
+          });
+        },
+      });
+      await expect(
+        deliver("operator@example.test", "private-proof"),
+      ).rejects.toThrow(/^operator_challenge_delivery_failed$/);
+      await vi.waitFor(() => expect(closed).toBe(true));
+      expect(commands).toContain("EHLO");
+      expect(commands).not.toContain("AUTH");
+      expect(commands).not.toContain("DATA");
+      expect(commands).not.toContain("private-proof");
+      expect(sockets.size).toBe(0);
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 20_000);
 
   it("keeps a stable secret-free Message-ID without promising deduplication", async () => {
     const { transport, deliver } = harness();

@@ -25,7 +25,7 @@ An app-specific password belongs to the owner's iCloud account. A separate passw
 6. Verify recovery invalidates the old session, expired or consumed proofs fail, and no Moderator authority is added by enrollment. Keep proofs and cookies in transient memory only.
 7. Record the image digest, candidate revision, secret version number, and test results. Promote only after the remaining release gates and traffic approval are satisfied.
 
-SMTP uses `smtp.mail.me.com:587`, mandatory STARTTLS, certificate validation, disabled protocol logging, and a 15-second send deadline. Only the fixed sender and one intended recipient are allowed. The message keeps a stable hashed Message-ID. SMTP does not guarantee deduplication, and provider acceptance does not prove inbox receipt.
+SMTP uses `smtp.mail.me.com:587`, mandatory STARTTLS, certificate validation, disabled protocol logging, and a 15-second send deadline. The deadline destroys the owned TCP socket, including an active STARTTLS connection. A message already accepted by SMTP cannot be retracted. A timeout does not prove that the provider did not receive the message. Only the fixed sender and one intended recipient are allowed. The message keeps a stable hashed Message-ID. SMTP does not guarantee deduplication, and provider acceptance does not prove inbox receipt.
 
 ## Rollback and limits
 

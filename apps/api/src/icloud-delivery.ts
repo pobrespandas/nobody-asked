@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createConnection, type Socket } from "node:net";
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer/index.js";
 import type SMTPTransport from "nodemailer/lib/smtp-transport/index.js";
@@ -62,6 +63,8 @@ export function createIcloudOperatorChallengeDelivery(options: {
   return async (identity: string, challengeSecret: string): Promise<void> => {
     let transport: MailTransport | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let socket: Socket | undefined;
+    let finished = false;
     try {
       if (
         !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(identity) ||
@@ -70,6 +73,27 @@ export function createIcloudOperatorChallengeDelivery(options: {
         throw new Error();
       transport = createTransport({
         host: "smtp.mail.me.com",
+        getSocket(configuration, callback) {
+          if (finished) {
+            callback(new Error("operator_challenge_delivery_failed"), {});
+            return;
+          }
+          socket = createConnection({
+            host: configuration.host ?? "smtp.mail.me.com",
+            port: Number(configuration.port ?? 587),
+          });
+          const connection = socket;
+          const onError = (error: Error) => callback(error, {});
+          connection.once("error", onError);
+          connection.setTimeout(5_000, () =>
+            connection.destroy(new Error("SMTP connection timeout")),
+          );
+          connection.once("connect", () => {
+            connection.removeListener("error", onError);
+            connection.setTimeout(0);
+            callback(null, { connection });
+          });
+        },
         port: 587,
         secure: false,
         requireTLS: true,
@@ -121,7 +145,9 @@ export function createIcloudOperatorChallengeDelivery(options: {
     } catch {
       throw new Error("operator_challenge_delivery_failed");
     } finally {
+      finished = true;
       clearTimeout(timer);
+      socket?.destroy();
       try {
         transport?.close();
       } catch {
