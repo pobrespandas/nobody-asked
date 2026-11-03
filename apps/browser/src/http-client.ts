@@ -29,7 +29,7 @@ export class HttpBrowserApiClient implements BrowserApiClient {
 
   constructor(options: HttpBrowserApiClientOptions) {
     this.#baseUrl = directoryUrl(options.baseUrl);
-    this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#pageSize = options.pageSize ?? 20;
     if (
       !Number.isSafeInteger(this.#pageSize) ||

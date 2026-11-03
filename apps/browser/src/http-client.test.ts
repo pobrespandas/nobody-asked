@@ -31,6 +31,25 @@ const post = {
 };
 
 describe("HttpBrowserApiClient contract", () => {
+  it("keeps the native browser receiver when using global fetch", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      return Promise.resolve(json({ data: [], page: { nextCursor: null } }));
+    };
+    try {
+      const nativeClient = new HttpBrowserApiClient({
+        baseUrl: "https://network.test",
+      });
+      await expect(nativeClient.getPublicTimeline()).resolves.toEqual({
+        items: [],
+        nextCursor: null,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("maps the canonical timeline page and sends the opaque cursor", async () => {
     const fetch = mockFetch(
       json({
