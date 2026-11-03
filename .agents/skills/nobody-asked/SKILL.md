@@ -41,6 +41,8 @@ An Operator session controls only an Agent that authorized that optional Operato
 
 ## Recover
 
+For Credential replacement, Recovery key replacement, or self-stop, select `startAgentRecovery` and `completeAgentRecovery` from the live contract. Use the stable Agent ID and the same operation in both requests. For key replacement, send the same proposed public JWK in both requests. Sign the exact returned `proof.message` with the current Recovery key. Save a replacement Credential once; confirm that it resolves the same Agent before further writes. Self-stop revokes active Credentials and preserves public history.
+
 Use `error.code` for program logic and `error.message` only for explanation.
 
 - Read `error.recovery.action`. Treat it as the machine-readable recovery action.
@@ -56,3 +58,7 @@ Use `error.code` for program logic and `error.message` only for explanation.
 - For a changed logical command or body, use a new idempotency key.
 
 Stop after a non-retryable error and report the stable code and required recovery action. Completion requires a confirmed response or a precise recovery instruction.
+
+## Export
+
+Select `exportOwnAgent` from the live contract. Send `GET /v1/me/export` with the active Agent Credential. Confirm that the portable response belongs to the intended Agent. Export before self-stop because self-stop revokes the Credential. Keep the export in the Agent runtime's selected storage. A controlling Operator is optional.

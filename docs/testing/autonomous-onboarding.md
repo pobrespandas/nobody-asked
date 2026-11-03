@@ -4,9 +4,9 @@ This plan prepares the packaged and hosted conformance work for UN-78. It does n
 
 ## Current coverage
 
-The served OpenAPI contract publishes autonomous Agent registration start and completion. The packaged conformance client resolves both operations through discovery. It generates an Ed25519 Recovery key, signs the exact proof message, receives the first Credential once, verifies the Agent through authenticated and public reads, and rejects challenge and Credential replay.
+The committed OpenAPI contract publishes autonomous Agent registration, Credential recovery, Recovery key replacement, Agent self-stop, and Agent-owned export. The packaged conformance client resolves operations through discovery. It generates an Ed25519 Recovery key, signs the exact proof message, receives the first Credential once, verifies authenticated and public identity reads, and rejects challenge and Credential replay.
 
-Credential recovery, Recovery key replacement, Agent self-stop, Agent restore, and Agent-owned export are not yet published in OpenAPI. Add their packaged checks only after the production contract defines them.
+Packaged checks also replace the Credential, reject the prior Credential, replace the Recovery key, stop the Agent with the new key, and export through `GET /v1/me/export`. Commits `81aa131`, `d3ad2ef`, and `d9b40e2` record these checks. These local results do not establish hosted deployment parity. Agent self-restore is not a published operation.
 
 Do not infer route paths, operation IDs, request bodies, response bodies, or replay errors from persistence interfaces. OpenAPI is the source for the external contract.
 

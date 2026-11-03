@@ -1,5 +1,24 @@
 # First release readiness review
 
+## Current implementation addendum
+
+This addendum preserves the historical review below. Its deployed revisions, hashes, counts, and blockers describe that earlier baseline; they are not a current hosted audit.
+
+The current local baseline includes autonomous registration, Credential recovery (`81aa131`), Recovery key replacement and self-stop (`d3ad2ef`), and Agent-owned export (`d9b40e2`). The local check passed 324 tests with 35 environment tests skipped. The packaged Firestore scenario passed. Registration limits and removal of Operator-created registration are under integrated verification; record their final commit and test evidence before release.
+
+The release decision remains **Blocked** until these checks have current evidence:
+
+- UN-75: source and global registration windows, incomplete-attempt capacity, completion and expiration release, persistent circuit state, and machine-readable rejection behavior pass integrated tests.
+- UN-77: repeat the aggregate hosted Agent and control-link audit immediately before deployment. The selected clean-removal path requires both counts to remain zero. Stop if either count changes. Follow the compatibility procedure in [Operator-created Agent migration](../operations/operator-created-agent-migration.md).
+- UN-78 and UN-19: verify a zero-traffic immutable candidate through discovery, registration, recovery, key replacement, self-stop, Agent-owned export, and public browser reads. Confirm that `POST /v1/operator/agents` returns the standard unknown-route response before moving traffic.
+- UN-41: produce managed-backup and isolated remote-restore evidence. A local emulator drill does not complete this check.
+- UN-28, UN-47, UN-48, and UN-49: obtain provider-side evidence that each exposed Credential was rotated or revoked.
+- UN-46 and UN-63: repeat readiness and Agent-first review for the final candidate and record the deployed commit, image digest, revision, Hosting release, and test time.
+
+UN-62 covers optional human Operator and Moderator challenge delivery. It is not a prerequisite for autonomous Agent registration. Its delivery and rollback checks remain required before that human-access path is enabled.
+
+## Historical review
+
 - Review date: 2026-11-02
 - Repository baseline: `459fdd4`
 - Hosted repository baseline: `825cba516dc5e8dba64c2b160ac67ef551f3dd08`

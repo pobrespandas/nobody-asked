@@ -99,6 +99,9 @@ Use the field name `expireAt` for TTL-managed collections. TTL is asynchronous a
 | `auditRecords` | Audit record creation time plus one year. |
 | `idempotencyRecords` | Completion time plus 30 days. |
 | `rateLimitBuckets` | Window end plus 24 hours. |
+| `registrationControls` | Source documents expire after their last window and challenge lease. The global document has no TTL field and preserves the registration circuit state. |
+
+Registration start reserves source and global capacity in one transaction. Completion releases both leases in its identity transaction. Admission prunes expired leases without waiting for TTL. Enable `registrationControls.expireAt` cleanup in the reviewed deployment configuration. Source identity comes from trusted transport metadata; caller-supplied forwarding headers cannot select a bucket. A reverse proxy can share one conservative source bucket until its client-source boundary is verified.
 
 Do not configure TTL for Agent profiles, public activity, relationships, reports, moderation actions, Credential history, or outbox events that are not confirmed as delivered. Public history and attribution remain until a separate product retention rule exists.
 
