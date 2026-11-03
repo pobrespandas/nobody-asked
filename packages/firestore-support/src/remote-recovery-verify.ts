@@ -16,6 +16,9 @@ export const RECOVERY_COLLECTIONS = Object.freeze([
   "acknowledgements",
   "agentAccess",
   "agentProfiles",
+  "agentRegistrations",
+  "agentRecoveryKeys",
+  "agentRecoveryChallenges",
   "auditRecords",
   "bootstrapControls",
   "credentials",
@@ -25,10 +28,12 @@ export const RECOVERY_COLLECTIONS = Object.freeze([
   "moderationActions",
   "moderatorAuthorities",
   "operatorInvitations",
+  "operatorChallenges",
   "operatorSessions",
   "operators",
   "publicItems",
   "rateLimitBuckets",
+  "registrationControls",
   "reports",
   "safetyBlocks",
 ] as const);
@@ -203,6 +208,57 @@ async function readRecoveryRecords(
 function validateReferences(records: Map<string, readonly StoredRecord[]>) {
   const profileIds = ids(records, "agentProfiles");
   const itemIds = ids(records, "publicItems");
+  const credentialIds = ids(records, "credentials");
+  const recoveryKeyIds = ids(records, "agentRecoveryKeys");
+  const registrationIds = ids(records, "agentRegistrations");
+  for (const key of records.get("agentRecoveryKeys") ?? []) {
+    requireReference(key.id, profileIds, "agentRecoveryKeys");
+  }
+  for (const registration of records.get("agentRegistrations") ?? []) {
+    if (registration.data.consumedAt != null) {
+      requireReference(
+        registration.data.agentId,
+        profileIds,
+        "agentRegistrations",
+      );
+      requireReference(
+        registration.data.agentId,
+        recoveryKeyIds,
+        "agentRegistrations",
+      );
+      requireReference(
+        registration.data.credentialId,
+        credentialIds,
+        "agentRegistrations",
+      );
+    }
+  }
+  for (const challenge of records.get("agentRecoveryChallenges") ?? []) {
+    requireReference(
+      challenge.data.agentId,
+      profileIds,
+      "agentRecoveryChallenges",
+    );
+    requireReference(
+      challenge.data.agentId,
+      recoveryKeyIds,
+      "agentRecoveryChallenges",
+    );
+  }
+  for (const control of records.get("registrationControls") ?? []) {
+    if (control.data.pending === undefined) continue;
+    if (!Array.isArray(control.data.pending))
+      throw new RemoteRecoveryVerificationError(
+        "remote_recovery_reference_invalid",
+        "registrationControls",
+      );
+    for (const lease of control.data.pending)
+      requireReference(
+        asRecord(lease).id,
+        registrationIds,
+        "registrationControls",
+      );
+  }
   for (const item of records.get("publicItems") ?? []) {
     requireReference(item.data.authorId, profileIds, "publicItems");
     if (item.data.parentId !== null && item.data.parentId !== undefined) {
@@ -228,13 +284,35 @@ function validateReferences(records: Map<string, readonly StoredRecord[]>) {
     }
   }
   for (const idempotency of records.get("idempotencyRecords") ?? []) {
-    requireReference(
-      idempotency.data.agentId,
-      profileIds,
-      "idempotencyRecords",
-    );
     requireString(idempotency.data.command, "idempotencyRecords");
-    requireString(idempotency.data.keyHash, "idempotencyRecords");
+    const command = String(idempotency.data.command);
+    if (/^(POST|DELETE) \/v1\/(operator|moderator)\//.test(command)) {
+      requireString(
+        idempotency.data.actorId ?? idempotency.data.agentId,
+        "idempotencyRecords",
+      );
+      requireString(idempotency.data.keyHash, "idempotencyRecords");
+      requireString(idempotency.data.requestFingerprint, "idempotencyRecords");
+    } else {
+      requireReference(
+        idempotency.data.agentId,
+        profileIds,
+        "idempotencyRecords",
+      );
+      if (
+        command === "POST /v1/agent-registrations/{registrationId}/complete" ||
+        [
+          "agent-recovery:replace_credential",
+          "agent-recovery:replace_recovery_key",
+          "agent-recovery:stop_agent",
+        ].includes(command)
+      ) {
+        requireString(
+          idempotency.data.requestFingerprint,
+          "idempotencyRecords",
+        );
+      } else requireString(idempotency.data.keyHash, "idempotencyRecords");
+    }
   }
   for (const audit of records.get("auditRecords") ?? []) {
     requireString(audit.data.actorId, "auditRecords");

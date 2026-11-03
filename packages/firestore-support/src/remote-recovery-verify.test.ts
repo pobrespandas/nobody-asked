@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -40,6 +41,102 @@ describe("remote recovery target validation", () => {
 });
 
 describe("remote recovery verification", () => {
+  it("includes every autonomous identity collection and Operator challenges", () => {
+    expect(RECOVERY_COLLECTIONS).toEqual(
+      expect.arrayContaining([
+        "agentRegistrations",
+        "agentRecoveryKeys",
+        "agentRecoveryChallenges",
+        "registrationControls",
+        "operatorChallenges",
+      ]),
+    );
+  });
+
+  it("covers the persistence collection inventory", () => {
+    const source = readFileSync(
+      new URL("../../persistence/src/firestore-adapters.ts", import.meta.url),
+      "utf8",
+    );
+    const declaration = source.match(
+      /const collections = \{([\s\S]*?)\} as const;/,
+    )?.[1];
+    expect(declaration).toBeDefined();
+    const names = [...declaration!.matchAll(/:\s*"([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(RECOVERY_COLLECTIONS).toEqual(expect.arrayContaining(names));
+  });
+
+  it.each([
+    "agentRegistrations",
+    "agentRecoveryKeys",
+    "agentRecoveryChallenges",
+    "registrationControls",
+    "operatorChallenges",
+  ])("rejects missing or tampered %s records", async (collection) => {
+    const source = fixtureRecords();
+    source[collection] = [
+      { id: "identity-record", data: { marker: "original" } },
+    ];
+    for (const replacement of [
+      [],
+      [{ id: "identity-record", data: { marker: "tampered" } }],
+    ]) {
+      const recovered = structuredClone(source);
+      recovered[collection] = replacement;
+      await expect(
+        verifyRemoteRecovery(database(source), database(recovered)),
+      ).rejects.toMatchObject({
+        code: "remote_recovery_collection_mismatch",
+        collection,
+      });
+    }
+  });
+
+  it("validates autonomous identity links even when both snapshots have the same missing key", async () => {
+    const records = fixtureRecords();
+    records.credentials = [
+      { id: "credential-1", data: { agentId: "agent-1" } },
+    ];
+    records.agentRecoveryKeys = [
+      { id: "agent-1", data: { publicKey: { kty: "OKP" } } },
+    ];
+    records.agentRegistrations = [
+      {
+        id: "registration-1",
+        data: {
+          consumedAt: "completed",
+          agentId: "agent-1",
+          credentialId: "credential-1",
+        },
+      },
+    ];
+    records.agentRecoveryChallenges = [
+      { id: "challenge-1", data: { agentId: "agent-1" } },
+    ];
+    records.registrationControls = [
+      { id: "global", data: { pending: [{ id: "registration-1" }] } },
+    ];
+    records.idempotencyRecords!.push({
+      id: "registration-result",
+      data: {
+        command: "POST /v1/agent-registrations/{registrationId}/complete",
+        agentId: "agent-1",
+        requestFingerprint: "fingerprint",
+      },
+    });
+    await expect(
+      verifyRemoteRecovery(database(records), database(records)),
+    ).resolves.toMatchObject({ status: "passed" });
+    records.agentRecoveryKeys = [];
+    await expect(
+      verifyRemoteRecovery(database(records), database(records)),
+    ).rejects.toMatchObject({
+      code: "remote_recovery_reference_invalid",
+      collection: "agentRegistrations",
+    });
+  });
   it("compares every collection and validates recovery evidence", async () => {
     const records = fixtureRecords();
     await expect(
@@ -57,6 +154,50 @@ describe("remote recovery verification", () => {
         "idempotencyRecords",
         "auditRecords",
       ],
+    });
+  });
+
+  it("checks the stored idempotency variants without allowing unknown recovery commands", async () => {
+    for (const data of [
+      {
+        actorId: "operator-1",
+        command: "POST /v1/operator/invitations",
+        keyHash: "hash",
+        requestFingerprint: "fingerprint",
+      },
+      {
+        agentId: "agent-1",
+        command: "agent-recovery:stop_agent",
+        requestFingerprint: "fingerprint",
+      },
+    ]) {
+      const records = fixtureRecords();
+      records.idempotencyRecords!.push({ id: "variant", data });
+      await expect(
+        verifyRemoteRecovery(database(records), database(records)),
+      ).resolves.toMatchObject({ status: "passed" });
+      delete (data as Record<string, unknown>).requestFingerprint;
+      await expect(
+        verifyRemoteRecovery(database(records), database(records)),
+      ).rejects.toMatchObject({
+        code: "remote_recovery_reference_invalid",
+        collection: "idempotencyRecords",
+      });
+    }
+    const records = fixtureRecords();
+    records.idempotencyRecords!.push({
+      id: "unknown",
+      data: {
+        agentId: "agent-1",
+        command: "agent-recovery:unknown",
+        requestFingerprint: "fingerprint",
+      },
+    });
+    await expect(
+      verifyRemoteRecovery(database(records), database(records)),
+    ).rejects.toMatchObject({
+      code: "remote_recovery_reference_invalid",
+      collection: "idempotencyRecords",
     });
   });
 
