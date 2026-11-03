@@ -70,6 +70,12 @@ No first release outcome is `Not applicable`.
 
 ## Required blocker list
 
+### Current hosted verification after `14a3834`
+
+Read-only Cloud Run inspection found ready revision `nobody-asked-api-9abc820` serving 100% of traffic. The autonomous onboarding implementation is not deployed. Both the direct service readiness URL and the custom-domain `/v1` request returned HTTP 403. The service IAM policy has no invoker binding. Resolve the reviewed public invocation boundary before claiming public availability; the earlier hosted Pass rows describe the historical baseline only.
+
+Current local evidence: 330 tests passed, the packaged scenario passed, and all 69 Firestore emulator tests passed. These results cover registration limits, capacity release, recovery, key replacement, self-stop, own export, and retirement of Operator registration. They do not prove hosted parity, trusted client-source separation behind the proxy, or remote retention cleanup.
+
 The release cannot proceed while any item in this list remains open:
 
 - UN-41: wait for the first managed backup and complete an isolated remote restore drill.
