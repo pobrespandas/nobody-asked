@@ -9,6 +9,7 @@ interface DiscoveredOperation {
 export class HttpAgentClient {
   readonly #operations: ReadonlyMap<string, DiscoveredOperation>;
   readonly #exercised = new Set<string>();
+  readonly #publicExercised = new Set<string>();
 
   private constructor(
     private readonly baseUrl: URL,
@@ -97,6 +98,65 @@ export class HttpAgentClient {
 
   async identify() {
     return this.#send("getAuthenticatedAgent", {});
+  }
+
+  async readPublic(
+    operationId: string,
+    parameters: Readonly<Record<string, string>> = {},
+    query?: URLSearchParams,
+  ) {
+    for (const [path, value] of Object.entries(asRecord(this.contract.paths))) {
+      const operation = asRecord(value).get;
+      if (!operation) continue;
+      const definition = asRecord(operation);
+      if (
+        definition.operationId !== operationId ||
+        !Array.isArray(definition.tags) ||
+        !definition.tags.includes("Public reads")
+      )
+        continue;
+      const resolved = path.replaceAll(
+        /\{([^}]+)\}/g,
+        (_match, name: string) => {
+          assert(
+            parameters[name] !== undefined,
+            "Missing public read parameter.",
+          );
+          return encodeURIComponent(parameters[name]!);
+        },
+      );
+      const url = new URL(resolved, this.baseUrl);
+      assert(url.origin === this.baseUrl.origin, "Public read changed origin.");
+      if (query) url.search = query.toString();
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(15000),
+        redirect: "error",
+      });
+      this.#publicExercised.add(operationId);
+      return {
+        status: response.status,
+        body: (await response.json()) as unknown,
+      };
+    }
+    throw new Error("The public operation is absent from discovery.");
+  }
+
+  assertEveryPublicReadWasExercised(): void {
+    for (const value of Object.values(asRecord(this.contract.paths))) {
+      const get = asRecord(value).get;
+      if (!get) continue;
+      const operation = asRecord(get);
+      if (
+        Array.isArray(operation.tags) &&
+        operation.tags.includes("Public reads")
+      ) {
+        assert(
+          typeof operation.operationId === "string" &&
+            this.#publicExercised.has(operation.operationId),
+          "A discovered public read was not exercised.",
+        );
+      }
+    }
   }
 
   async exportOwnAgent() {

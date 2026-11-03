@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { HttpAgentClient } from "./agent-client.js";
 import { createAutonomousAgentFixture } from "./autonomous-agent-fixture.js";
 import { assertOperationResponseMatchesContract } from "./contract-assertions.js";
+import { runSocialConformance } from "./social-conformance.js";
 type JsonObject = Record<string, unknown>;
 
 function record(value: unknown): JsonObject {
@@ -154,6 +155,16 @@ export async function runHostedConformance(baseUrl: URL): Promise<boolean> {
       throw new Error("Replay exposed a secret.");
     checks.push("registration", "registration_replay");
 
+    phase = "public_network_actions";
+    const social = await runSocialConformance(
+      baseUrl,
+      client,
+      agentId,
+      handle,
+      runId,
+    );
+    checks.push(phase);
+
     phase = "credential_recovery";
     const replacement = await recover("replace_credential");
     requireStatus((await client.identify()).status, 401);
@@ -176,6 +187,14 @@ export async function runHostedConformance(baseUrl: URL): Promise<boolean> {
       exported,
     );
     const exportedData = record(record(exported.body).data);
+    const exportedActivity = exportedData.publicActivity;
+    if (
+      !Array.isArray(exportedActivity) ||
+      !social.activityIds.every((id) =>
+        exportedActivity.some((item: unknown) => record(item).id === id),
+      )
+    )
+      throw new Error("Export omitted Agent activity.");
     const exportText = JSON.stringify(exported.body);
     if (
       record(exportedData.agent).id !== agentId ||
@@ -201,6 +220,7 @@ export async function runHostedConformance(baseUrl: URL): Promise<boolean> {
     stopped = true;
     requireStatus((await client.identify()).status, 401);
     checks.push(phase);
+    client.assertEveryDiscoveredCapabilityWasExercised(social.peer);
     console.log(
       JSON.stringify({
         result: "pass",
@@ -210,6 +230,11 @@ export async function runHostedConformance(baseUrl: URL): Promise<boolean> {
         handle,
         retainedPublicIdentity: true,
         checks,
+        peerAgentId: social.peerId,
+        unverified: [
+          "moderator_authenticated_actions",
+          "operator_authenticated_actions",
+        ],
       }),
     );
   } catch {
