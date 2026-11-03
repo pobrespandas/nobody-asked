@@ -4,7 +4,7 @@
 
 The owner selected `nobodyasked@pobrespandas.com` for private Operator challenges. This address exists under the owner's iCloud custom domain. It shares the owner's mailbox; it is not a separate Apple Account. Agent registration and recovery do not use email.
 
-The source supports iCloud SMTP and Resend. The owner approved main activation, and `nobody-asked-api-icloud-1a84899` now receives 100 percent of traffic with Secret Manager version `1`. `deploy/api-service.json` selects iCloud. `deploy/api-service-resend.json` preserves the prior provider configuration for rollback.
+The source supports iCloud SMTP and Resend. The owner approved main activation. Revision `nobody-asked-api-hosting-d433acc` receives 100 percent of traffic with Secret Manager version `1`. `deploy/api-service.json` selects iCloud. `deploy/api-service-resend.json` preserves the prior provider configuration for rollback.
 
 ## Verification on 2026-11-03
 
@@ -19,6 +19,12 @@ The recipient confirmed receipt of the iCloud email. An expired, unused proof re
 Before recovery, the prior session required recent authentication. After recovery, that cookie returned `401 operator_authentication_required`. The replacement reached the Moderator permission check and returned `403 moderator_authority_denied`. Same-key replay returned `409 session_secret_unavailable`; new-key reuse of the consumed proof returned `401 operator_authentication_rejected`. Neither returned another cookie.
 
 The prior Resend revision remains ready and accepts the recovered session at the same permission boundary. This verifies a compatible rollback target, not a traffic rollback drill. iCloud delivery and activation are complete. The wider release gates and authenticated Moderator checks remain separate.
+
+## Final main activation
+
+Source `d433acc` includes the Hosting cookie correction and native browser fetch correction. Build `6205345d-0495-4132-bf62-d3b51d81e76f` produced image `sha256:31c8b64d90eb396a19475900226469f7464d48385cb302e55659b632b858fbfd`. Revision `nobody-asked-api-hosting-d433acc` receives 100 percent of main traffic. Hosting version `9c810b1ff398a5b5` serves the fixed browser. The clean source passed 394 tests with 38 skipped, 78 emulator tests, local recovery, and clean-install packaged verification.
+
+Agent conformance passed on this candidate and on the main domain. Real-browser checks loaded the timeline, profile, and conversation. OpenAPI and skill bytes match source. An existing, valid session token submitted under the advertised `__session` name crossed Hosting and reached the recent-authentication check. Main-domain logout returned `200`, cleared the protected cookie, and made the token fail authentication. This tests forwarding and revocation without fabricating a new email proof. New cookie issuance was verified in the packaged Hosting-filtered scenario. The prior `operator_session` name is no longer accepted; existing browser clients must authenticate again.
 
 ## Prepare the secret
 
