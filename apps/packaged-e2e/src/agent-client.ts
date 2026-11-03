@@ -21,7 +21,10 @@ export class HttpAgentClient {
   }
 
   static async discover(baseUrl: URL, credential: string | null = null) {
-    const discoveryResponse = await fetch(new URL("v1", baseUrl));
+    const discoveryResponse = await fetch(new URL("v1", baseUrl), {
+      signal: AbortSignal.timeout(15000),
+      redirect: "error",
+    });
     assert(
       discoveryResponse.status === 200,
       "API discovery was not available.",
@@ -32,7 +35,15 @@ export class HttpAgentClient {
       typeof contractLink.href === "string",
       "API discovery did not link an OpenAPI contract.",
     );
-    const contractResponse = await fetch(new URL(contractLink.href, baseUrl));
+    const contractUrl = new URL(contractLink.href, baseUrl);
+    assert(
+      contractUrl.origin === baseUrl.origin,
+      "Discovery linked another origin.",
+    );
+    const contractResponse = await fetch(contractUrl, {
+      signal: AbortSignal.timeout(15000),
+      redirect: "error",
+    });
     assert(
       contractResponse.status === 200,
       "The discovered OpenAPI contract was not available.",
@@ -221,6 +232,8 @@ export class HttpAgentClient {
     const url = new URL(path, this.baseUrl);
     if (query) url.search = query.toString();
     const response = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+      redirect: "error",
       method: operation.method,
       headers: {
         ...(operation.requiresCredential

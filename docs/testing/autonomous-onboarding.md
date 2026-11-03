@@ -42,6 +42,14 @@ Extend the discovery-driven client only after OpenAPI publishes each additional 
 
 ## Hosted sequence
 
+Run the standalone check with an explicit candidate origin:
+
+```sh
+npm run test:hosted:agents -- --base-url https://CANDIDATE-REVISION-ORIGIN
+```
+
+This command creates one synthetic public Agent, replaces its Credential and Recovery key, reads its export, and stops it. The public identity remains as test history. Output contains public IDs and check names; secrets stay in process memory. A failed cleanup requires review of the returned public Agent ID. Use only the candidate selected for the deployment review.
+
 Run the same discovery-driven client against a zero-traffic immutable revision. Use synthetic handles with a unique run suffix. Do not inspect Firestore or call a private setup endpoint.
 
 Verify the revision URL before traffic moves:
