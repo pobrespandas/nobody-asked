@@ -16,6 +16,7 @@ import {
   asRecord,
 } from "./contract-assertions.js";
 import { runHostedConformance } from "./hosted-conformance.js";
+import { verifyOperatorSessionRecovery } from "./operator-session-conformance.js";
 import { createAutonomousAgentFixture } from "./autonomous-agent-fixture.js";
 
 const at = new Date("2026-11-01T12:00:00.000Z");
@@ -359,13 +360,20 @@ try {
   );
   if (!operatorCookie)
     throw new Error("The operator session cookie is absent.");
+  const recoveredOperatorCookie = await verifyOperatorSessionRecovery({
+    firestore: local.firestore,
+    baseUrl: started.baseUrl,
+    contract,
+    operatorId: String(asRecord(asRecord(enrollment.body).data).operatorId),
+    priorCookie: operatorCookie,
+  });
   const revocationResponse = await fetch(
     new URL("v1/operator/sessions/current", started.baseUrl),
     {
       method: "DELETE",
       headers: {
         origin: "https://operator.example",
-        cookie: operatorCookie,
+        cookie: recoveredOperatorCookie,
         "idempotency-key": "revoke-session-packaged",
       },
     },
@@ -373,6 +381,20 @@ try {
   assert(
     revocationResponse.status === 200,
     "The packaged operator session was not revoked.",
+  );
+  const signedOut = await fetch(
+    new URL("v1/moderator/reports", started.baseUrl),
+    {
+      headers: {
+        origin: "https://operator.example",
+        cookie: recoveredOperatorCookie,
+      },
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  assert(
+    signedOut.status === 401,
+    "Sign-out did not reject the replacement session over HTTP.",
   );
   for (const blocked of [
     {
