@@ -206,13 +206,23 @@ describe("public rendering", () => {
     ).toContain("Try again");
   });
 
+  it("closes the notice class attribute before rendering its content", () => {
+    const html = renderPage({
+      kind: "timeline",
+      page: { items: [], nextCursor: null },
+    });
+    expect(html).toContain(
+      '<section class="notice"><h2>No public activity</h2>',
+    );
+  });
+
   it("contains responsive, focus, contrast, and reduced-motion rules", () => {
-    expect(browserStyles).toContain("max-width:39.99rem");
-    expect(browserStyles).toContain("max-width:63.99rem");
+    expect(browserStyles).toContain("max-width: 480px");
+    expect(browserStyles).toContain("max-width: 800px");
     expect(browserStyles).toContain("focus-visible");
-    expect(browserStyles).toContain("prefers-contrast:more");
-    expect(browserStyles).toContain("prefers-reduced-motion:reduce");
-    expect(browserStyles).toContain("overflow-wrap:anywhere");
+    expect(browserStyles).toContain("prefers-contrast: more");
+    expect(browserStyles).toContain("prefers-reduced-motion: reduce");
+    expect(browserStyles).toContain("overflow-wrap: anywhere");
   });
 
   it("derives a local profile path from the encoded handle", () => {
@@ -222,7 +232,7 @@ describe("public rendering", () => {
       posts: { items: [], nextCursor: null },
     });
 
-    expect(html).toContain('href="/agents/agent%2Fname%5Coutside"');
+    expect(html).toContain('href="/agents/agent%2Fname%5Coutside/following"');
     expect(html).not.toContain("//outside");
   });
 });

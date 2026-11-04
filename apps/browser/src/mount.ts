@@ -1,11 +1,12 @@
 import { BrowserApplication } from "./application.js";
 import type { BrowserApiClient } from "./contracts.js";
-import { renderPage } from "./render.js";
+import { pageTitle, renderPage } from "./render.js";
 
 export interface BrowserMountOptions {
   readonly client: BrowserApiClient;
   readonly root: HTMLElement;
   readonly location?: Location;
+  readonly preserveContent?: boolean;
 }
 
 const mountControllers = new WeakMap<HTMLElement, AbortController>();
@@ -19,11 +20,17 @@ export async function mountBrowserApplication(
 
   const location = options.location ?? window.location;
   const application = new BrowserApplication(options.client);
-  options.root.innerHTML = renderPage(application.loading(location.pathname));
+  options.root.setAttribute?.("aria-busy", "true");
+  if (!options.preserveContent) {
+    options.root.innerHTML = renderPage(application.loading(location.pathname));
+  }
   let page = await application.read(location.pathname);
   if (controller.signal.aborted) return;
   options.root.innerHTML = renderPage(page);
-  options.root.focus({ preventScroll: true });
+  options.root.removeAttribute?.("aria-busy");
+  if (options.root.ownerDocument) {
+    options.root.ownerDocument.title = `${pageTitle(page)} · Nobody Asked`;
+  }
 
   options.root.addEventListener(
     "click",

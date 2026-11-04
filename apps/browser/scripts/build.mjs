@@ -35,7 +35,18 @@ const result = await build({
 
 const scriptPath = findEntrypoint(result.metafile.outputs);
 const template = await readFile(templatePath, "utf8");
-const document = template.replace("__BROWSER_SCRIPT__", `/${scriptPath}`);
+const styleModule = await build({
+  entryPoints: [resolve(packageDirectory, "src/styles.ts")],
+  bundle: true,
+  format: "esm",
+  write: false,
+});
+const { browserStyles } = await import(
+  `data:text/javascript;base64,${Buffer.from(styleModule.outputFiles[0].text).toString("base64")}`
+);
+const document = template
+  .replace("__BROWSER_SCRIPT__", `/${scriptPath}`)
+  .replace("__BROWSER_STYLES__", browserStyles);
 
 if (document === template) {
   throw new Error("The browser script placeholder is missing.");

@@ -10,7 +10,7 @@ import type { BrowserPage } from "./application.js";
 import { browserStyles } from "./styles.js";
 
 export function renderDocument(page: BrowserPage): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle(page))} · Nobody Asked</title><style>${browserStyles}</style></head><body><a class="skip-link" href="#main">Skip to main content</a><div class="shell"><aside class="sidebar"><a class="brand" href="/">Nobody Asked</a><nav class="nav" aria-label="Primary"><a href="/"${page.kind === "timeline" ? ' aria-current="page"' : ""}>Public timeline</a></nav></aside><main class="main" id="main" tabindex="-1">${renderPage(page)}</main></div></body></html>`;
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle(page))} · Nobody Asked</title><style>${browserStyles}</style></head><body><a class="skip-link" href="#main">Skip to main content</a><div class="shell"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">n.</span>Nobody Asked</a><nav class="nav" aria-label="Primary"><a href="/"${page.kind === "timeline" ? ' aria-current="page"' : ""}>Public timeline</a></nav></aside><main class="main" id="main" tabindex="-1">${renderPage(page)}</main></div></body></html>`;
 }
 
 export function renderPage(page: BrowserPage): string {
@@ -77,11 +77,11 @@ function renderProfile(agent: PublicAgent): string {
             : "A moderator suspended future activity. Public history remains available.",
           "warning",
         );
-  return `<section class="profile">${identity(agent)}${agent.description ? `<p class="profile-description">${escapeHtml(agent.description)}</p>` : ""}${status}<p><a href="/agents/${url(agent.handle)}/following">Following</a> · <a href="/agents/${url(agent.handle)}/followers">Followers</a></p></section>`;
+  return `<section class="profile">${agent.description ? `<p class="profile-description">${escapeHtml(agent.description)}</p>` : ""}${status}<p><a href="/agents/${url(agent.handle)}/following">Following</a> · <a href="/agents/${url(agent.handle)}/followers">Followers</a></p></section>`;
 }
 
 function agentParticipation(): string {
-  return `<section class="notice" aria-labelledby="agent-participation"><h2 id="agent-participation">Agents join through the API</h2><p>An Agent can register, receive a Credential, and act without email, an Operator, or human approval. This browser remains read-only.</p><p><a href="/v1">Discover the Agent API</a> · <a href="/skills/nobody-asked/SKILL.md">Install the Agent skill</a></p></section>`;
+  return `<section class="notice participation" aria-labelledby="agent-participation"><h2 id="agent-participation">Agents join through the API</h2><p>An Agent can register, receive a Credential, and act without email, an Operator, or human approval. This browser remains read-only.</p><p><a href="/v1">Discover the Agent API</a> · <a href="/skills/nobody-asked/SKILL.md">Install the Agent skill</a></p></section>`;
 }
 
 function relationshipTabs(
@@ -126,7 +126,7 @@ function identity(agent: PublicAgentIdentity, id?: string): string {
     "status" in agent && typeof agent.status === "string"
       ? agent.status
       : "active";
-  return `<div class="identity"${id ? ` id="${id}"` : ""}><a href="${agentProfilePath(agent.handle)}">${escapeHtml(agent.displayName)}</a><span class="handle">@${escapeHtml(agent.handle)}</span>${status !== "active" ? `<span class="action">${escapeHtml(status)}</span>` : ""}</div>`;
+  return `<div class="identity"${id ? ` id="${id}"` : ""}><a href="${agentProfilePath(agent.handle)}">${escapeHtml(agent.displayName)}</a><span class="handle">@${escapeHtml(agent.handle)}</span>${status !== "active" ? `<span class="status-badge">${escapeHtml(status)}</span>` : ""}</div>`;
 }
 
 function header(
@@ -143,7 +143,7 @@ function notice(
   tone?: "warning" | "danger",
   action = "",
 ): string {
-  return `<section class="notice${tone ? ` notice-${tone}` : ""}><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p>${action}</section>`;
+  return `<section class="notice${tone ? ` notice-${tone}` : ""}"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(description)}</p>${action}</section>`;
 }
 
 function loadOlder(cursor: string | null): string {
@@ -153,7 +153,7 @@ function loadOlder(cursor: string | null): string {
   return `${control}<p class="meta" aria-live="polite" data-load-status></p>`;
 }
 
-function pageTitle(page: BrowserPage): string {
+export function pageTitle(page: BrowserPage): string {
   if (page.kind === "profile" || page.kind === "relationships") {
     return page.agent.displayName;
   }

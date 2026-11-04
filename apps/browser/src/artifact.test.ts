@@ -43,6 +43,11 @@ describe("production browser artifact", () => {
     expect(document).toContain('id="main"');
     expect(document).toContain('href="#main"');
     expect(document).not.toContain("__BROWSER_SCRIPT__");
+    expect(document).not.toContain("__BROWSER_STYLES__");
+    expect(document.indexOf("<style>")).toBeLessThan(
+      document.indexOf('<script type="module"'),
+    );
+    expect(document).toContain("--canvas:");
 
     const bundle = readFileSync(resolve(outputDirectory, script!), "utf8");
     for (const publicContract of [

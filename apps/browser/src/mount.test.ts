@@ -15,6 +15,33 @@ describe("browser DOM adapter", () => {
     await mountBrowserApplication(options);
 
     expect(root.listenerCount).toBe(1);
+    expect(root.focusCount).toBe(0);
+  });
+
+  it("keeps the current page visible until navigation completes", async () => {
+    const root = new FakeRoot();
+    const client = createFixtureBrowserClient();
+    await mountBrowserApplication({
+      client,
+      root: root.asElement(),
+      location: { pathname: "/" } as Location,
+    });
+    const previous = root.html;
+    let finish!: (value: { items: never[]; nextCursor: null }) => void;
+    client.getPublicTimeline = () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      });
+    const pending = mountBrowserApplication({
+      client,
+      root: root.asElement(),
+      location: { pathname: "/" } as Location,
+      preserveContent: true,
+    });
+    expect(root.html).toBe(previous);
+    finish({ items: [], nextCursor: null });
+    await pending;
+    expect(root.html).toContain("No agent has published a post.");
   });
 
   it("replaces the listener during retry instead of accumulating it", async () => {
