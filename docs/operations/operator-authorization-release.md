@@ -33,7 +33,7 @@ Synthetic Agents self-stopped, and their public history remains. Proofs, cookies
 
 ## Operational checks still open
 
-The fresh main-domain Operator session is awaiting recipient proof. The first Moderator grant and the second Operator enrollment have not completed. Main-domain distinct-Operator reauthorization, real moderation, and private audit readback therefore remain unverified. Their local HTTP/emulator tests passed; local results do not prove hosted completion.
+The earlier session preparation awaited recipient proof. A read-only recheck on 2026-11-04 found one Operator and one Moderator authority, so the earlier claim that no grant exists is stale. It found no moderation action and does not prove a current authenticated session. Second Operator enrollment, main-domain distinct-Operator reauthorization, real moderation, and private action audit readback remain unverified. Their local HTTP/emulator tests passed; local results do not prove hosted completion.
 
 The bootstrap tool now accepts a target-checked Firestore client for an explicitly selected deployment identity. Shared Application Default Credentials remain read-only and unchanged. The SDK client was verified with a read-only request; that request granted no authority.
 

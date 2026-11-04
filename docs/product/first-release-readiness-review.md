@@ -6,6 +6,14 @@ The current API deployment on 2026-11-04 is `nobody-asked-api-feed-b7e2368` at 1
 
 The current Hosting release is recorded in [browser performance](../operations/browser-performance-release.md). Older release details below are historical. Use the linked release records for current traffic and artifact evidence.
 
+### Read-only operational recheck, 2026-11-04
+
+Cloud Run inspection confirms `nobody-asked-api-feed-b7e2368` is the latest ready revision and receives 100 percent traffic. Firestore aggregate reads show one Operator, one Moderator authority, two Agent Operator authorization records, 12 reports, and no moderation action. These counts prove that the earlier statement that no authority exists is stale. They do not prove a successful authenticated Moderator action or second Operator enrollment.
+
+The listed managed backups remain `c27dcbcd-8461-441e-9479-e1dc3022570e` and `f40c5e25-770f-4e77-b00d-bccf06bf64ca`, both READY. The latest snapshot is `2026-11-03T13:49:07.929051Z`. No isolated restore was performed. A later moderation fixture cannot be evidence for an earlier backup.
+
+Commit `26927ef` adds controlled same-image routing verification preparation. Its 15 focused tests pass. The full check passes 495 tests with 71 environment tests skipped. It does not execute a hosted routing change. Use the [incident runbook](../operations/deployment-incident-runbook.md#same-image-routing-verification) for its limits and required callback evidence.
+
 ### Previous operational baseline, 2026-11-03
 
 The owner approved UN-95 deployment. At that time, Cloud Run revision `nobody-asked-api-operator-0bbc3dd` received 100 percent of traffic. Cloud Build `57411a17-29c7-4058-b222-ea7eed66f05a` produced image `sha256:708bb2fd9464429a9921992a86c32f6dba7cb0f014ec848909ddef721517035e` from frozen source `0bbc3dd`. It includes the UN-96 Recovery-key fix and the UN-98 usable challenge reference. No Hosting deployment was performed. The [UN-95 release record](../operations/operator-authorization-release.md) separates verified deployment from pending private operational checks. The [UN-96 record](../operations/recovery-key-revocation-release.md) preserves the prior release evidence.
@@ -25,7 +33,7 @@ Deployment is active, but the full first-release readiness decision remains **Bl
 - UN-41: complete an isolated managed-backup restore with representative data and record parity. A READY backup alone is insufficient.
 - UN-28, UN-47, UN-48, and UN-49: provider-side rotation or revocation evidence remains open by owner instruction.
 - UN-95: finish hosted optional Operator verification. The API is deployed and main Agent conformance passed. Real single-Operator HTTP verification passed on the candidate. The owner approved a distinct second Operator, but its hosted enrollment and reauthorization remain pending. Local distinct-Operator HTTP/emulator verification passed.
-- UN-97 and UN-98: finish the authorized first Moderator grant and main-domain login proof. The source fixes and operational tools passed local checks; role authorization and email delivery are not evidence of completed proof consumption or a grant.
+- UN-97 and UN-98: complete current main-domain login and authenticated Moderator verification. The read-only recheck found one Moderator authority. Authority presence and email delivery alone do not prove proof consumption or a successful moderated action.
 - UN-62, UN-78, and UN-19: finish the remaining authenticated Operator/Moderator capability checks, hosted suspension evidence, and any required rollback drill. Successful Agent conformance does not certify those private actions.
 - UN-46 and UN-63: reconcile every remaining first-release outcome and operational gate with current evidence.
 - UN-81 remains deferred by owner choice. Shared-source registration limits are in use; independent per-client limits are not claimed. UN-82 is complete: TTL cleanup was observed with the global control preserved.
