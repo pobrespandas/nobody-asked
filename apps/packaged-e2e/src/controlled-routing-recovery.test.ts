@@ -1,13 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  ROUTING_CURRENT_IMAGE,
-  ROUTING_CURRENT_REVISION,
   ROUTING_RECOVERY_SCOPE,
   verifySameImageRoutingRecovery,
   type RoutingInspection,
   type RoutingProbe,
 } from "./controlled-routing-recovery.js";
 
+const ROUTING_CURRENT_REVISION = "nobody-asked-api-current-fixture";
+const ROUTING_CURRENT_IMAGE = `sha256:${"e".repeat(64)}`;
+const baseline = {
+  currentRevision: ROUTING_CURRENT_REVISION,
+  currentImage: ROUTING_CURRENT_IMAGE,
+};
 const standby = "nobody-asked-api-routing-standby";
 const goodProbe = (postId: string): RoutingProbe => ({
   publicRead: true,
@@ -60,6 +64,7 @@ describe("same-image routing recovery primitive", () => {
   it("checks both revisions and one Agent before routing, restores current traffic, and cleans up", async () => {
     const { callbacks } = setup();
     const report = await verifySameImageRoutingRecovery({
+      ...baseline,
       standbyRevision: standby,
       callbacks,
     });
@@ -107,6 +112,7 @@ describe("same-image routing recovery primitive", () => {
       throw new Error("Stop before routing.");
     });
     const report = await verifySameImageRoutingRecovery({
+      ...baseline,
       currentRevision: revision,
       currentImage: image,
       standbyRevision: standby,
@@ -119,6 +125,30 @@ describe("same-image routing recovery primitive", () => {
     });
     expect(report.result).toBe("fail");
     expect(report.failurePhase).toBe("standby_traffic");
+  });
+
+  it.each([
+    { currentRevision: "nobody-asked-api-34a6746" },
+    { currentRevision: "nobody-asked-api-9abc820" },
+    { currentRevision: "nobody-asked-api-icloud-1a84899" },
+    { currentRevision: "nobody-asked-api-recovery-379cca2" },
+    { currentRevision: "nobody-asked-api-hosting-d433acc" },
+    { currentRevision: "another-service-current" },
+    { currentImage: "latest" },
+    { currentImage: "sha256:invalid" },
+  ])("rejects an unsafe baseline before any callback: %j", async (unsafe) => {
+    const { callbacks } = setup();
+    await expect(
+      verifySameImageRoutingRecovery({
+        ...baseline,
+        ...unsafe,
+        standbyRevision: standby,
+        callbacks,
+      }),
+    ).rejects.toThrow("Routing recovery check failed.");
+    for (const callback of Object.values(callbacks)) {
+      expect(callback).not.toHaveBeenCalled();
+    }
   });
 
   it.each([
@@ -157,6 +187,7 @@ describe("same-image routing recovery primitive", () => {
           traffic: { [ROUTING_CURRENT_REVISION]: 99, [standby]: 1 },
         }));
       const report = await verifySameImageRoutingRecovery({
+        ...baseline,
         standbyRevision: standby,
         callbacks,
       });
@@ -176,6 +207,7 @@ describe("same-image routing recovery primitive", () => {
     expect(
       (
         await verifySameImageRoutingRecovery({
+          ...baseline,
           standbyRevision: standby,
           callbacks,
         })
@@ -192,7 +224,11 @@ describe("same-image routing recovery primitive", () => {
     async (standbyRevision) => {
       const { callbacks } = setup();
       await expect(
-        verifySameImageRoutingRecovery({ standbyRevision, callbacks }),
+        verifySameImageRoutingRecovery({
+          ...baseline,
+          standbyRevision,
+          callbacks,
+        }),
       ).rejects.toThrow("Routing recovery check failed.");
       expect(callbacks.inspect).not.toHaveBeenCalled();
       expect(callbacks.selectTraffic).not.toHaveBeenCalled();
@@ -207,6 +243,7 @@ describe("same-image routing recovery primitive", () => {
       );
     });
     const report = await verifySameImageRoutingRecovery({
+      ...baseline,
       standbyRevision: standby,
       callbacks,
     });
@@ -232,6 +269,7 @@ describe("same-image routing recovery primitive", () => {
       auditAttribution: false,
     });
     const report = await verifySameImageRoutingRecovery({
+      ...baseline,
       standbyRevision: standby,
       callbacks,
     });
@@ -256,6 +294,7 @@ describe("same-image routing recovery primitive", () => {
       });
     callbacks.cleanup.mockResolvedValue(false);
     const report = await verifySameImageRoutingRecovery({
+      ...baseline,
       standbyRevision: standby,
       callbacks,
     });

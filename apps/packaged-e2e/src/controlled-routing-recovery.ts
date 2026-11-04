@@ -4,9 +4,6 @@ export const ROUTING_RECOVERY_SCOPE = Object.freeze({
   service: "nobody-asked-api",
   databaseId: "nobody-asked-dev",
 });
-export const ROUTING_CURRENT_REVISION = "nobody-asked-api-feed-b7e2368";
-export const ROUTING_CURRENT_IMAGE =
-  "sha256:1eda3f6c38b48ccb2c529eb104c8456331157f0b73cb322fe50b87ccfce7f832";
 
 export interface RoutingInspection {
   readonly projectId: string;
@@ -88,22 +85,25 @@ function verifyProbe(probe: RoutingProbe) {
 // credentials, role grants, or executable CLI. Root owns reviewed callbacks.
 export async function verifySameImageRoutingRecovery(input: {
   readonly standbyRevision: string;
-  readonly currentRevision?: string;
-  readonly currentImage?: string;
+  readonly currentRevision: string;
+  readonly currentImage: string;
   readonly callbacks: RoutingRecoveryCallbacks;
 }): Promise<RoutingRecoveryReport> {
-  const currentRevision = input.currentRevision ?? ROUTING_CURRENT_REVISION;
-  const currentImage = input.currentImage ?? ROUTING_CURRENT_IMAGE;
+  const currentRevision = input.currentRevision;
+  const currentImage = input.currentImage;
   requireCheck(/^nobody-asked-api-[a-z0-9-]+$/.test(currentRevision));
   requireCheck(/^sha256:[a-f0-9]{64}$/.test(currentImage));
   requireCheck(/^nobody-asked-api-[a-z0-9-]+$/.test(input.standbyRevision));
   requireCheck(input.standbyRevision !== currentRevision);
-  requireCheck(
-    ![
-      "nobody-asked-api-recovery-379cca2",
-      "nobody-asked-api-hosting-d433acc",
-    ].includes(input.standbyRevision),
-  );
+  const obsolete = new Set([
+    "nobody-asked-api-34a6746",
+    "nobody-asked-api-9abc820",
+    "nobody-asked-api-icloud-1a84899",
+    "nobody-asked-api-recovery-379cca2",
+    "nobody-asked-api-hosting-d433acc",
+  ]);
+  requireCheck(!obsolete.has(currentRevision));
+  requireCheck(!obsolete.has(input.standbyRevision));
   const callbacks = input.callbacks;
   const checks: string[] = [];
   const publicIds = new Set<string>();

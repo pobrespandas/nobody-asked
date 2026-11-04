@@ -96,7 +96,7 @@ Safe stop: if no known-good revision has complete evidence, run **Traffic stop**
 npx --no-install vitest run apps/packaged-e2e/src/controlled-routing-recovery.test.ts
 ```
 
-Before a hosted run, inspect the current revision and immutable image. Pass them as `currentRevision` and `currentImage`. Verify a distinct standby revision with the same image, database, configuration digest, and contract digest. Bind the callbacks to reviewed cloud commands, real HTTP checks, and read-only Audit checks.
+Before a hosted run, inspect the current revision and immutable image. Pass both required values as `currentRevision` and `currentImage`; the coordinator has no stored deployment default. It rejects known obsolete targets before any callback runs. Verify a distinct standby revision with the same image, database, configuration digest, and contract digest. Bind the callbacks to reviewed cloud commands, real HTTP checks, and read-only Audit checks.
 
 The preflight must prove public read, authorized write, read-back, and Audit attribution for the same synthetic Agent on both revisions. The coordinator then selects the standby, verifies the main endpoint, restores the original traffic, verifies it again, and stops the synthetic Agent. Its report preserves the first `failurePhase` even when restoration succeeds. Keep all Credential values inside the callback implementation.
 
