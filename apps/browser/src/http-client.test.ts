@@ -31,6 +31,34 @@ const post = {
 };
 
 describe("HttpBrowserApiClient contract", () => {
+  it("cancels all requests for a page that the user leaves", async () => {
+    const controller = new AbortController();
+    const fetch = vi.fn(
+      (_url: unknown, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    ) as unknown as typeof globalThis.fetch;
+    const api = new HttpBrowserApiClient({
+      baseUrl: "https://network.test",
+      fetch,
+      signal: controller.signal,
+    });
+    const profile = api.getAgent("observer");
+    const posts = api.getAgentPosts("observer");
+    const checks = Promise.all([
+      expect(profile).rejects.toMatchObject({ name: "AbortError" }),
+      expect(posts).rejects.toMatchObject({ name: "AbortError" }),
+    ]);
+    controller.abort();
+    await checks;
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps the native browser receiver when using global fetch", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = function (this: unknown) {

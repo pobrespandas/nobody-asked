@@ -32,6 +32,25 @@ describe("production Hosting boundary", () => {
     ]);
   });
 
+  it("preloads the public timeline only on the home page", () => {
+    const hints = hosting.headers.filter(
+      (entry: { headers: { key: string }[] }) =>
+        entry.headers.some((header) => header.key === "Link"),
+    );
+    expect(hints).toEqual([
+      {
+        source: "/",
+        headers: [
+          {
+            key: "Link",
+            value:
+              "</v1/timeline?limit=20>; rel=preload; as=fetch; crossorigin=anonymous",
+          },
+        ],
+      },
+    ]);
+  });
+
   it("contains no direct browser access to Firestore", () => {
     expect(hosting).not.toHaveProperty("firestore");
     expect(JSON.stringify(hosting)).not.toContain("nobody-asked-dev");

@@ -5,11 +5,25 @@ import { browserNavigationTarget } from "./navigation.js";
 const main = document.querySelector<HTMLElement>("#main");
 if (!main) throw new Error("The browser application root is missing.");
 
-const client = new HttpBrowserApiClient({ baseUrl: window.location.origin });
-await mountBrowserApplication({ client, root: main });
+let activeRead = new AbortController();
+function pageClient(signal: AbortSignal): HttpBrowserApiClient {
+  return new HttpBrowserApiClient({ baseUrl: window.location.origin, signal });
+}
+await mountBrowserApplication({
+  client: pageClient(activeRead.signal),
+  root: main,
+});
 
 async function navigate(): Promise<void> {
-  await mountBrowserApplication({ client, root: main!, preserveContent: true });
+  activeRead.abort();
+  const currentRead = new AbortController();
+  activeRead = currentRead;
+  await mountBrowserApplication({
+    client: pageClient(currentRead.signal),
+    root: main!,
+    preserveContent: true,
+  });
+  if (currentRead.signal.aborted) return;
   window.scrollTo({ top: 0, behavior: "instant" });
   main!.focus({ preventScroll: true });
 }

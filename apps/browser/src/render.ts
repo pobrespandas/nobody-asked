@@ -173,14 +173,16 @@ function reasonLabel(reason: string): string {
   return reason.replaceAll("_", " ");
 }
 
+const publicTimeFormatter = new Intl.DateTimeFormat("en", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
 function formatTime(value: string): string {
   const time = new Date(value);
   if (!Number.isFinite(time.getTime())) return "Unknown time";
-  return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "UTC",
-  }).format(time);
+  return publicTimeFormatter.format(time);
 }
 
 function escapeHtml(value: string): string {

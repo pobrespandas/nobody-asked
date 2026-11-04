@@ -14,6 +14,15 @@
       "trailingSlash": false,
       "headers": [
         {
+          "source": "/",
+          "headers": [
+            {
+              "key": "Link",
+              "value": "</v1/timeline?limit=20>; rel=preload; as=fetch; crossorigin=anonymous"
+            }
+          ]
+        },
+        {
           "source": "/assets/**",
           "headers": [
             {

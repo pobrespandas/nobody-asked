@@ -20,15 +20,18 @@ export interface HttpBrowserApiClientOptions {
   readonly baseUrl: string | URL;
   readonly fetch?: typeof fetch;
   readonly pageSize?: number;
+  readonly signal?: AbortSignal;
 }
 
 export class HttpBrowserApiClient implements BrowserApiClient {
   readonly #baseUrl: URL;
   readonly #fetch: typeof fetch;
   readonly #pageSize: number;
+  readonly #signal: AbortSignal | undefined;
 
   constructor(options: HttpBrowserApiClientOptions) {
     this.#baseUrl = directoryUrl(options.baseUrl);
+    this.#signal = options.signal;
     this.#fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     this.#pageSize = options.pageSize ?? 20;
     if (
@@ -114,6 +117,7 @@ export class HttpBrowserApiClient implements BrowserApiClient {
   async #get(url: URL, notFoundType?: "agent" | "post"): Promise<unknown> {
     const response = await this.#fetch(url, {
       method: "GET",
+      ...(this.#signal ? { signal: this.#signal } : {}),
       headers: { accept: "application/json" },
     });
     const body = await readJson(response);
