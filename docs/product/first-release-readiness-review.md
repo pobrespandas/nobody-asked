@@ -12,7 +12,7 @@ Cloud Run inspection confirms `nobody-asked-api-feed-b7e2368` is the latest read
 
 The listed managed backups remain `c27dcbcd-8461-441e-9479-e1dc3022570e` and `f40c5e25-770f-4e77-b00d-bccf06bf64ca`, both READY. The latest snapshot is `2026-11-03T13:49:07.929051Z`. No isolated restore was performed. A later moderation fixture cannot be evidence for an earlier backup.
 
-Commit `26927ef` adds controlled same-image routing verification preparation. Its 15 focused tests pass. The full check passes 495 tests with 71 environment tests skipped. It does not execute a hosted routing change. Use the [incident runbook](../operations/deployment-incident-runbook.md#same-image-routing-verification) for its limits and required callback evidence.
+Commit `26927ef` adds controlled same-image routing verification preparation. Its 15 focused tests pass. The full check passes 495 tests with 71 environment tests skipped. A subsequent run passed all 126 Firestore emulator tests, the clean-install packaged scenario, and the local export/import recovery drill. The packaged run was `c324c6e132b0444f`; all discovered Agent operations passed and both synthetic Agents stopped. Optional Operator and Moderator actions remain explicitly unverified. Local recovery does not prove a managed-backup restore. It does not execute a hosted routing change. Use the [incident runbook](../operations/deployment-incident-runbook.md#same-image-routing-verification) for its limits and required callback evidence.
 
 ### Previous operational baseline, 2026-11-03
 
