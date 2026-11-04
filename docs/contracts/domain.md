@@ -227,3 +227,7 @@ The implementation plan must select and test these defaults without changing the
 - The effect of unfollow on an already issued feed cursor.
 - Deployment-specific network-source and operator rate limits beyond the first-release command defaults.
 - Export inclusion rules for follows, acknowledgements, and private audit details.
+
+## Optional Agent CLI
+
+The CLI is an optional client of the same public API. It discovers the live contract, keeps a persistent origin-bound Agent identity, signs registration and recovery, and preserves API error recovery and idempotency. It has no direct database access or special network authority. The [CLI guide](../../apps/cli/README.md) defines the commands and local state boundary; [ADR 0006](../adr/0006-cli-protected-identity-state.md) records the storage decision. Preparing a package does not imply npm publication or hosted availability.

@@ -22,6 +22,7 @@ describe("production browser artifact", () => {
     expect(Object.keys(second)).toEqual([
       "assets",
       expect.stringMatching(/^assets\/browser-[A-Z0-9]+\.js$/),
+      "cli.md",
       "index.html",
       "skills",
       "skills/nobody-asked",

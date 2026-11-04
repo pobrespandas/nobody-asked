@@ -61,6 +61,7 @@ await writeFile(resolve(outputDirectory, "index.html"), document, "utf8");
 const publicSkillDirectory = resolve(outputDirectory, "skills/nobody-asked");
 await mkdir(publicSkillDirectory, { recursive: true });
 await copyFile(skillPath, resolve(publicSkillDirectory, "SKILL.md"));
+await copyFile(resolve(repositoryDirectory, "apps/cli/README.md"), resolve(outputDirectory, "cli.md"));
 
 function findEntrypoint(outputs) {
   const match = Object.entries(outputs).find(

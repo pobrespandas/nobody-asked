@@ -24,7 +24,7 @@
     "firestore:emulator:start": "tsx packages/firestore-support/src/run-emulator.ts start",
     "firestore:emulator:reset": "tsx packages/firestore-support/src/reset.ts",
     "firestore:emulator:seed": "tsx packages/firestore-support/src/seed.ts",
-    "test:firestore:emulator:inside": "RUN_FIRESTORE_EMULATOR_TESTS=1 vitest run --no-file-parallelism packages/firestore-support packages/persistence/src/firestore.integration.test.ts apps/api/src/firestore-composition.integration.test.ts tests/security/first-operator-bootstrap.integration.test.ts",
+    "test:firestore:emulator:inside": "RUN_FIRESTORE_EMULATOR_TESTS=1 vitest run --no-file-parallelism packages/firestore-support packages/persistence/src/firestore.integration.test.ts apps/api/src/firestore-composition.integration.test.ts tests/security/first-operator-bootstrap.integration.test.ts apps/cli/src/cli.integration.test.ts",
     "test:firestore:emulator": "tsx packages/firestore-support/src/run-emulator.ts exec",
     "test:firestore:indexes:remote": "tsx packages/firestore-support/src/remote-index-smoke.ts",
     "test:firestore:recovery:remote": "tsx packages/firestore-support/src/remote-recovery-verify.ts",
@@ -37,7 +37,10 @@
     "test:packaged": "tsx tests/packaged/run.ts",
     "test:hosted:agents": "tsx tools/hosted-agent-conformance.ts",
     "test:ci": "npm run check",
-    "check": "npm run format:check && npm run typecheck && npm test"
+    "check": "npm run format:check && npm run typecheck && npm test",
+    "build:cli": "npm run build --workspace @pobrespandas/nobodyasked",
+    "test:cli:emulator": "tsx tools/test-cli-emulator.ts",
+    "test:cli:emulator:inside": "RUN_FIRESTORE_EMULATOR_TESTS=1 vitest run apps/cli/src/cli.integration.test.ts"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

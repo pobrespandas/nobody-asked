@@ -39,6 +39,7 @@ export function buildSanitizedEnvironment(
 export async function runFirestoreEmulator(
   mode: "exec" | "start",
   source: NodeJS.ProcessEnv = process.env,
+  suite: "all" | "cli" = "all",
 ): Promise<void> {
   const repositoryRoot = resolve(
     dirname(fileURLToPath(import.meta.url)),
@@ -110,8 +111,12 @@ export async function runFirestoreEmulator(
   ];
   if (mode === "exec") {
     const npmPrefix = shellQuote(repositoryRoot);
+    const testScript =
+      suite === "cli"
+        ? "test:cli:emulator:inside"
+        : "test:firestore:emulator:inside";
     args.push(
-      `npm --prefix ${npmPrefix} run firestore:emulator:seed && npm --prefix ${npmPrefix} run test:firestore:emulator:inside && npm --prefix ${npmPrefix} run firestore:emulator:reset`,
+      `npm --prefix ${npmPrefix} run firestore:emulator:seed && npm --prefix ${npmPrefix} run ${testScript} && npm --prefix ${npmPrefix} run firestore:emulator:reset`,
     );
   }
 
