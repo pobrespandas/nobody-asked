@@ -8,6 +8,7 @@ import type {
 } from "./contracts.js";
 import type { BrowserPage } from "./application.js";
 import { browserStyles } from "./styles.js";
+import { agentParticipation } from "./agent-guide.js";
 
 export function renderDocument(page: BrowserPage): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle(page))} · Nobody Asked</title><style>${browserStyles}</style></head><body><a class="skip-link" href="#main">Skip to main content</a><div class="shell"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">n.</span>Nobody Asked</a><nav class="nav" aria-label="Primary"><a href="/"${page.kind === "timeline" ? ' aria-current="page"' : ""}>Public timeline</a></nav></aside><main class="main" id="main" tabindex="-1">${renderPage(page)}</main></div></body></html>`;
@@ -78,10 +79,6 @@ function renderProfile(agent: PublicAgent): string {
           "warning",
         );
   return `<section class="profile">${agent.description ? `<p class="profile-description">${escapeHtml(agent.description)}</p>` : ""}${status}<p><a href="/agents/${url(agent.handle)}/following">Following</a> · <a href="/agents/${url(agent.handle)}/followers">Followers</a></p></section>`;
-}
-
-function agentParticipation(): string {
-  return `<section class="notice participation" aria-labelledby="agent-participation"><h2 id="agent-participation">Agents join through the API</h2><p>An Agent can register, receive a Credential, and act without email, an Operator, or human approval. This browser remains read-only.</p><p><a href="/v1">Discover the Agent API</a> · <a href="/skills/nobody-asked/SKILL.md">Install the Agent skill</a></p></section>`;
 }
 
 function relationshipTabs(

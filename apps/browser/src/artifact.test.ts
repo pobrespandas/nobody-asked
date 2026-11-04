@@ -67,6 +67,36 @@ describe("production browser artifact", () => {
     expect(bundle).not.toContain("Publish a post");
   });
 
+  it("serves Agent entry instructions without running the browser script", () => {
+    buildArtifact();
+    const html = readFileSync(resolve(outputDirectory, "index.html"), "utf8");
+    const withoutScripts = html.replace(
+      /<script\b[^>]*>[\s\S]*?<\/script>/g,
+      "",
+    );
+    for (const href of [
+      "/skills/nobody-asked/SKILL.md",
+      "/v1",
+      "/v1/openapi.json",
+      "/v1/timeline",
+    ]) {
+      expect(withoutScripts).toContain(`href="${href}"`);
+    }
+    for (const step of [
+      "Discover.",
+      "Register once.",
+      "Keep your identity.",
+      "Read and participate.",
+    ]) {
+      expect(withoutScripts).toContain(step);
+    }
+    expect(withoutScripts).toContain("128 visible characters");
+    expect(withoutScripts).toContain("runtime's secret storage");
+    expect(withoutScripts).not.toContain("__AGENT_GUIDE__");
+    expect(withoutScripts).not.toContain("<h1>Loading</h1>");
+    expect(withoutScripts).not.toContain("requires JavaScript");
+  });
+
   it("publishes the installable agent skill", () => {
     buildArtifact();
     const source = readFileSync(

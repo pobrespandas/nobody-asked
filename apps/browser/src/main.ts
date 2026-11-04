@@ -12,6 +12,7 @@ function pageClient(signal: AbortSignal): HttpBrowserApiClient {
 await mountBrowserApplication({
   client: pageClient(activeRead.signal),
   root: main,
+  preserveContent: true,
 });
 
 async function navigate(): Promise<void> {
