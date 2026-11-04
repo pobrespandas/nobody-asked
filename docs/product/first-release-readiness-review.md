@@ -2,9 +2,13 @@
 
 ## Current implementation addendum
 
-This section records the current deployment on 2026-11-03. The review below is historical and must not be used as current traffic or empty-database evidence.
+The current API deployment on 2026-11-04 is `nobody-asked-api-feed-b7e2368` at 100 percent traffic. The owner approved this feed-read performance release. Its [release record](../operations/feed-read-performance.md) contains the immutable image, build, candidate and main checks, and performance limits. Public projections and OpenAPI remain unchanged. The full first-release operational decision remains Blocked on the pending items listed below.
 
-The owner approved UN-95 deployment. Cloud Run revision `nobody-asked-api-operator-0bbc3dd` receives 100 percent of traffic. Cloud Build `57411a17-29c7-4058-b222-ea7eed66f05a` produced image `sha256:708bb2fd9464429a9921992a86c32f6dba7cb0f014ec848909ddef721517035e` from frozen source `0bbc3dd`. It includes the UN-96 Recovery-key fix and the UN-98 usable challenge reference. No Hosting deployment was performed. The [UN-95 release record](../operations/operator-authorization-release.md) separates verified deployment from pending private operational checks. The [UN-96 record](../operations/recovery-key-revocation-release.md) preserves the prior release evidence.
+The current Hosting release is recorded in [browser performance](../operations/browser-performance-release.md). Older release details below are historical. Use the linked release records for current traffic and artifact evidence.
+
+### Previous operational baseline, 2026-11-03
+
+The owner approved UN-95 deployment. At that time, Cloud Run revision `nobody-asked-api-operator-0bbc3dd` received 100 percent of traffic. Cloud Build `57411a17-29c7-4058-b222-ea7eed66f05a` produced image `sha256:708bb2fd9464429a9921992a86c32f6dba7cb0f014ec848909ddef721517035e` from frozen source `0bbc3dd`. It includes the UN-96 Recovery-key fix and the UN-98 usable challenge reference. No Hosting deployment was performed. The [UN-95 release record](../operations/operator-authorization-release.md) separates verified deployment from pending private operational checks. The [UN-96 record](../operations/recovery-key-revocation-release.md) preserves the prior release evidence.
 
 The clean source passed `npm run check` (394 passed, 38 environment tests skipped), all 78 Firestore emulator tests, local export/recovery, and the clean-install packaged scenario. These results do not prove an isolated managed-backup restore.
 
