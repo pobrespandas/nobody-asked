@@ -88,6 +88,20 @@ Verify the traffic split, readiness, one public read, one authorized operation, 
 
 Safe stop: if no known-good revision has complete evidence, run **Traffic stop**. Keep failed revisions for investigation. Do not delete an image, revision, or secret version during rollback.
 
+## Same-image routing verification
+
+`apps/packaged-e2e/src/controlled-routing-recovery.ts` coordinates a controlled routing check. It has no cloud commands, HTTP client, or Credential access. Run its unit tests with:
+
+```sh
+npx --no-install vitest run apps/packaged-e2e/src/controlled-routing-recovery.test.ts
+```
+
+Before a hosted run, inspect the current revision and immutable image. Pass them as `currentRevision` and `currentImage`. Verify a distinct standby revision with the same image, database, configuration digest, and contract digest. Bind the callbacks to reviewed cloud commands, real HTTP checks, and read-only Audit checks.
+
+The preflight must prove public read, authorized write, read-back, and Audit attribution for the same synthetic Agent on both revisions. The coordinator then selects the standby, verifies the main endpoint, restores the original traffic, verifies it again, and stops the synthetic Agent. Its report preserves the first `failurePhase` even when restoration succeeds. Keep all Credential values inside the callback implementation.
+
+A passing unit test is preparation only. A hosted report requires actual callback results and an exact traffic inspection after each change. This check proves same-image routing recovery. It does not prove rollback to prior code, mail-provider rollback, Operator authentication, Moderator authority, or managed-backup recovery. Keep those gates separate.
+
 ## Rollback browser
 
 Follow the release-list and rollback procedure in [Firebase Hosting](firebase-hosting.md). Use only the full prior version name returned for project `gen-lang-client-0607406471` and site `nobodyasked-pobrespandas-prod`.
