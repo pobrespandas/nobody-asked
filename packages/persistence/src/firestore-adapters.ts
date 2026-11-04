@@ -486,13 +486,7 @@ export class FirestorePublicReadRepository {
 
   async listVisiblePublicPosts(): Promise<readonly PublicTimelineRecord[]> {
     const snapshot = await this.baseItemsQuery().limit(50).get();
-    return Object.freeze(
-      (
-        await Promise.all(
-          snapshot.docs.map((doc) => this.mapTimelineRecord(doc)),
-        )
-      ).filter((record): record is PublicTimelineRecord => record !== null),
-    );
+    return Object.freeze(await this.mapTimelineRecords(snapshot.docs));
   }
 
   async findVisiblePublicPostById(
@@ -534,13 +528,7 @@ export class FirestorePublicReadRepository {
       .orderBy("id", "desc")
       .limit(50)
       .get();
-    return Object.freeze(
-      (
-        await Promise.all(
-          snapshot.docs.map((doc) => this.mapTimelineRecord(doc)),
-        )
-      ).filter((record): record is PublicTimelineRecord => record !== null),
-    );
+    return Object.freeze(await this.mapTimelineRecords(snapshot.docs));
   }
 
   async listFollowing(
@@ -577,11 +565,7 @@ export class FirestorePublicReadRepository {
     const docs = snapshot.docs.slice(0, options.limit);
     const last = docs.at(-1);
     return Object.freeze({
-      items: Object.freeze(
-        (
-          await Promise.all(docs.map((doc) => this.mapTimelineRecord(doc)))
-        ).filter((record): record is PublicTimelineRecord => record !== null),
-      ),
+      items: Object.freeze(await this.mapTimelineRecords(docs)),
       nextCursor:
         snapshot.size > options.limit && last
           ? encodeCursor({
@@ -636,9 +620,8 @@ export class FirestorePublicReadRepository {
       .flatMap((snapshot) => snapshot.docs)
       .sort(compareItemSnapshots);
     const visible: PublicTimelineRecord[] = [];
-    for (const snapshot of ordered) {
-      const record = await this.mapTimelineRecord(snapshot);
-      if (record) visible.push(record);
+    for (const batch of chunks(ordered, options.limit + 1)) {
+      visible.push(...(await this.mapTimelineRecords(batch)));
       if (visible.length > options.limit) break;
     }
     const items = visible.slice(0, options.limit);
@@ -664,15 +647,45 @@ export class FirestorePublicReadRepository {
       .orderBy("id", "desc");
   }
 
-  private async mapTimelineRecord(
-    snapshot: QueryDocumentSnapshot,
-  ): Promise<PublicTimelineRecord | null> {
-    if (snapshot.data().type !== "repost") return mapPost(snapshot);
-    const source = await this.findVisiblePublicPostById(
-      String(snapshot.data().sourcePostId),
-    );
-    if (!source) return null;
-    return mapRepost(snapshot, source);
+  private async mapTimelineRecords(
+    snapshots: readonly QueryDocumentSnapshot[],
+  ): Promise<PublicTimelineRecord[]> {
+    const sourceIds = [
+      ...new Set(
+        snapshots
+          .filter((snapshot) => snapshot.data().type === "repost")
+          .map((snapshot) => String(snapshot.data().sourcePostId)),
+      ),
+    ];
+    const sources = new Map<string, PublicPostRecord>();
+    if (sourceIds.length) {
+      const documents = await this.firestore.getAll(
+        ...sourceIds.map((id) =>
+          this.firestore.collection(collections.items).doc(id),
+        ),
+      );
+      for (const document of documents) {
+        const data = document.data();
+        if (
+          document.exists &&
+          data?.visibility === "visible" &&
+          data.type !== "repost"
+        ) {
+          sources.set(document.id, mapPost(document));
+        }
+      }
+    }
+    const records: PublicTimelineRecord[] = [];
+    for (const snapshot of snapshots) {
+      const data = snapshot.data();
+      if (data.type !== "repost") {
+        records.push(mapPost(snapshot));
+      } else {
+        const source = sources.get(String(data.sourcePostId));
+        if (source) records.push(mapRepost(snapshot, source));
+      }
+    }
+    return records;
   }
 
   private async relationships(

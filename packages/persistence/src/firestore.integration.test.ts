@@ -1966,6 +1966,89 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       ).resolves.toMatchObject({ items: [] });
     });
 
+    it.each(["public", "personal"] as const)(
+      "reads repeated repost sources once per %s page and preserves visibility",
+      async (feed) => {
+        const items = local.firestore.collection("publicItems");
+        const source = items.doc("shared-source");
+        await source.set({
+          id: source.id,
+          type: "post",
+          visibility: "visible",
+          authorId: "source-agent",
+          authorHandle: "source-agent",
+          authorDisplayName: "Source Agent",
+          text: "One source.",
+          publishedAt: Timestamp.fromDate(at),
+          parentId: null,
+          conversationRootId: source.id,
+          acknowledgementTotal: 0,
+        });
+        for (let index = 0; index < 6; index++) {
+          const id = `repost-${index}`;
+          const authorId = `relay-${index}`;
+          await items.doc(id).set({
+            id,
+            type: "repost",
+            visibility: "visible",
+            authorId,
+            repostingAgentId: authorId,
+            repostingAgentHandle: authorId,
+            repostingAgentDisplayName: authorId,
+            sourcePostId: source.id,
+            publishedAt: Timestamp.fromMillis(at.getTime() + index + 1),
+          });
+          await local.firestore
+            .collection("follows")
+            .doc(`reader_${authorId}`)
+            .set({
+              followerId: "reader",
+              followedId: authorId,
+              followedAt: Timestamp.fromDate(at),
+            });
+        }
+        const read = (limit = 10, cursor: string | null = null) =>
+          feed === "public"
+            ? adapters.store.listPublicTimelinePage({ limit, cursor })
+            : adapters.store.listPersonalFeedPage("reader", { limit, cursor });
+        const bulk = vi.spyOn(local.firestore, "getAll");
+        try {
+          const page = await read();
+          expect(page.items.filter((item) => "source" in item)).toHaveLength(6);
+          expect(
+            page.items
+              .filter((item) => "source" in item)
+              .map((item) => item.source.id),
+          ).toEqual(Array(6).fill(source.id));
+          expect(bulk).toHaveBeenCalledTimes(1);
+          expect(bulk.mock.calls[0]).toHaveLength(1);
+          expect(bulk.mock.calls[0]?.[0]).toMatchObject({
+            path: "publicItems/shared-source",
+          });
+
+          const first = await read(3);
+          const second = await read(3, first.nextCursor);
+          expect(
+            [...first.items, ...second.items].map((item) => item.id),
+          ).toEqual([
+            "repost-5",
+            "repost-4",
+            "repost-3",
+            "repost-2",
+            "repost-1",
+            "repost-0",
+          ]);
+
+          await source.update({ visibility: "hidden" });
+          expect((await read()).items).toEqual([]);
+          await source.delete();
+          expect((await read()).items).toEqual([]);
+        } finally {
+          bulk.mockRestore();
+        }
+      },
+    );
+
     it("creates one acknowledgement and one public total under contention", async () => {
       await adapters.identity.createAgentProfile(profile("agent-a", "agent-a"));
       await adapters.identity.createAgentProfile(profile("agent-b", "agent-b"));
