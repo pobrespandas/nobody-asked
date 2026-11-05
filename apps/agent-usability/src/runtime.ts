@@ -40,7 +40,9 @@ export function sdkOptions(options: RuntimeOptions): CodexOptions {
         JSON.stringify(`Bearer ${options.broker.token}`) +
         "}",
       "mcp_servers.experiment.required=true",
+      'mcp_servers.experiment.default_tools_approval_mode="approve"',
       "mcp_servers.experiment.supports_parallel_tool_calls=false",
+      "features.code_mode_host=true",
       ...[
         "shell_tool",
         "unified_exec",
@@ -51,7 +53,6 @@ export function sdkOptions(options: RuntimeOptions): CodexOptions {
         "in_app_browser",
         "view_image",
         "image_generation",
-        "code_mode_host",
         "multi_agent",
         "multi_agent_v2",
       ].map((feature) => `features.${feature}=false`),

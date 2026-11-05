@@ -13,6 +13,7 @@ export interface BrokerOptions {
   home: string;
   workspace: string;
   redact: (text: string) => Promise<string>;
+  observePublicRead?: (route: string, status: number) => Promise<void>;
   observeCommand?: (event: {
     command: string;
     exitCode: number;
@@ -154,6 +155,18 @@ export async function startBroker(options: BrokerOptions) {
               status: reply.status,
               body: Buffer.concat(chunks).toString("utf8"),
             });
+            const path = new URL(params.arguments.url).pathname;
+            const discoveryPaths = [
+              "/",
+              "/cli.md",
+              "/skills/nobody-asked/SKILL.md",
+              "/v1",
+              "/v1/openapi.json",
+            ];
+            await options.observePublicRead?.(
+              discoveryPaths.includes(path) ? path : "other",
+              reply.status,
+            );
           } else if (
             params.name === "run_command" &&
             Array.isArray(params.arguments?.argv)

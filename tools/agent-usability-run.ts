@@ -157,6 +157,9 @@ const brokerOptions = {
   stateDirectory,
   home,
   workspace: hostWorkspace,
+  observePublicRead: async (route: string, status: number) => {
+    await record({ type: "public.read", route, status });
+  },
   observeCommand: async (event: {
     command: string;
     exitCode: number;
