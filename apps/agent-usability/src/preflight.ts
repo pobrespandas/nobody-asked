@@ -8,10 +8,13 @@ import { createServer } from "node:http";
 
 const execute = promisify(execFile);
 
-export function permissionConfig(workspace: string): string {
-  if (!workspace.startsWith("/"))
-    throw new Error("Workspace must be absolute.");
-  return `permissions.experiment.filesystem={":root"="deny",":minimal"="read",${JSON.stringify(workspace)}="write"}`;
+export function permissionConfig(
+  workspace: string,
+  executable: string,
+): string {
+  if (!workspace.startsWith("/") || !executable.startsWith("/"))
+    throw new Error("Workspace and executable must be absolute.");
+  return `permissions.experiment.filesystem={":root"="deny",":minimal"="read",${JSON.stringify(executable)}="read",${JSON.stringify(workspace)}="write"}`;
 }
 
 export interface PreflightResult {
@@ -28,6 +31,7 @@ export async function isolationPreflight(
 ): Promise<PreflightResult> {
   if (process.platform !== "darwin")
     throw new Error("The reviewed isolation probe requires macOS.");
+  codexPath = await realpath(codexPath);
   const root = await realpath(
     await mkdtemp(join(tmpdir(), "nobody-isolation-")),
   );
@@ -56,7 +60,7 @@ export async function isolationPreflight(
             "-P",
             "experiment",
             "-c",
-            permissionConfig(workspace),
+            permissionConfig(workspace, codexPath),
             "-c",
             "permissions.experiment.network.enabled=false",
             "-C",
@@ -127,7 +131,7 @@ export async function isolationPreflight(
             "-P",
             "experiment",
             "-c",
-            permissionConfig(workspace),
+            permissionConfig(workspace, codexPath),
             "-c",
             "permissions.experiment.network.enabled=false",
             "-C",

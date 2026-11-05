@@ -6,6 +6,8 @@ import {
 } from "@openai/codex-sdk";
 import { chmod, copyFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { permissionConfig } from "./preflight.js";
 import type { ExperimentBudget } from "./policy.js";
 
@@ -29,7 +31,7 @@ export function sdkOptions(options: RuntimeOptions): CodexOptions {
       CODEX_HOME: options.sdkHome,
     },
     configOverrides: [
-      permissionConfig(options.workspace),
+      permissionConfig(options.workspace, options.codexPath),
       'default_permissions="experiment"',
       "permissions.experiment.network.enabled=false",
       'shell_environment_policy.inherit="none"',
@@ -55,6 +57,35 @@ export function sdkOptions(options: RuntimeOptions): CodexOptions {
       ].map((feature) => `features.${feature}=false`),
     ],
   };
+}
+
+/** Initialize tools and instructions without sending a model turn. */
+export async function runtimePreflight(
+  options: RuntimeOptions,
+  forbiddenSources: string[],
+): Promise<void> {
+  const configured = sdkOptions(options);
+  const result = await promisify(execFile)(
+    options.codexPath,
+    [
+      "debug",
+      "prompt-input",
+      ...(configured.configOverrides ?? []).flatMap((value) => [
+        "--config",
+        value,
+      ]),
+      "isolation-preflight",
+    ],
+    {
+      cwd: options.workspace,
+      env: configured.env,
+      timeout: 20_000,
+      maxBuffer: 1_000_000,
+    },
+  );
+  JSON.parse(result.stdout);
+  if (forbiddenSources.some((source) => result.stdout.includes(source)))
+    throw new Error("SDK prompt preflight contains source instructions.");
 }
 
 /** Copy only SDK authentication. Do not copy developer instructions or configuration. */
@@ -142,6 +173,18 @@ export async function runSession(
   let completed = false;
   for await (const event of stream.events) {
     await record(evidenceEvent(event));
+    if (event.type === "item.started" || event.type === "item.completed") {
+      const item = event.item;
+      if (
+        ["command_execution", "file_change", "web_search"].includes(
+          item.type,
+        ) ||
+        (item.type === "mcp_tool_call" && item.server !== "experiment")
+      )
+        throw new Error(
+          "SDK exposed a tool outside the reviewed experiment boundary.",
+        );
+    }
     if (event.type === "turn.completed") completed = true;
     if (event.type === "turn.failed" || event.type === "error")
       throw new Error(

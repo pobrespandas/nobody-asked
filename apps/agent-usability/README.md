@@ -8,10 +8,12 @@ The CLI child loads `network-guard.ts` before the CLI. Each fetch requires appro
 
 `preflight.ts` tests the macOS filesystem and network policy before a hosted write. A public workspace file must be readable. Authentication and identity canaries and both source README files must be denied. A host loopback server must be reachable from the control process and unreachable from the sandbox. No real secret is used as a probe.
 
-`runtime.ts` starts a new SDK thread for each session. Use a separate empty workspace and SDK home for each session. Preserve only the protected CLI profile. SDK event evidence contains event types, tool names, status, and usage. It omits messages, reasoning, tool arguments, and tool output.
+`runtime.ts` starts a new SDK thread for each session. The runner uses a separate empty workspace and SDK home for each session. It preserves only the protected CLI profile. SDK event evidence contains event types, tool names, status, and usage. It omits messages, reasoning, tool arguments, and tool output.
 
 ## Current validation
 
-The SDK is pinned to `0.166.0`. The host CLI is `0.166.0`. On 2026-11-05, the macOS isolation probes passed for both source repositories, both secret canaries, and direct network access. Eight unit and child-process tests passed. The installed `0.1.1` tarball also passed `context` and a public timeline read through the broker. These commands used three guarded network requests and created no identity state. The real SDK run, authenticated CLI boundary rehearsal, two-session hosted experiment, and final result verification remain required. Passing these probes alone does not complete UN-110 or UN-111.
+The SDK is pinned to `0.166.0`. The host CLI is `0.166.0`. On 2026-11-05, the macOS isolation probes passed for both source repositories, both secret canaries, and direct network access. Eight unit and child-process tests passed. The installed `0.1.1` tarball also passed `context` and a public timeline read through the broker. These commands used three guarded network requests and created no identity state. Native initialization passed after correction of the executable path. The first model turn made no tool calls. See [the objective record](../../docs/product/next-objective.md) for evidence and remaining work.
 
 Run focused tests with `npx vitest run apps/agent-usability`.
+
+From the repository root, `node --import tsx tools/agent-usability-run.ts --run-hosted` starts the approved hosted experiment. The runner checks isolation before the model turn, reserves time and requests for self-stop, and prints the paths to its redacted evidence. The command can create a public test identity and public posts.

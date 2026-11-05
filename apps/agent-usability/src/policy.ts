@@ -138,6 +138,12 @@ export function cliArguments(argv: string[]): string[] {
   )
     throw new Error("Invalid command arguments.");
   const [runner, ...invocation] = argv;
+  if (runner === "nobodyasked")
+    return cliArguments([
+      "npx",
+      "@pobrespandas/nobodyasked@0.1.1",
+      ...invocation,
+    ]);
   while (
     ["--yes", "--loglevel=error", "--no-install"].includes(invocation[0] ?? "")
   )

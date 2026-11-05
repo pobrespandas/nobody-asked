@@ -13,6 +13,11 @@ export interface BrokerOptions {
   home: string;
   workspace: string;
   redact: (text: string) => Promise<string>;
+  observeCommand?: (event: {
+    command: string;
+    exitCode: number;
+    durationMs: number;
+  }) => Promise<void>;
 }
 
 async function jsonBody(
@@ -154,6 +159,8 @@ export async function startBroker(options: BrokerOptions) {
             Array.isArray(params.arguments?.argv)
           ) {
             const args = cliArguments(params.arguments.argv as string[]);
+            const started = Date.now();
+            let exitCode = 0;
             try {
               const child = await execute(
                 process.execPath,
@@ -195,12 +202,18 @@ export async function startBroker(options: BrokerOptions) {
                 stdout?: string;
                 stderr?: string;
               };
+              exitCode = typeof child.code === "number" ? child.code : 1;
               output = JSON.stringify({
                 exitCode: typeof child.code === "number" ? child.code : 1,
                 stdout: child.stdout ?? "",
                 stderr: child.stderr ?? "Command did not complete.",
               });
             }
+            await options.observeCommand?.({
+              command: args[0] ?? "help",
+              exitCode,
+              durationMs: Date.now() - started,
+            });
           } else throw new Error("Unknown tool or invalid arguments.");
           result = {
             content: [{ type: "text", text: await options.redact(output) }],
