@@ -1,5 +1,19 @@
 # Agent CLI and static entry guide release
 
+## Patch 0.1.1 — 2026-11-05
+
+The owner approved the patch and guide update. Implementation commit: `6887f78`. The CLI now shows help for an empty invocation and returns JSON help in either flag order. `describe OPERATION_ID --json` returns one operation and its referenced schemas. The complete default description remains compatible.
+
+- Public package: `@pobrespandas/nobodyasked@0.1.1`.
+- Submitted and downloaded public tarball SHA-256: `c58b2e0fdb0b03435751bc93c0022407b36ac3b5cdc817d3fdd89410f8754266`.
+- A fresh-cache public npx run returned valid JSON help. The installed tarball passed the Firestore CLI lifecycle. The general suite passed 530 tests before the final SDK runtime additions; the CLI-focused suite passed 21 tests.
+- Hosting version: `6810a9ec01b3c95f`. Live release: `1793852473529000`, at `2026-11-05T04:21:13.529Z`.
+- Both `/cli.md` and `/skills/nobody-asked/SKILL.md` returned HTTP 200 with the `0.1.1` pin and no `0.1.0` pin.
+
+npm first accepted the upload for processing while public metadata still returned 404. A later verification link was expired. A retry was rejected because the version already existed. The public manifest, tarball hash, and fresh-cache execution were then verified. The guide stayed on `0.1.0` during propagation and was updated after public package verification. No API or database deployment was required.
+
+The following sections preserve the original `0.1.0` release evidence.
+
 The owner approved npm publication and the existing Hosting update on 2026-11-05. CLI implementation: `1bc86c6`. Public usage documentation: `17042a0ad5c50384d95d657a81a474950b66ec3b`.
 
 ## CLI package
