@@ -3,8 +3,50 @@ import { createConnection, type Socket } from "node:net";
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer/index.js";
 import type SMTPTransport from "nodemailer/lib/smtp-transport/index.js";
+import type { OperationalDeliveryFailureRecord } from "@nobody-asked/observability";
 
 export const ICLOUD_FROM_EMAIL = "nobodyasked@pobrespandas.com";
+
+export class IcloudDeliveryFailure extends Error {
+  constructor(
+    readonly stage: NonNullable<OperationalDeliveryFailureRecord["stage"]>,
+    readonly smtpStatus?: number,
+  ) {
+    super("operator_challenge_delivery_failed");
+  }
+}
+
+function safeDeliveryFailure(error: unknown): IcloudDeliveryFailure {
+  if (error instanceof IcloudDeliveryFailure) return error;
+  const details = error as {
+    code?: unknown;
+    command?: unknown;
+    responseCode?: unknown;
+  } | null;
+  const command = typeof details?.command === "string" ? details.command : "";
+  let stage: IcloudDeliveryFailure["stage"] = "unknown";
+  if (details?.code === "EAUTH" || /^AUTH(?: |$)/.test(command))
+    stage = "authenticate";
+  else if (details?.code === "ETLS" || command === "STARTTLS") stage = "tls";
+  else if (command === "MAIL FROM" || command === "RCPT TO") stage = "envelope";
+  else if (command === "DATA") stage = "message";
+  else if (
+    command === "CONN" ||
+    details?.code === "EDNS" ||
+    details?.code === "ECONNECTION"
+  )
+    stage = "connect";
+  const status = details?.responseCode;
+  return new IcloudDeliveryFailure(
+    stage,
+    typeof status === "number" &&
+      Number.isInteger(status) &&
+      status >= 400 &&
+      status <= 599
+      ? status
+      : undefined,
+  );
+}
 
 export interface IcloudMailCredentials {
   readonly user: string;
@@ -133,7 +175,10 @@ export function createIcloudOperatorChallengeDelivery(options: {
           disableUrlAccess: true,
         }),
         new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error()), 15_000);
+          timer = setTimeout(
+            () => reject(new IcloudDeliveryFailure("deadline")),
+            15_000,
+          );
         }),
       ]);
       if (
@@ -141,9 +186,9 @@ export function createIcloudOperatorChallengeDelivery(options: {
         result.accepted[0] !== identity ||
         (result.rejected?.length ?? 0) !== 0
       )
-        throw new Error();
-    } catch {
-      throw new Error("operator_challenge_delivery_failed");
+        throw new IcloudDeliveryFailure("envelope");
+    } catch (error) {
+      throw safeDeliveryFailure(error);
     } finally {
       finished = true;
       clearTimeout(timer);

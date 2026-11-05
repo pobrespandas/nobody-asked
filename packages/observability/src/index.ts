@@ -65,6 +65,15 @@ export interface OperationalLogger {
 export interface OperationalDeliveryFailureRecord {
   readonly severity: "ERROR";
   readonly event: "operator.challenge.delivery_failed";
+  readonly stage?:
+    | "connect"
+    | "tls"
+    | "authenticate"
+    | "envelope"
+    | "message"
+    | "deadline"
+    | "unknown";
+  readonly smtpStatus?: number;
 }
 
 export function createJsonOperationalLogger(

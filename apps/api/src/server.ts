@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { registrationNetworkSourceKey } from "./request-source.js";
+import { IcloudDeliveryFailure } from "./icloud-delivery.js";
 import {
   mapError,
   errorResponse,
@@ -1385,11 +1386,19 @@ async function requestOperatorChallenge(
   if (result.accepted && result.created) {
     try {
       await dependencies.deliverOperatorChallenge(identity, challengeSecret);
-    } catch {
+    } catch (error) {
       try {
         dependencies.operationalLogger.write({
           severity: "ERROR",
           event: "operator.challenge.delivery_failed",
+          ...(error instanceof IcloudDeliveryFailure
+            ? {
+                stage: error.stage,
+                ...(error.smtpStatus === undefined
+                  ? {}
+                  : { smtpStatus: error.smtpStatus }),
+              }
+            : {}),
         });
       } catch {
         // Delivery failure must not expose identity through a logger failure.

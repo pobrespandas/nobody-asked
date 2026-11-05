@@ -14,6 +14,7 @@ import { RateLimitExceededError } from "@nobody-asked/persistence";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApi } from "./server.js";
+import { IcloudDeliveryFailure } from "./icloud-delivery.js";
 import type {
   ApiDependencies,
   ApiStore,
@@ -1624,7 +1625,7 @@ describe("hosted operator controls", () => {
         challengeId: "new-reference",
       });
     vi.mocked(dependencies.deliverOperatorChallenge)
-      .mockRejectedValueOnce(new Error("provider unavailable"))
+      .mockRejectedValueOnce(new IcloudDeliveryFailure("message", 554))
       .mockResolvedValueOnce(undefined);
     const request = (key = "same-key") =>
       new Request("https://network.test/v1/operator/challenges", {
@@ -1661,7 +1662,12 @@ describe("hosted operator controls", () => {
         record.event === "operator.challenge.delivery_failed",
     );
     expect(failures).toEqual([
-      { severity: "ERROR", event: "operator.challenge.delivery_failed" },
+      {
+        severity: "ERROR",
+        event: "operator.challenge.delivery_failed",
+        stage: "message",
+        smtpStatus: 554,
+      },
     ]);
     expect(JSON.stringify(failures)).not.toMatch(
       /operator@example|challenge-secret|provider unavailable/,
