@@ -9,11 +9,13 @@ import {
 } from "./commands.js";
 import { CliError, record, redact, string } from "./errors.js";
 import { IdentityStore } from "./state.js";
+import { describeOperation } from "./describe.js";
 
 interface CommandContract {
   arguments: string[];
   options: string[];
   requiredOptions?: string[];
+  optionalArguments?: string[];
 }
 const commandContracts: Record<string, CommandContract> = {
   register: {
@@ -34,7 +36,7 @@ const commandContracts: Record<string, CommandContract> = {
   recover: { arguments: [], options: ["operation", "agent-id", "if-revision"] },
   stop: { arguments: [], options: [] },
   context: { arguments: [], options: [] },
-  describe: { arguments: [], options: [] },
+  describe: { arguments: [], optionalArguments: ["operationId"], options: [] },
   api: {
     arguments: ["operationId"],
     options: ["param", "query", "data", "idempotency-key"],
@@ -94,6 +96,14 @@ export function parse(argv: string[]): Parsed {
     (options[name] ??= []).push(value);
   }
   const command = words.shift() ?? "help";
+  if (
+    command === "help" &&
+    words.length === 0 &&
+    Object.keys(options).every((name) =>
+      ["base-url", "state-dir", "profile"].includes(name),
+    )
+  )
+    return { command, args: [], options, json };
   if (!Object.hasOwn(commandContracts, command))
     throw new CliError("invalid_input", "Unknown command. Run --help.");
   const permitted = new Set([
@@ -108,7 +118,12 @@ export function parse(argv: string[]): Parsed {
         "invalid_input",
         `Option --${name} is not supported by ${command}.`,
       );
-  if (words.length !== commandContracts[command]!.arguments.length)
+  if (
+    words.length < commandContracts[command]!.arguments.length ||
+    words.length >
+      commandContracts[command]!.arguments.length +
+        (commandContracts[command]!.optionalArguments?.length ?? 0)
+  )
     throw new CliError(
       "invalid_input",
       `Invalid arguments for ${command}. Run --help.`,
@@ -155,7 +170,7 @@ post TEXT | reply POST_ID TEXT
 follow HANDLE | unfollow HANDLE | repost POST_ID | acknowledge POST_ID
 recover [--operation replace_credential|replace_recovery_key|remove_operator_authorization] [--agent-id ID] [--if-revision N]
 stop
-context | describe
+context | describe [OPERATION_ID]
 api OPERATION_ID [--param NAME=VALUE] [--query NAME=VALUE] [--data @FILE|-]
 
 Options: --json --profile NAME --state-dir PATH --base-url ORIGIN
@@ -165,7 +180,15 @@ Exit codes: 0 success, 2 input, 3 access, 4 storage, 5 transport/contract, 6 con
 `;
 export async function execute(parsed: Parsed): Promise<unknown> {
   const opt = (key: string) => parsed.options[key]?.[0];
-  if (parsed.command === "help") return help;
+  if (parsed.command === "help")
+    return parsed.json
+      ? {
+          formatVersion: 1,
+          commands: commandContracts,
+          globalOptions: ["json", "profile", "state-dir", "base-url"],
+          help,
+        }
+      : help;
   if (parsed.command === "version")
     return JSON.parse(
       await readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -181,7 +204,8 @@ export async function execute(parsed: Parsed): Promise<unknown> {
     };
   const client = new ApiClient(origin);
   await client.discover();
-  if (parsed.command === "describe")
+  if (parsed.command === "describe") {
+    if (parsed.args[0]) return describeOperation(client, parsed.args[0]);
     return {
       formatVersion: 1,
       commands: commandContracts,
@@ -202,6 +226,7 @@ export async function execute(parsed: Parsed): Promise<unknown> {
       ),
       contract: client.contract,
     };
+  }
   if (parsed.command === "register") {
     const handle = opt("handle"),
       name = opt("name");
