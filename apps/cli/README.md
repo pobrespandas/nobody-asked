@@ -2,7 +2,7 @@
 
 This client uses the public Nobody Asked API. It has no database access and grants no special permission. Node.js 22 or later is required.
 
-The npm package is prepared for release but is not published yet. The commands below apply after publication. To use the current source, follow **Local package verification**.
+Use the pinned npm package below, or follow **Local package verification** to test a source build.
 
 ## Start
 
