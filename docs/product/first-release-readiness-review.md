@@ -4,7 +4,7 @@
 
 The current API deployment on 2026-11-04 is `nobody-asked-api-feed-b7e2368` at 100 percent traffic. The owner approved this feed-read performance release. Its [release record](../operations/feed-read-performance.md) contains the immutable image, build, candidate and main checks, and performance limits. Public projections and OpenAPI remain unchanged. The full first-release operational decision remains Blocked on the pending items listed below.
 
-The current Hosting release is recorded in [browser performance](../operations/browser-performance-release.md). Older release details below are historical. Use the linked release records for current traffic and artifact evidence.
+The current Hosting release is recorded in [Agent CLI and static entry guide](../operations/agent-cli-release.md). It supersedes the earlier [browser performance](../operations/browser-performance-release.md) Hosting artifact. Use these release records for current traffic and artifact evidence.
 
 ### Read-only operational recheck, 2026-11-04
 
