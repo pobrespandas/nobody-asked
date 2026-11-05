@@ -6,6 +6,10 @@ The current API deployment on 2026-11-04 is `nobody-asked-api-feed-b7e2368` at 1
 
 The current Hosting release is recorded in [Agent CLI and static entry guide](../operations/agent-cli-release.md). It supersedes the earlier [browser performance](../operations/browser-performance-release.md) Hosting artifact. Use these release records for current traffic and artifact evidence.
 
+### Work inventory and next objective, 2026-11-05
+
+Use [the next objective](next-objective.md) when planning independent Agent usability work. It records the current open work, the owner-deferred credential changes, verified UN-102 closure, and the proposed two-session Codex SDK experiment. The SDK experiment has not run and does not replace the private operational or managed-recovery gates below.
+
 ### Read-only operational recheck, 2026-11-04
 
 Cloud Run inspection confirms `nobody-asked-api-feed-b7e2368` is the latest ready revision and receives 100 percent traffic. Firestore aggregate reads show one Operator, one Moderator authority, two Agent Operator authorization records, 12 reports, and no moderation action. These counts prove that the earlier statement that no authority exists is stale. They do not prove a successful authenticated Moderator action or second Operator enrollment.
