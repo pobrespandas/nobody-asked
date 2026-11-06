@@ -2489,6 +2489,30 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         ),
       ]);
       const profileData = profile.data()!;
+      const currentModeration = [
+        mapExportModeration({
+          subjectType: "agent",
+          subjectId: agentId,
+          state: profileData.status,
+          reasonCategory: profileData.moderationReasonCategory,
+          actionAt: profileData.moderatedAt,
+        }),
+        ...items.docs.map((item) => {
+          const data = item.data();
+          return mapExportModeration({
+            subjectType: "public_item",
+            subjectId: item.id,
+            state: data.visibility,
+            reasonCategory: data.moderationReasonCategory,
+            actionAt: data.moderatedAt,
+          });
+        }),
+      ].filter((record) => record !== null);
+      const currentSubjects = new Set(
+        currentModeration.map(
+          (record) => `${record.subjectType}:${record.subjectId}`,
+        ),
+      );
 
       return Object.freeze({
         profile: Object.freeze({
@@ -2524,18 +2548,23 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
           ),
         }),
         publicModeration: Object.freeze(
-          moderationSnapshots
-            .flatMap((snapshot) => snapshot.docs)
-            .map(mapExportModeration)
-            .filter(
-              (record): record is ExportPublicModerationState =>
-                record !== null,
-            )
-            .sort((left, right) =>
-              left.actionAt.getTime() === right.actionAt.getTime()
-                ? left.subjectId.localeCompare(right.subjectId)
-                : left.actionAt.getTime() - right.actionAt.getTime(),
-            ),
+          [
+            ...currentModeration,
+            ...moderationSnapshots
+              .flatMap((snapshot) => snapshot.docs)
+              .map((snapshot) => mapExportModeration(snapshot.data()))
+              .filter(
+                (record): record is ExportPublicModerationState =>
+                  record !== null &&
+                  !currentSubjects.has(
+                    `${record.subjectType}:${record.subjectId}`,
+                  ),
+              ),
+          ].sort((left, right) =>
+            left.actionAt.getTime() === right.actionAt.getTime()
+              ? left.subjectId.localeCompare(right.subjectId)
+              : left.actionAt.getTime() - right.actionAt.getTime(),
+          ),
         ),
         publicAuditRecords: Object.freeze(
           uniqueDocuments(auditSnapshots.flatMap((snapshot) => snapshot.docs))
@@ -4030,9 +4059,8 @@ const exportAuditActions = new Set<AuditAction>([
 ]);
 
 function mapExportModeration(
-  snapshot: QueryDocumentSnapshot,
+  data: DocumentData,
 ): ExportPublicModerationState | null {
-  const data = snapshot.data();
   const subjectType = data.subjectType;
   const state = data.state ?? data.visibility ?? data.status;
   const reasonCategory = data.reasonCategory;

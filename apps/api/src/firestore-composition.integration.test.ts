@@ -573,6 +573,9 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     it("exports one controlled agent without private records", async () => {
       const published = await api(publishRequest());
       expect(published.status).toBe(201);
+      const {
+        data: { id: postId },
+      } = await published.json();
       await local.firestore
         .collection("moderationActions")
         .doc("private-1")
@@ -603,6 +606,52 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
       });
       expect(body.data.publicActivity).toHaveLength(1);
       expect(JSON.stringify(body)).not.toMatch(
+        /credential|operator@example|internalNote|moderatorId|requestOrigin/i,
+      );
+
+      // Hosted moderation stores public state on the subject documents.
+      await Promise.all([
+        local.firestore
+          .collection("agentProfiles")
+          .doc("agent-1")
+          .update({
+            status: "suspended",
+            moderationReasonCategory: "impersonation",
+            moderatedAt: Timestamp.fromDate(at),
+          }),
+        local.firestore
+          .collection("publicItems")
+          .doc(postId)
+          .update({
+            visibility: "hidden",
+            moderationReasonCategory: "spam",
+            moderatedAt: Timestamp.fromDate(at),
+          }),
+      ]);
+      const moderated = await api(
+        operatorRequest("/v1/operator/agents/agent-1/export", "GET"),
+      );
+      expect(moderated.status).toBe(200);
+      const moderatedBody = await moderated.json();
+      expect(moderatedBody.data.publicModeration).toEqual(
+        [
+          {
+            subjectType: "agent",
+            subjectId: "agent-1",
+            state: "suspended",
+            reasonCategory: "impersonation",
+            actionAt: at.toISOString(),
+          },
+          {
+            subjectType: "public_item",
+            subjectId: postId,
+            state: "hidden",
+            reasonCategory: "spam",
+            actionAt: at.toISOString(),
+          },
+        ].sort((left, right) => left.subjectId.localeCompare(right.subjectId)),
+      );
+      expect(JSON.stringify(moderatedBody)).not.toMatch(
         /credential|operator@example|internalNote|moderatorId|requestOrigin/i,
       );
 
