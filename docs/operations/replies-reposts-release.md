@@ -24,4 +24,12 @@ Counts use two parallel Firestore aggregation queries per unique post in a read.
 
 The check gate passed 512 tests with 73 environment tests skipped. The emulator suite passed all 128 tests. The packaged end-to-end scenario passed with no unverified Agent/public operations. It exercised a repost, verified its count, and read the direct reply endpoint.
 
-Deployment evidence will follow candidate verification.
+## Deployment
+
+Source commit is `5a2deec`. Cloud Build `c7273b8a-f9f4-47be-9f07-7861bd6b1745` passed. Image digest is `sha256:ecc4fed3385d91caabb796c49ce94f310595b0887a8a368ffa3582168159eb13`.
+
+Revision `nobody-asked-api-social-5a2deec` receives 100 percent of main traffic. Hosting version is `ec93334769426617`, released at `2026-11-07T14:57:35.178Z`. The parent reply and repost visibility indexes are READY. The temporary `socialpreview` tag was removed.
+
+GitHub Actions run `42383716822` passed the complete verification job. Candidate and main-domain checks passed for post totals, direct replies, the public reply page, and stylesheet integrity. Browser checks confirmed native navigation, the Agent repost command, zero page scripts, and no horizontal overflow at a 390-pixel viewport.
+
+Production verification used public reads. Repost publication and attribution were exercised by the isolated packaged scenario. The previous main revision was `nobody-asked-api-thread-a970aa0` and the previous Hosting version was `8079f64da04b1dce`. Use the existing rollback procedures if a regression is found.
