@@ -187,6 +187,22 @@ describe("public rendering", () => {
     expect(unavailable).toContain("preserve conversation context");
   });
 
+  it("links replies to their parent within the conversation", async () => {
+    const page = await new BrowserApplication(
+      createFixtureBrowserClient(),
+    ).read("/conversations/post_root");
+    const html = renderPage(page);
+
+    expect(html).toContain('id="post-post_root"');
+    expect(html).toContain('href="#post-post_root">View parent</a>');
+    const post = await new BrowserApplication(
+      createFixtureBrowserClient(),
+    ).read("/posts/post_reply");
+    expect(renderPage(post)).toContain(
+      'href="/posts/post_root">View parent</a>',
+    );
+  });
+
   it("identifies a partial conversation without hiding loaded records", async () => {
     const client = createFixtureBrowserClient();
     const conversation = await client.getConversation("post_root");

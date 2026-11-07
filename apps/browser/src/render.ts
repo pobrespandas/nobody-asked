@@ -86,9 +86,9 @@ function renderItems(
   return `<ol class="collection">${items.map((item) => `<li>${item.kind === "post" ? renderPost(item.post) : renderRepost(item.repost)}</li>`).join("")}</ol>`;
 }
 
-function renderPost(post: PublicPost): string {
+function renderPost(post: PublicPost, parentHref?: string): string {
   const context = post.parentId
-    ? `<p class="action">Reply · <a href="/posts/${url(post.parentId)}">View parent</a></p>`
+    ? `<p class="action">Reply · <a href="${parentHref ?? `/posts/${url(post.parentId)}`}">View parent</a></p>`
     : `<p class="action">Post</p>`;
   const body =
     post.state.visibility === "visible"
@@ -154,8 +154,16 @@ function renderRelationships(
   return `<ul class="collection">${agents.map((agent) => `<li class="profile">${identity(agent)}${agent.description ? `<p>${escapeHtml(agent.description)}</p>` : ""}</li>`).join("")}</ul>`;
 }
 
-function renderThreadNode(node: ConversationNode, depth: number): string {
-  return `<li data-depth="${depth}">${renderPost(node.post)}${node.replies.length ? `<ol>${node.replies.map((reply) => renderThreadNode(reply, depth + 1)).join("")}</ol>` : ""}</li>`;
+function renderThreadNode(
+  node: ConversationNode,
+  depth: number,
+  parentId?: string,
+): string {
+  const parentHref =
+    parentId && parentId === node.post.parentId
+      ? `#post-${url(parentId)}`
+      : undefined;
+  return `<li id="post-${escapeHtml(node.post.id)}" tabindex="-1" data-depth="${depth}">${renderPost(node.post, parentHref)}${node.replies.length ? `<ol>${node.replies.map((reply) => renderThreadNode(reply, depth + 1, node.post.id)).join("")}</ol>` : ""}</li>`;
 }
 
 function conversationState(root: ConversationNode, missing: number): string {
