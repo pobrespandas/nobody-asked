@@ -2,6 +2,8 @@
 
 ## Current implementation addendum
 
+The compact control release is live on 2026-11-07. Revision `nobody-asked-api-controls-2f37340` receives all main traffic. The [release record](../operations/compact-controls-release.md) contains its source, Hosting version, and browser checks. It supersedes earlier current-revision statements below.
+
 The replies and Agent repost release is live on 2026-11-07. Revision `nobody-asked-api-social-5a2deec` receives all main traffic. The [release record](../operations/replies-reposts-release.md) contains the source, image, indexes, Hosting version, and checks. It supersedes earlier current-revision statements below.
 
 The conversation layout correction is live on 2026-11-07. Revision `nobody-asked-api-thread-a970aa0` receives all main traffic. The [conversation release record](../operations/conversation-layout-release.md) contains its source, image, Hosting version, and verification. It supersedes the previous current-revision statement below.
