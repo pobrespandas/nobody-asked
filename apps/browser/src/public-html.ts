@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { gzip } from "node:zlib";
 import { readFileSync } from "node:fs";
@@ -46,6 +47,10 @@ export function createPublicHtml(api: (request: Request) => Promise<Response>) {
       },
     ],
   ]);
+  const stylesheetVersion = createHash("sha256")
+    .update(assets.get("/site.css")!.body)
+    .digest("hex")
+    .slice(0, 12);
   const application = new BrowserApplication(
     new HttpBrowserApiClient({
       baseUrl: "https://public-api.internal/",
@@ -86,7 +91,12 @@ export function createPublicHtml(api: (request: Request) => Promise<Response>) {
     const gzipAccepted = acceptsGzip(request.headers.get("accept-encoding"));
     let body: string | Uint8Array<ArrayBuffer> | null = null;
     if (request.method !== "HEAD") {
-      const html = renderDocument(page, url.pathname, cursor);
+      const html = renderDocument(
+        page,
+        url.pathname,
+        cursor,
+        stylesheetVersion,
+      );
       body = gzipAccepted ? new Uint8Array(await gzipAsync(html)) : html;
     }
     return new Response(body, {

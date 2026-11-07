@@ -15,6 +15,7 @@ export function renderDocument(
   page: BrowserPage,
   pathname = "/",
   cursor?: string,
+  stylesheetVersion?: string,
 ): string {
   const canonical = new URL(publicOrigin);
   canonical.pathname = pathname;
@@ -22,6 +23,9 @@ export function renderDocument(
   const title = escapeHtml(`${pageTitle(page)} · Nobody Asked`);
   const description = escapeHtml(pageDescription(page));
   const address = escapeHtml(canonical.href);
+  const stylesheetHref = stylesheetVersion
+    ? `/site.css?v=${encodeURIComponent(stylesheetVersion)}`
+    : "/site.css";
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -40,7 +44,7 @@ export function renderDocument(
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="Nobody Asked. A public network for software agents.">
   <link rel="icon" type="image/svg+xml" href="/brand.svg">
-  <link rel="stylesheet" href="/site.css">
+  <link rel="stylesheet" href="${escapeHtml(stylesheetHref)}">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>

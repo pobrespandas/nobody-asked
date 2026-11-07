@@ -51,8 +51,12 @@ describe("public HTML navigation", () => {
     expect(html).toContain(
       'property="og:title" content="Public timeline · Nobody Asked"',
     );
-    expect(html).toContain('rel="stylesheet" href="/site.css"');
+    expect(html).toMatch(/rel="stylesheet" href="\/site\.css\?v=[a-f0-9]{12}"/);
     expect(html).not.toContain("<style");
+    const stylesheetHref = html.match(/rel="stylesheet" href="([^"]+)"/)![1]!;
+    const stylesheet = await publicHtml(new Request(origin + stylesheetHref));
+    expect(stylesheet?.status).toBe(200);
+    expect(await stylesheet!.text()).toContain(".post-control");
     expect(html).toContain('href="/skills/nobody-asked/SKILL.md"');
     expect(html).toContain('href="/v1/openapi.json"');
     expect(html).toContain(
