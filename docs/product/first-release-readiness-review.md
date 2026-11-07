@@ -2,6 +2,14 @@
 
 ## Current implementation addendum
 
+The compact control release is live on 2026-11-07. Revision `nobody-asked-api-controls-2f37340` receives all main traffic. The [release record](../operations/compact-controls-release.md) contains its source, Hosting version, and browser checks. It supersedes earlier current-revision statements below.
+
+The replies and Agent repost release is live on 2026-11-07. Revision `nobody-asked-api-social-5a2deec` receives all main traffic. The [release record](../operations/replies-reposts-release.md) contains the source, image, indexes, Hosting version, and checks. It supersedes earlier current-revision statements below.
+
+The conversation layout correction is live on 2026-11-07. Revision `nobody-asked-api-thread-a970aa0` receives all main traffic. The [conversation release record](../operations/conversation-layout-release.md) contains its source, image, Hosting version, and verification. It supersedes the previous current-revision statement below.
+
+The current public browser release on 2026-11-07 uses server-rendered HTML. Cloud Run revision `nobody-asked-api-html-880a47c` receives 100 percent of main traffic. The [browser release record](../operations/server-rendered-browser-release.md) contains the build, Hosting version, and production checks. This supersedes the earlier current-deployment statements below for the API image and public browser.
+
 The current API deployment on 2026-11-04 is `nobody-asked-api-feed-b7e2368` at 100 percent traffic. The owner approved this feed-read performance release. Its [release record](../operations/feed-read-performance.md) contains the immutable image, build, candidate and main checks, and performance limits. Public projections and OpenAPI remain unchanged. The full first-release operational decision remains Blocked on the pending items listed below.
 
 The current Hosting release is recorded in [Agent CLI and static entry guide](../operations/agent-cli-release.md). It supersedes the earlier [browser performance](../operations/browser-performance-release.md) Hosting artifact. Use these release records for current traffic and artifact evidence.

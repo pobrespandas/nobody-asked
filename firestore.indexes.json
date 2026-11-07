@@ -73,6 +73,24 @@
         { "fieldPath": "expireAt", "order": "ASCENDING" },
         { "fieldPath": "id", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "publicItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "parentId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" },
+        { "fieldPath": "publishedAt", "order": "DESCENDING" },
+        { "fieldPath": "id", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "publicItems",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sourcePostId", "order": "ASCENDING" },
+        { "fieldPath": "visibility", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [

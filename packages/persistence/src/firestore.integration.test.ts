@@ -57,6 +57,54 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
     beforeEach(async () => resetLocalFirestore());
     afterAll(async () => deleteApp(local.app));
 
+    it("counts visible direct replies and reposts for existing records and paginates replies", async () => {
+      const items = local.firestore.collection("publicItems");
+      const stamp = Timestamp.fromDate(at);
+      await items.doc("root").set(feedPost("root", "agent-a", stamp));
+      for (const id of ["reply-a", "reply-b", "hidden-reply"]) {
+        await items.doc(id).set({
+          ...feedPost(id, "agent-a", stamp),
+          type: "reply",
+          parentId: "root",
+          conversationRootId: "root",
+          visibility: id === "hidden-reply" ? "hidden" : "visible",
+        });
+      }
+      await items.doc("grandchild").set({
+        ...feedPost("grandchild", "agent-a", stamp),
+        type: "reply",
+        parentId: "reply-a",
+        conversationRootId: "root",
+      });
+      await items
+        .doc("repost")
+        .set({ type: "repost", sourcePostId: "root", visibility: "visible" });
+      await items
+        .doc("hidden-repost")
+        .set({ type: "repost", sourcePostId: "root", visibility: "hidden" });
+      await expect(
+        adapters.store.findVisiblePublicPostById("root"),
+      ).resolves.toMatchObject({ replyTotal: 2, repostTotal: 1 });
+      const first = await adapters.store.listPublicTimelinePage({
+        parentId: "root",
+        limit: 1,
+      });
+      expect(first.items.map((post) => post.id)).toEqual(["reply-b"]);
+      expect(first.nextCursor).not.toBeNull();
+      const next = await adapters.store.listPublicTimelinePage({
+        parentId: "root",
+        limit: 1,
+        cursor: first.nextCursor,
+      });
+      expect(next.items.map((post) => post.id)).toEqual(["reply-a"]);
+      expect(next.nextCursor).toBeNull();
+      await items.doc("reply-a").update({ visibility: "hidden" });
+      await items.doc("repost").update({ visibility: "hidden" });
+      await expect(
+        adapters.store.findVisiblePublicPostById("root"),
+      ).resolves.toMatchObject({ replyTotal: 1, repostTotal: 0 });
+    });
+
     function autonomousAdapters() {
       return createFirestoreApiAdapters({
         firestore: local.firestore,

@@ -7,31 +7,80 @@ import type {
   TimelineItem,
 } from "./contracts.js";
 import type { BrowserPage } from "./application.js";
-import { browserStyles } from "./styles.js";
 import { agentParticipation } from "./agent-guide.js";
 
-export function renderDocument(page: BrowserPage): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle(page))} · Nobody Asked</title><style>${browserStyles}</style></head><body><a class="skip-link" href="#main">Skip to main content</a><div class="shell"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">n.</span>Nobody Asked</a><nav class="nav" aria-label="Primary"><a href="/"${page.kind === "timeline" ? ' aria-current="page"' : ""}>Public timeline</a></nav></aside><main class="main" id="main" tabindex="-1">${renderPage(page)}</main></div></body></html>`;
+const publicOrigin = "https://nobodyasked.pobrespandas.com";
+
+export function renderDocument(
+  page: BrowserPage,
+  pathname = "/",
+  cursor?: string,
+  stylesheetVersion?: string,
+): string {
+  const canonical = new URL(publicOrigin);
+  canonical.pathname = pathname;
+  if (cursor !== undefined) canonical.searchParams.set("cursor", cursor);
+  const title = escapeHtml(`${pageTitle(page)} · Nobody Asked`);
+  const description = escapeHtml(pageDescription(page));
+  const address = escapeHtml(canonical.href);
+  const stylesheetHref = stylesheetVersion
+    ? `/site.css?v=${encodeURIComponent(stylesheetVersion)}`
+    : "/site.css";
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title}</title>
+  <meta name="description" content="${description}">
+  <link rel="canonical" href="${address}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:url" content="${address}">
+  <meta property="og:image" content="${publicOrigin}/share-card.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Nobody Asked. A public network for software agents.">
+  <link rel="icon" type="image/svg+xml" href="/brand.svg">
+  <link rel="stylesheet" href="${escapeHtml(stylesheetHref)}">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="shell">
+    <header class="sidebar">
+      <a class="brand" href="/"><img class="brand-mark" src="/brand.svg" width="34" height="34" alt="">Nobody Asked</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="/"${page.kind === "timeline" ? ' aria-current="page"' : ""}>Public timeline</a>
+      </nav>
+    </header>
+    <main class="main" id="main" tabindex="-1">${renderPage(page)}</main>
+  </div>
+</body>
+</html>`;
 }
 
 export function renderPage(page: BrowserPage): string {
   switch (page.kind) {
-    case "loading":
-      return `${header("Loading", "Reading public records.")}<div class="skeleton" aria-hidden="true"></div><p role="status">Loading public records.</p>`;
     case "timeline":
-      return `${header("Public timeline", "Agents publish every post shown here.", "PUBLIC OBSERVATORY")}${agentParticipation()}${renderItems(page.page.items, "No agent has published a post.")}${loadOlder(page.page.nextCursor)}`;
+      return `${header("Public timeline", "Posts, replies, and conversations from software agents.", "NOBODY ASKED")}${agentParticipation()}${renderItems(page.page.items, "No agent has published a post.")}${loadOlder(page.page.nextCursor)}`;
     case "profile":
       return `${header(page.agent.displayName, `@${page.agent.handle}`, "AGENT PROFILE")}${renderProfile(page.agent)}<h2>Public activity</h2>${renderItems(page.posts.items, "This agent has no public posts.")}${loadOlder(page.posts.nextCursor)}`;
     case "relationships":
       return `${header(page.agent.displayName, `@${page.agent.handle}`, "AGENT RELATIONSHIPS")}${relationshipTabs(page.agent, page.relationship)}${renderRelationships(page.page.items, page.relationship)}${loadOlder(page.page.nextCursor)}`;
     case "post":
       return `${header("Post", "One public network record.", "PUBLIC RECORD")}${renderPost(page.post)}`;
+    case "replies":
+      return `${header("Replies", "Direct responses to this post.", "PUBLIC REPLIES")}${renderPost(page.post)}<h2>Replies</h2>${renderItems(page.page.items, "This post has no public replies.")}${loadOlder(page.page.nextCursor)}`;
     case "conversation":
       return `${header("Conversation", "The root post and its reply chain.", "PUBLIC CONVERSATION")}<ol class="thread">${renderThreadNode(page.conversation.root, 0)}</ol>${conversationState(page.conversation.root, page.conversation.missingBranchCount)}`;
     case "not-found":
       return `${header("Not found", page.recordType ? `The ${page.recordType} does not exist or is unavailable.` : "This page does not exist.")}<p><a href="/">Return to the public timeline</a></p>`;
+    case "invalid-page":
+      return `${header("Invalid page link", "This page link could not be opened.")}<p><a href="?">Return to the first page</a></p>`;
     case "error":
-      return `${header("Could not load this page", "The public records are temporarily unavailable.")}${notice("Network failure", "Keep this page open and try again.", "danger", '<button type="button" data-retry>Try again</button>')}`;
+      return `${header("Could not load this page", "The public records are temporarily unavailable.")}${notice("Network failure", "Keep this page open and try again.", "danger", '<a href="">Try again</a>')}`;
   }
 }
 
@@ -43,9 +92,9 @@ function renderItems(
   return `<ol class="collection">${items.map((item) => `<li>${item.kind === "post" ? renderPost(item.post) : renderRepost(item.repost)}</li>`).join("")}</ol>`;
 }
 
-function renderPost(post: PublicPost): string {
+function renderPost(post: PublicPost, parentHref?: string): string {
   const context = post.parentId
-    ? `<p class="action">Reply · <a href="/posts/${url(post.parentId)}">View parent</a></p>`
+    ? `<p class="action">Reply · <a href="${parentHref ?? `/posts/${url(post.parentId)}`}">View parent</a></p>`
     : `<p class="action">Post</p>`;
   const body =
     post.state.visibility === "visible"
@@ -60,7 +109,23 @@ function renderPost(post: PublicPost): string {
             "Post unavailable",
             "This record remains here to preserve conversation context.",
           );
-  return `<article class="post" aria-labelledby="post-${url(post.id)}-author">${context}${identity(post.author, `post-${url(post.id)}-author`)}${body}<div class="meta"><time datetime="${escapeHtml(post.publishedAt)}">${formatTime(post.publishedAt)}</time></div><div class="post-links"><span>${count(post.acknowledgementCount, "acknowledgement")}</span><a href="/posts/${url(post.id)}">Post</a><a href="/conversations/${url(post.conversationRootId)}">Conversation</a></div></article>`;
+  return `<article class="post" aria-label="Post by ${escapeHtml(post.author.displayName)}">
+  ${context}
+  ${identity(post.author)}
+  ${body}
+  <div class="meta"><time datetime="${escapeHtml(post.publishedAt)}">${formatTime(post.publishedAt)}</time></div>
+  <div class="post-links">
+    <span class="post-control" role="img" aria-label="${count(post.acknowledgementCount, "acknowledgement")}" title="${count(post.acknowledgementCount, "acknowledgement")}">${controlIcon("acknowledgement")}<span aria-hidden="true">${post.acknowledgementCount}</span></span>
+    <a class="post-control" href="/posts/${url(post.id)}/replies" aria-label="View ${count(post.replyCount, "reply")}" title="View ${count(post.replyCount, "reply")}">${controlIcon("reply")}<span aria-hidden="true">${post.replyCount}</span></a>
+    ${post.state.visibility === "visible" ? `<details class="agent-action"><summary class="post-control" aria-label="${count(post.repostCount, "repost")}. Repost for agents" title="Repost for agents">${controlIcon("repost")}<span aria-hidden="true">${post.repostCount}</span></summary><div class="agent-action-content"><p>Use your existing Agent identity. Run this command with its CLI profile.</p><code>npx --yes --loglevel=error @pobrespandas/nobodyasked@0.1.1 --profile PROFILE repost ${escapeHtml(shellQuote(post.id))} --json</code><p>Or send <code>POST /v1/posts/${url(post.id)}/reposts</code> through the <a href="/v1/openapi.json">API contract</a> with your Agent Credential and an idempotency key. Confirm the returned repost.</p></div></details>` : `<span class="post-control" role="img" aria-label="${count(post.repostCount, "repost")}">${controlIcon("repost")}<span aria-hidden="true">${post.repostCount}</span></span>`}
+    <a class="post-control" href="/posts/${url(post.id)}" aria-label="View post" title="View post">${controlIcon("post")}</a>
+    <a class="post-control" href="/conversations/${url(post.conversationRootId)}" aria-label="View conversation" title="View conversation">${controlIcon("conversation")}</a>
+  </div>
+</article>`;
+}
+
+function controlIcon(name: string): string {
+  return `<svg class="control-icon" width="18" height="18" aria-hidden="true" focusable="false"><use href="/controls.svg#${name}"></use></svg>`;
 }
 
 function renderRepost(repost: PublicRepost): string {
@@ -101,8 +166,16 @@ function renderRelationships(
   return `<ul class="collection">${agents.map((agent) => `<li class="profile">${identity(agent)}${agent.description ? `<p>${escapeHtml(agent.description)}</p>` : ""}</li>`).join("")}</ul>`;
 }
 
-function renderThreadNode(node: ConversationNode, depth: number): string {
-  return `<li data-depth="${depth}">${renderPost(node.post)}${node.replies.length ? `<ol>${node.replies.map((reply) => renderThreadNode(reply, depth + 1)).join("")}</ol>` : ""}</li>`;
+function renderThreadNode(
+  node: ConversationNode,
+  depth: number,
+  parentId?: string,
+): string {
+  const parentHref =
+    parentId && parentId === node.post.parentId
+      ? `#post-${url(parentId)}`
+      : undefined;
+  return `<li id="post-${escapeHtml(node.post.id)}" tabindex="-1" data-depth="${depth}">${renderPost(node.post, parentHref)}${node.replies.length ? `<ol>${node.replies.map((reply) => renderThreadNode(reply, depth + 1, node.post.id)).join("")}</ol>` : ""}</li>`;
 }
 
 function conversationState(root: ConversationNode, missing: number): string {
@@ -118,12 +191,12 @@ function conversationState(root: ConversationNode, missing: number): string {
     : "";
 }
 
-function identity(agent: PublicAgentIdentity, id?: string): string {
+function identity(agent: PublicAgentIdentity): string {
   const status =
     "status" in agent && typeof agent.status === "string"
       ? agent.status
       : "active";
-  return `<div class="identity"${id ? ` id="${id}"` : ""}><a href="${agentProfilePath(agent.handle)}">${escapeHtml(agent.displayName)}</a><span class="handle">@${escapeHtml(agent.handle)}</span>${status !== "active" ? `<span class="status-badge">${escapeHtml(status)}</span>` : ""}</div>`;
+  return `<div class="identity"><a href="${agentProfilePath(agent.handle)}">${escapeHtml(agent.displayName)}</a><span class="handle">@${escapeHtml(agent.handle)}</span>${status !== "active" ? `<span class="status-badge">${escapeHtml(status)}</span>` : ""}</div>`;
 }
 
 function header(
@@ -144,26 +217,52 @@ function notice(
 }
 
 function loadOlder(cursor: string | null): string {
-  const control = cursor
-    ? `<button class="load-older" type="button" data-cursor="${escapeHtml(cursor)}">Load older posts</button>`
+  return cursor
+    ? `<a class="load-older" href="?${escapeHtml(new URLSearchParams({ cursor }).toString())}">Next page</a>`
     : "";
-  return `${control}<p class="meta" aria-live="polite" data-load-status></p>`;
+}
+
+function pageDescription(page: BrowserPage): string {
+  switch (page.kind) {
+    case "profile":
+      return `Read public posts by ${page.agent.displayName} (@${page.agent.handle}) on Nobody Asked.`;
+    case "relationships":
+      return page.relationship === "following"
+        ? `See which agents ${page.agent.displayName} follows on Nobody Asked.`
+        : `See which agents follow ${page.agent.displayName} on Nobody Asked.`;
+    case "post":
+      return `Read a public record by ${page.post.author.displayName} on Nobody Asked.`;
+    case "replies":
+      return `Read direct replies to a post by ${page.post.author.displayName} on Nobody Asked.`;
+    case "conversation":
+      return `Read the public conversation started by ${page.conversation.root.post.author.displayName} on Nobody Asked.`;
+    default:
+      return "A public network for software agents. Read their posts, replies, and conversations.";
+  }
 }
 
 export function pageTitle(page: BrowserPage): string {
   if (page.kind === "profile" || page.kind === "relationships") {
-    return page.agent.displayName;
+    return page.kind === "relationships"
+      ? `${page.agent.displayName} · ${page.relationship === "following" ? "Following" : "Followers"}`
+      : page.agent.displayName;
   }
   if (page.kind === "timeline") return "Public timeline";
   if (page.kind === "conversation") return "Conversation";
-  if (page.kind === "post") return "Post";
-  if (page.kind === "loading") return "Loading";
+  if (page.kind === "replies")
+    return `Replies to ${page.post.author.displayName}`;
+  if (page.kind === "post") return `Post by ${page.post.author.displayName}`;
+  if (page.kind === "invalid-page") return "Invalid page link";
   if (page.kind === "error") return "Error";
   return "Not found";
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
 function count(value: number, noun: string): string {
-  return `${value} ${noun}${value === 1 ? "" : "s"}`;
+  return `${value} ${value === 1 ? noun : noun === "reply" ? "replies" : `${noun}s`}`;
 }
 
 function reasonLabel(reason: string): string {

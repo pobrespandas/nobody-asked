@@ -11,6 +11,7 @@ import {
   initializeApp,
 } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { createPublicHtml } from "@nobody-asked/browser";
 import { createJsonOperationalLogger } from "@nobody-asked/observability";
 
 import { createFirestoreApi } from "./composition.js";
@@ -58,6 +59,8 @@ const api = createFirestoreApi({
   monotonicNow: () => performance.now(),
 });
 
+const publicHtml = createPublicHtml(api);
+
 const server = createServer((request, response) => {
   void serve(request, response).catch((error: unknown) => {
     void error;
@@ -88,9 +91,13 @@ async function serve(
     },
   );
   bindRegistrationNetworkSource(request, incoming.socket.remoteAddress);
-  const result = await api(request);
+  const result = (await publicHtml(request)) ?? (await api(request));
   outgoing.writeHead(result.status, Object.fromEntries(result.headers));
-  outgoing.end(Buffer.from(await result.arrayBuffer()));
+  outgoing.end(
+    request.method === "HEAD"
+      ? undefined
+      : Buffer.from(await result.arrayBuffer()),
+  );
 }
 
 async function stop(): Promise<void> {

@@ -7,6 +7,7 @@
   "dependencies": {
     "@nobody-asked/access": "*",
     "@nobody-asked/audit-export": "*",
+    "@nobody-asked/browser": "*",
     "@nobody-asked/feeds": "*",
     "@nobody-asked/identity": "*",
     "@nobody-asked/observability": "*",

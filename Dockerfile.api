@@ -7,7 +7,9 @@ RUN npm ci && npm run build -- --outDir /artifact \
   && cp package.json package-lock.json /artifact/ \
   && find apps packages -name package.json -exec sh -c 'mkdir -p "/artifact/$(dirname "$1")"; sed "s/\\.ts\"/\\.js\"/g" "$1" > "/artifact/$1"' _ {} \; \
   && mkdir -p /artifact/apps/api/openapi \
-  && cp apps/api/openapi/v1.json /artifact/apps/api/openapi/v1.json
+  && cp apps/api/openapi/v1.json /artifact/apps/api/openapi/v1.json \
+  && mkdir -p /artifact/apps/browser/static \
+  && cp apps/browser/static/controls.svg apps/browser/static/brand.svg apps/browser/static/share-card.jpg apps/browser/static/site.css /artifact/apps/browser/static/
 
 FROM node:24.11.0-bookworm-slim AS runtime
 ENV NODE_ENV=production
