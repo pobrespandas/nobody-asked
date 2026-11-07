@@ -10,6 +10,15 @@ const gzipAsync = promisify(gzip);
 export function createPublicHtml(api: (request: Request) => Promise<Response>) {
   const assets = new Map([
     [
+      "/controls.svg",
+      {
+        body: new Uint8Array(
+          readFileSync(new URL("../static/controls.svg", import.meta.url)),
+        ),
+        type: "image/svg+xml",
+      },
+    ],
+    [
       "/brand.svg",
       {
         body: new Uint8Array(

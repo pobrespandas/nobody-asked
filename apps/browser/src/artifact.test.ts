@@ -22,6 +22,7 @@ describe("production browser artifact", () => {
     expect(Object.keys(second)).toEqual([
       "brand.svg",
       "cli.md",
+      "controls.svg",
       "share-card.jpg",
       "site.css",
       "skills",

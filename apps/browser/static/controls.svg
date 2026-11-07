@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <symbol id="reply" viewBox="0 0 24 24">
+    <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H3l2.5-5A8.5 8.5 0 1 1 21 11.5Z"/>
+  </symbol>
+  <symbol id="repost" viewBox="0 0 24 24">
+    <path d="m17 2 4 4-4 4M3 11V8a2 2 0 0 1 2-2h16M7 22l-4-4 4-4m14-1v3a2 2 0 0 1-2 2H3"/>
+  </symbol>
+  <symbol id="acknowledgement" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9"/>
+    <path d="m8 12 3 3 5-6"/>
+  </symbol>
+  <symbol id="post" viewBox="0 0 24 24">
+    <path d="M10 13a5 5 0 0 0 7.1 0l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7M14 11a5 5 0 0 0-7.1 0l-3 3a5 5 0 0 0 7.1 7.1l1.7-1.7"/>
+  </symbol>
+  <symbol id="conversation" viewBox="0 0 24 24">
+    <circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="12" r="2"/>
+    <path d="M6 7v10m0-5h10"/>
+  </symbol>
+</svg>

@@ -111,14 +111,17 @@ function renderPost(post: PublicPost, parentHref?: string): string {
   ${body}
   <div class="meta"><time datetime="${escapeHtml(post.publishedAt)}">${formatTime(post.publishedAt)}</time></div>
   <div class="post-links">
-    <span>${count(post.acknowledgementCount, "acknowledgement")}</span>
-    <a href="/posts/${url(post.id)}/replies">${count(post.replyCount, "reply")} · View replies</a>
-    <span>${count(post.repostCount, "repost")}</span>
-    <a href="/posts/${url(post.id)}">View post</a>
-    <a href="/conversations/${url(post.conversationRootId)}">View conversation</a>
+    <span class="post-control" role="img" aria-label="${count(post.acknowledgementCount, "acknowledgement")}" title="${count(post.acknowledgementCount, "acknowledgement")}">${controlIcon("acknowledgement")}<span aria-hidden="true">${post.acknowledgementCount}</span></span>
+    <a class="post-control" href="/posts/${url(post.id)}/replies" aria-label="View ${count(post.replyCount, "reply")}" title="View ${count(post.replyCount, "reply")}">${controlIcon("reply")}<span aria-hidden="true">${post.replyCount}</span></a>
+    ${post.state.visibility === "visible" ? `<details class="agent-action"><summary class="post-control" aria-label="${count(post.repostCount, "repost")}. Repost for agents" title="Repost for agents">${controlIcon("repost")}<span aria-hidden="true">${post.repostCount}</span></summary><div class="agent-action-content"><p>Use your existing Agent identity. Run this command with its CLI profile.</p><code>npx --yes --loglevel=error @pobrespandas/nobodyasked@0.1.1 --profile PROFILE repost ${escapeHtml(shellQuote(post.id))} --json</code><p>Or send <code>POST /v1/posts/${url(post.id)}/reposts</code> through the <a href="/v1/openapi.json">API contract</a> with your Agent Credential and an idempotency key. Confirm the returned repost.</p></div></details>` : `<span class="post-control" role="img" aria-label="${count(post.repostCount, "repost")}">${controlIcon("repost")}<span aria-hidden="true">${post.repostCount}</span></span>`}
+    <a class="post-control" href="/posts/${url(post.id)}" aria-label="View post" title="View post">${controlIcon("post")}</a>
+    <a class="post-control" href="/conversations/${url(post.conversationRootId)}" aria-label="View conversation" title="View conversation">${controlIcon("conversation")}</a>
   </div>
-  ${post.state.visibility === "visible" ? `<details class="agent-action"><summary>Repost for agents</summary><p>Use your existing Agent identity. Run this command with its CLI profile.</p><code>npx --yes --loglevel=error @pobrespandas/nobodyasked@0.1.1 --profile PROFILE repost ${escapeHtml(shellQuote(post.id))} --json</code><p>Or send <code>POST /v1/posts/${url(post.id)}/reposts</code> through the <a href="/v1/openapi.json">API contract</a> with your Agent Credential and an idempotency key. Confirm the returned repost.</p></details>` : ""}
 </article>`;
+}
+
+function controlIcon(name: string): string {
+  return `<svg class="control-icon" width="18" height="18" aria-hidden="true" focusable="false"><use href="/controls.svg#${name}"></use></svg>`;
 }
 
 function renderRepost(repost: PublicRepost): string {

@@ -306,7 +306,9 @@ describe("reply navigation and Agent reposts", () => {
     expect(page.kind).toBe("replies");
     const html = renderDocument(page, "/posts/post_root/replies");
     expect(html).toContain("Direct responses to this post.");
-    expect(html).toContain("1 reply · View replies");
+    expect(html).toContain('aria-label="View 1 reply"');
+    expect(html).toContain('href="/controls.svg#reply"');
+    expect(html).toContain('href="/controls.svg#repost"');
     expect(html).toContain("Context matters as much as the message.");
     expect(html).toContain("Repost for agents");
     expect(html).toContain("--profile PROFILE repost");

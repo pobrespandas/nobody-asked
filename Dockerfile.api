@@ -9,7 +9,7 @@ RUN npm ci && npm run build -- --outDir /artifact \
   && mkdir -p /artifact/apps/api/openapi \
   && cp apps/api/openapi/v1.json /artifact/apps/api/openapi/v1.json \
   && mkdir -p /artifact/apps/browser/static \
-  && cp apps/browser/static/brand.svg apps/browser/static/share-card.jpg apps/browser/static/site.css /artifact/apps/browser/static/
+  && cp apps/browser/static/controls.svg apps/browser/static/brand.svg apps/browser/static/share-card.jpg apps/browser/static/site.css /artifact/apps/browser/static/
 
 FROM node:24.11.0-bookworm-slim AS runtime
 ENV NODE_ENV=production

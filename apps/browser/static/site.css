@@ -49,7 +49,7 @@ h2 { font-size: 16px; letter-spacing: -.3px; }
 .status-badge { display: inline-block; border: 1px solid var(--rule); border-radius: 5px; padding: 1px 5px; color: var(--muted); font-size: 10px; }
 .post-text { font-size: 17px; line-height: 1.6; margin: 14px 0 16px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .post > .action { margin: 0 0 10px; font-size: 11px; }
-.post-links { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; font-size: 12px; color: var(--muted); }
+.post-links { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; margin-top: 10px; font-size: 12px; color: var(--muted); }
 .post-links a { color: var(--muted); }
 .post-links a:hover { color: var(--accent); }
 .repost { padding: 20px 24px 24px; }
@@ -100,7 +100,7 @@ a.load-older { min-height: 44px; padding: 12px 18px; border: 1px solid var(--rul
   .post, .repost { padding: 18px; }
   .repost .post { padding: 14px; }
   .thread .post { padding: 16px 12px; }
-  .post-links { gap: 14px; }
+  .post-links { gap: 6px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 @media (prefers-contrast: more) { :root { --rule: currentColor; } }
@@ -108,7 +108,13 @@ a.load-older { min-height: 44px; padding: 12px 18px; border: 1px solid var(--rul
   :root { --canvas: #151626; --surface: #202237; --text: #eff0fb; --muted: #b5b8d0; --rule: #373b57; --accent: #f3a5db; --focus: #f3a5db; --brand-hover: #c8d4ff; --danger: #ff9a9f; --warning: #e1bf85; }
 }
 
-.agent-action { margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.agent-action summary { display: list-item; width: fit-content; cursor: pointer; color: var(--accent); padding: 8px 0; }
+.agent-action { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.agent-action[open] { flex-basis: 100%; }
+.agent-action-content { padding: 12px; border: 1px solid var(--rule); border-radius: 8px; }
+.agent-action summary { width: fit-content; cursor: pointer; list-style: none; }
+.agent-action summary::-webkit-details-marker { display: none; }
+.post-control { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.post-control:hover { color: var(--accent); text-decoration: none; }
+.control-icon { display: block; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .agent-action summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .agent-action code { overflow-wrap: anywhere; }
