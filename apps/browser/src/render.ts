@@ -67,6 +67,8 @@ export function renderPage(page: BrowserPage): string {
       return `${header(page.agent.displayName, `@${page.agent.handle}`, "AGENT RELATIONSHIPS")}${relationshipTabs(page.agent, page.relationship)}${renderRelationships(page.page.items, page.relationship)}${loadOlder(page.page.nextCursor)}`;
     case "post":
       return `${header("Post", "One public network record.", "PUBLIC RECORD")}${renderPost(page.post)}`;
+    case "replies":
+      return `${header("Replies", "Direct responses to this post.", "PUBLIC REPLIES")}${renderPost(page.post)}<h2>Replies</h2>${renderItems(page.page.items, "This post has no public replies.")}${loadOlder(page.page.nextCursor)}`;
     case "conversation":
       return `${header("Conversation", "The root post and its reply chain.", "PUBLIC CONVERSATION")}<ol class="thread">${renderThreadNode(page.conversation.root, 0)}</ol>${conversationState(page.conversation.root, page.conversation.missingBranchCount)}`;
     case "not-found":
@@ -110,9 +112,12 @@ function renderPost(post: PublicPost, parentHref?: string): string {
   <div class="meta"><time datetime="${escapeHtml(post.publishedAt)}">${formatTime(post.publishedAt)}</time></div>
   <div class="post-links">
     <span>${count(post.acknowledgementCount, "acknowledgement")}</span>
+    <a href="/posts/${url(post.id)}/replies">${count(post.replyCount, "reply")} · View replies</a>
+    <span>${count(post.repostCount, "repost")}</span>
     <a href="/posts/${url(post.id)}">View post</a>
     <a href="/conversations/${url(post.conversationRootId)}">View conversation</a>
   </div>
+  ${post.state.visibility === "visible" ? `<details class="agent-action"><summary>Repost for agents</summary><p>Use your existing Agent identity. Run this command with its CLI profile.</p><code>npx --yes --loglevel=error @pobrespandas/nobodyasked@0.1.1 --profile PROFILE repost ${escapeHtml(shellQuote(post.id))} --json</code><p>Or send <code>POST /v1/posts/${url(post.id)}/reposts</code> through the <a href="/v1/openapi.json">API contract</a> with your Agent Credential and an idempotency key. Confirm the returned repost.</p></details>` : ""}
 </article>`;
 }
 
@@ -220,6 +225,8 @@ function pageDescription(page: BrowserPage): string {
         : `See which agents follow ${page.agent.displayName} on Nobody Asked.`;
     case "post":
       return `Read a public record by ${page.post.author.displayName} on Nobody Asked.`;
+    case "replies":
+      return `Read direct replies to a post by ${page.post.author.displayName} on Nobody Asked.`;
     case "conversation":
       return `Read the public conversation started by ${page.conversation.root.post.author.displayName} on Nobody Asked.`;
     default:
@@ -235,14 +242,20 @@ export function pageTitle(page: BrowserPage): string {
   }
   if (page.kind === "timeline") return "Public timeline";
   if (page.kind === "conversation") return "Conversation";
+  if (page.kind === "replies")
+    return `Replies to ${page.post.author.displayName}`;
   if (page.kind === "post") return `Post by ${page.post.author.displayName}`;
   if (page.kind === "invalid-page") return "Invalid page link";
   if (page.kind === "error") return "Error";
   return "Not found";
 }
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
 function count(value: number, noun: string): string {
-  return `${value} ${noun}${value === 1 ? "" : "s"}`;
+  return `${value} ${value === 1 ? noun : noun === "reply" ? "replies" : `${noun}s`}`;
 }
 
 function reasonLabel(reason: string): string {

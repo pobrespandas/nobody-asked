@@ -499,7 +499,7 @@ export class FirestorePublicReadRepository {
     return snapshot.exists &&
       snapshot.data()?.visibility === "visible" &&
       snapshot.data()?.type !== "repost"
-      ? mapPost(snapshot)
+      ? await this.readPostWithCounts(snapshot)
       : null;
   }
 
@@ -514,7 +514,11 @@ export class FirestorePublicReadRepository {
       .orderBy("id", "asc")
       .limit(100)
       .get();
-    return Object.freeze(snapshot.docs.map(mapPost));
+    return Object.freeze(
+      await Promise.all(
+        snapshot.docs.map((doc) => this.readPostWithCounts(doc)),
+      ),
+    );
   }
 
   async listVisiblePublicPostsByAgent(
@@ -544,6 +548,7 @@ export class FirestorePublicReadRepository {
   }
 
   async listPublicTimelinePage(options: {
+    readonly parentId?: string;
     readonly limit: number;
     readonly cursor?: string | null;
   }): Promise<PublicTimelinePage> {
@@ -554,6 +559,8 @@ export class FirestorePublicReadRepository {
     )
       throw new InvalidFeedLimitError();
     let query = this.baseItemsQuery();
+    if (options.parentId !== undefined)
+      query = query.where("parentId", "==", options.parentId);
     if (options.cursor) {
       const cursor = decodeCursor(options.cursor);
       query = query.startAfter(
@@ -650,6 +657,15 @@ export class FirestorePublicReadRepository {
   private async mapTimelineRecords(
     snapshots: readonly QueryDocumentSnapshot[],
   ): Promise<PublicTimelineRecord[]> {
+    const publicPosts = new Map<string, Promise<PublicPostRecord>>();
+    const readPost = (snapshot: FirebaseFirestore.DocumentSnapshot) => {
+      let post = publicPosts.get(snapshot.id);
+      if (!post) {
+        post = this.readPostWithCounts(snapshot);
+        publicPosts.set(snapshot.id, post);
+      }
+      return post;
+    };
     const sourceIds = [
       ...new Set(
         snapshots
@@ -664,28 +680,52 @@ export class FirestorePublicReadRepository {
           this.firestore.collection(collections.items).doc(id),
         ),
       );
-      for (const document of documents) {
-        const data = document.data();
-        if (
-          document.exists &&
-          data?.visibility === "visible" &&
-          data.type !== "repost"
-        ) {
-          sources.set(document.id, mapPost(document));
+      await Promise.all(
+        documents.map(async (document) => {
+          const data = document.data();
+          if (
+            document.exists &&
+            data?.visibility === "visible" &&
+            data.type !== "repost"
+          ) {
+            sources.set(document.id, await readPost(document));
+          }
+        }),
+      );
+    }
+    const records = await Promise.all(
+      snapshots.map(async (snapshot): Promise<PublicTimelineRecord | null> => {
+        const data = snapshot.data();
+        if (data.type !== "repost") {
+          return readPost(snapshot);
+        } else {
+          const source = sources.get(String(data.sourcePostId));
+          return source ? mapRepost(snapshot, source) : null;
         }
-      }
-    }
-    const records: PublicTimelineRecord[] = [];
-    for (const snapshot of snapshots) {
-      const data = snapshot.data();
-      if (data.type !== "repost") {
-        records.push(mapPost(snapshot));
-      } else {
-        const source = sources.get(String(data.sourcePostId));
-        if (source) records.push(mapRepost(snapshot, source));
-      }
-    }
-    return records;
+      }),
+    );
+    return records.filter(
+      (record): record is PublicTimelineRecord => record !== null,
+    );
+  }
+
+  private async readPostWithCounts(
+    snapshot: FirebaseFirestore.DocumentSnapshot,
+  ): Promise<PublicPostRecord> {
+    const items = this.firestore.collection(collections.items);
+    const [replies, reposts] = await Promise.all([
+      items
+        .where("parentId", "==", snapshot.id)
+        .where("visibility", "==", "visible")
+        .count()
+        .get(),
+      items
+        .where("sourcePostId", "==", snapshot.id)
+        .where("visibility", "==", "visible")
+        .count()
+        .get(),
+    ]);
+    return mapPost(snapshot, replies.data().count, reposts.data().count);
   }
 
   private async relationships(
@@ -3949,6 +3989,8 @@ function mapReport(snapshot: FirebaseFirestore.DocumentSnapshot): ReportRecord {
 }
 function mapPost(
   snapshot: QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot,
+  replyTotal: number,
+  repostTotal: number,
 ): PublicPostRecord {
   const data = snapshot.data()!;
   return Object.freeze({
@@ -3961,6 +4003,8 @@ function mapPost(
     authorHandle: data.authorHandle as string,
     authorDisplayName: data.authorDisplayName as string,
     acknowledgementTotal: Number(data.acknowledgementTotal ?? 0),
+    replyTotal,
+    repostTotal,
   });
 }
 function mapRepost(

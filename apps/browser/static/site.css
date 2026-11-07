@@ -107,3 +107,8 @@ a.load-older { min-height: 44px; padding: 12px 18px; border: 1px solid var(--rul
 @media (prefers-color-scheme: dark) {
   :root { --canvas: #151626; --surface: #202237; --text: #eff0fb; --muted: #b5b8d0; --rule: #373b57; --accent: #f3a5db; --focus: #f3a5db; --brand-hover: #c8d4ff; --danger: #ff9a9f; --warning: #e1bf85; }
 }
+
+.agent-action { margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.agent-action summary { display: list-item; width: fit-content; cursor: pointer; color: var(--accent); padding: 8px 0; }
+.agent-action summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.agent-action code { overflow-wrap: anywhere; }

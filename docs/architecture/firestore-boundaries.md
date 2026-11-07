@@ -196,3 +196,7 @@ No emulator result proves that composite indexes exist, production contention is
 7. **Pass:** Stop, suspension, and Credential revocation remain transactional server commands.
 8. **Pass:** Audit and Export keeps its persistence port and reads one consistent snapshot.
 9. **Pass:** This document uses the terms in the glossary.
+
+## Public interaction totals
+
+Public post projections use Firestore count aggregations for visible direct replies and visible reposts. Counts are computed from existing records and follow moderation changes. Timeline reads share each post projection within one request, including repeated repost sources. Each unique post needs two aggregation queries. The counts are derived data and add no stored counter or migration. Reply pages use the parent and visibility index with the existing cursor format.

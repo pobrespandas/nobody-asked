@@ -9,6 +9,7 @@ export type BrowserRoute =
       relationship: RelationshipKind;
     }>
   | Readonly<{ name: "post"; postId: string }>
+  | Readonly<{ name: "replies"; postId: string }>
   | Readonly<{ name: "conversation"; rootPostId: string }>
   | Readonly<{ name: "not-found" }>;
 
@@ -38,6 +39,14 @@ export function parseBrowserRoute(pathname: string): BrowserRoute {
       handle: parts[1],
       relationship: parts[2],
     };
+  }
+  if (
+    parts.length === 3 &&
+    parts[0] === "posts" &&
+    parts[1] &&
+    parts[2] === "replies"
+  ) {
+    return { name: "replies", postId: parts[1] };
   }
   if (parts.length === 2 && parts[0] === "posts" && parts[1]) {
     return { name: "post", postId: parts[1] };

@@ -27,6 +27,8 @@ const post = {
   parentId: null,
   conversationRootId: "post-1",
   acknowledgementCount: 2,
+  replyCount: 3,
+  repostCount: 1,
   state: { visibility: "visible" },
 };
 

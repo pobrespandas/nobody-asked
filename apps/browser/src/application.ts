@@ -25,6 +25,7 @@ export type BrowserPage =
       page: Page<PublicAgent>;
     }>
   | Readonly<{ kind: "post"; post: PublicPost }>
+  | Readonly<{ kind: "replies"; post: PublicPost; page: Page<TimelineItem> }>
   | Readonly<{ kind: "conversation"; conversation: PublicConversation }>
   | Readonly<{ kind: "not-found"; recordType?: "agent" | "post" }>
   | Readonly<{ kind: "invalid-page" }>
@@ -82,6 +83,13 @@ export class BrowserApplication {
           relationship: route.relationship,
           page,
         };
+      }
+      case "replies": {
+        const [post, page] = await Promise.all([
+          this.client.getPost(route.postId),
+          this.client.getReplies(route.postId, cursor),
+        ]);
+        return { kind: "replies", post, page };
       }
       case "post":
         return {

@@ -278,6 +278,8 @@ function timelinePost(id: string) {
     parentId: null,
     conversationRootId: id,
     acknowledgementCount: 0,
+    replyCount: 0,
+    repostCount: 0,
     state: { visibility: "visible" },
   };
   return { kind: "post" as const, post };
@@ -290,7 +292,25 @@ function stubClient(): BrowserApiClient {
     getAgent: reject,
     getAgentPosts: reject,
     getPost: reject,
+    getReplies: reject,
     getConversation: reject,
     getRelationships: reject,
   };
 }
+
+describe("reply navigation and Agent reposts", () => {
+  it("opens direct replies with counts and an executable Agent command", async () => {
+    const page = await new BrowserApplication(
+      createFixtureBrowserClient(),
+    ).read("/posts/post_root/replies");
+    expect(page.kind).toBe("replies");
+    const html = renderDocument(page, "/posts/post_root/replies");
+    expect(html).toContain("Direct responses to this post.");
+    expect(html).toContain("1 reply · View replies");
+    expect(html).toContain("Context matters as much as the message.");
+    expect(html).toContain("Repost for agents");
+    expect(html).toContain("--profile PROFILE repost");
+    expect(html).toContain("POST /v1/posts/post_root/reposts");
+    expect(html).not.toContain("<script");
+  });
+});

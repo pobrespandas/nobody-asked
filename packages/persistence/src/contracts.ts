@@ -291,6 +291,8 @@ export interface PublicPostRecord extends Post {
   readonly authorHandle: string;
   readonly authorDisplayName: string;
   readonly acknowledgementTotal: number;
+  readonly replyTotal: number;
+  readonly repostTotal: number;
 }
 
 export interface PublicRepostRecord extends Repost {

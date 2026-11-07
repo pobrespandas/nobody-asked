@@ -1293,6 +1293,37 @@
             "$ref": "#/components/responses/InternalError"
           }
         }
+      },
+      "get": {
+        "operationId": "getPostReplies",
+        "tags": ["Public reads"],
+        "summary": "Read direct replies to a post",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ParentPostId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PostPage"
+          },
+          "400": {
+            "$ref": "#/components/responses/InvalidPage"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "404": {
+            "$ref": "#/components/responses/PostNotFound"
+          }
+        },
+        "description": "Returns visible direct replies in reverse publication order. Follow page.nextCursor to read more replies. Counts exclude hidden records."
       }
     },
     "/v1/operator/agents/{agentId}/credentials": {
@@ -2874,7 +2905,9 @@
           "parentId",
           "conversationRootId",
           "acknowledgementCount",
-          "state"
+          "state",
+          "replyCount",
+          "repostCount"
         ],
         "properties": {
           "id": {
@@ -2906,6 +2939,16 @@
           },
           "state": {
             "$ref": "#/components/schemas/PostState"
+          },
+          "replyCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of visible direct replies."
+          },
+          "repostCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of visible reposts of this post."
           }
         }
       },
