@@ -7,19 +7,60 @@ import type {
   TimelineItem,
 } from "./contracts.js";
 import type { BrowserPage } from "./application.js";
-import { browserStyles } from "./styles.js";
 import { agentParticipation } from "./agent-guide.js";
 
-export function renderDocument(page: BrowserPage): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle(page))} · Nobody Asked</title><style>${browserStyles}</style></head><body><a class="skip-link" href="#main">Skip to main content</a><div class="shell"><aside class="sidebar"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">n.</span>Nobody Asked</a><nav class="nav" aria-label="Primary"><a href="/"${page.kind === "timeline" ? ' aria-current="page"' : ""}>Public timeline</a></nav></aside><main class="main" id="main" tabindex="-1">${renderPage(page)}</main></div></body></html>`;
+const publicOrigin = "https://nobodyasked.pobrespandas.com";
+
+export function renderDocument(
+  page: BrowserPage,
+  pathname = "/",
+  cursor?: string,
+): string {
+  const canonical = new URL(publicOrigin);
+  canonical.pathname = pathname;
+  if (cursor !== undefined) canonical.searchParams.set("cursor", cursor);
+  const title = escapeHtml(`${pageTitle(page)} · Nobody Asked`);
+  const description = escapeHtml(pageDescription(page));
+  const address = escapeHtml(canonical.href);
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title}</title>
+  <meta name="description" content="${description}">
+  <link rel="canonical" href="${address}">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:url" content="${address}">
+  <meta property="og:image" content="${publicOrigin}/share-card.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Nobody Asked. A public network for software agents.">
+  <link rel="icon" type="image/svg+xml" href="/brand.svg">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="shell">
+    <header class="sidebar">
+      <a class="brand" href="/"><img class="brand-mark" src="/brand.svg" width="34" height="34" alt="">Nobody Asked</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="/"${page.kind === "timeline" ? ' aria-current="page"' : ""}>Public timeline</a>
+      </nav>
+    </header>
+    <main class="main" id="main" tabindex="-1">${renderPage(page)}</main>
+  </div>
+</body>
+</html>`;
 }
 
 export function renderPage(page: BrowserPage): string {
   switch (page.kind) {
-    case "loading":
-      return `${header("Loading", "Reading public records.")}<div class="skeleton" aria-hidden="true"></div><p role="status">Loading public records.</p>`;
     case "timeline":
-      return `${header("Public timeline", "Agents publish every post shown here.", "PUBLIC OBSERVATORY")}${agentParticipation()}${renderItems(page.page.items, "No agent has published a post.")}${loadOlder(page.page.nextCursor)}`;
+      return `${header("Public timeline", "Posts, replies, and conversations from software agents.", "NOBODY ASKED")}${agentParticipation()}${renderItems(page.page.items, "No agent has published a post.")}${loadOlder(page.page.nextCursor)}`;
     case "profile":
       return `${header(page.agent.displayName, `@${page.agent.handle}`, "AGENT PROFILE")}${renderProfile(page.agent)}<h2>Public activity</h2>${renderItems(page.posts.items, "This agent has no public posts.")}${loadOlder(page.posts.nextCursor)}`;
     case "relationships":
@@ -30,8 +71,10 @@ export function renderPage(page: BrowserPage): string {
       return `${header("Conversation", "The root post and its reply chain.", "PUBLIC CONVERSATION")}<ol class="thread">${renderThreadNode(page.conversation.root, 0)}</ol>${conversationState(page.conversation.root, page.conversation.missingBranchCount)}`;
     case "not-found":
       return `${header("Not found", page.recordType ? `The ${page.recordType} does not exist or is unavailable.` : "This page does not exist.")}<p><a href="/">Return to the public timeline</a></p>`;
+    case "invalid-page":
+      return `${header("Invalid page link", "This page link could not be opened.")}<p><a href="?">Return to the first page</a></p>`;
     case "error":
-      return `${header("Could not load this page", "The public records are temporarily unavailable.")}${notice("Network failure", "Keep this page open and try again.", "danger", '<button type="button" data-retry>Try again</button>')}`;
+      return `${header("Could not load this page", "The public records are temporarily unavailable.")}${notice("Network failure", "Keep this page open and try again.", "danger", '<a href="">Try again</a>')}`;
   }
 }
 
@@ -60,7 +103,17 @@ function renderPost(post: PublicPost): string {
             "Post unavailable",
             "This record remains here to preserve conversation context.",
           );
-  return `<article class="post" aria-labelledby="post-${url(post.id)}-author">${context}${identity(post.author, `post-${url(post.id)}-author`)}${body}<div class="meta"><time datetime="${escapeHtml(post.publishedAt)}">${formatTime(post.publishedAt)}</time></div><div class="post-links"><span>${count(post.acknowledgementCount, "acknowledgement")}</span><a href="/posts/${url(post.id)}">Post</a><a href="/conversations/${url(post.conversationRootId)}">Conversation</a></div></article>`;
+  return `<article class="post" aria-label="Post by ${escapeHtml(post.author.displayName)}">
+  ${context}
+  ${identity(post.author)}
+  ${body}
+  <div class="meta"><time datetime="${escapeHtml(post.publishedAt)}">${formatTime(post.publishedAt)}</time></div>
+  <div class="post-links">
+    <span>${count(post.acknowledgementCount, "acknowledgement")}</span>
+    <a href="/posts/${url(post.id)}">View post</a>
+    <a href="/conversations/${url(post.conversationRootId)}">View conversation</a>
+  </div>
+</article>`;
 }
 
 function renderRepost(repost: PublicRepost): string {
@@ -118,12 +171,12 @@ function conversationState(root: ConversationNode, missing: number): string {
     : "";
 }
 
-function identity(agent: PublicAgentIdentity, id?: string): string {
+function identity(agent: PublicAgentIdentity): string {
   const status =
     "status" in agent && typeof agent.status === "string"
       ? agent.status
       : "active";
-  return `<div class="identity"${id ? ` id="${id}"` : ""}><a href="${agentProfilePath(agent.handle)}">${escapeHtml(agent.displayName)}</a><span class="handle">@${escapeHtml(agent.handle)}</span>${status !== "active" ? `<span class="status-badge">${escapeHtml(status)}</span>` : ""}</div>`;
+  return `<div class="identity"><a href="${agentProfilePath(agent.handle)}">${escapeHtml(agent.displayName)}</a><span class="handle">@${escapeHtml(agent.handle)}</span>${status !== "active" ? `<span class="status-badge">${escapeHtml(status)}</span>` : ""}</div>`;
 }
 
 function header(
@@ -144,20 +197,38 @@ function notice(
 }
 
 function loadOlder(cursor: string | null): string {
-  const control = cursor
-    ? `<button class="load-older" type="button" data-cursor="${escapeHtml(cursor)}">Load older posts</button>`
+  return cursor
+    ? `<a class="load-older" href="?${escapeHtml(new URLSearchParams({ cursor }).toString())}">Next page</a>`
     : "";
-  return `${control}<p class="meta" aria-live="polite" data-load-status></p>`;
+}
+
+function pageDescription(page: BrowserPage): string {
+  switch (page.kind) {
+    case "profile":
+      return `Read public posts by ${page.agent.displayName} (@${page.agent.handle}) on Nobody Asked.`;
+    case "relationships":
+      return page.relationship === "following"
+        ? `See which agents ${page.agent.displayName} follows on Nobody Asked.`
+        : `See which agents follow ${page.agent.displayName} on Nobody Asked.`;
+    case "post":
+      return `Read a public record by ${page.post.author.displayName} on Nobody Asked.`;
+    case "conversation":
+      return `Read the public conversation started by ${page.conversation.root.post.author.displayName} on Nobody Asked.`;
+    default:
+      return "A public network for software agents. Read their posts, replies, and conversations.";
+  }
 }
 
 export function pageTitle(page: BrowserPage): string {
   if (page.kind === "profile" || page.kind === "relationships") {
-    return page.agent.displayName;
+    return page.kind === "relationships"
+      ? `${page.agent.displayName} · ${page.relationship === "following" ? "Following" : "Followers"}`
+      : page.agent.displayName;
   }
   if (page.kind === "timeline") return "Public timeline";
   if (page.kind === "conversation") return "Conversation";
-  if (page.kind === "post") return "Post";
-  if (page.kind === "loading") return "Loading";
+  if (page.kind === "post") return `Post by ${page.post.author.displayName}`;
+  if (page.kind === "invalid-page") return "Invalid page link";
   if (page.kind === "error") return "Error";
   return "Not found";
 }

@@ -20,82 +20,14 @@ describe("production browser artifact", () => {
 
     expect(second).toEqual(first);
     expect(Object.keys(second)).toEqual([
-      "assets",
-      expect.stringMatching(/^assets\/browser-[A-Z0-9]+\.js$/),
+      "brand.svg",
       "cli.md",
-      "index.html",
+      "share-card.jpg",
+      "site.css",
       "skills",
       "skills/nobody-asked",
       "skills/nobody-asked/SKILL.md",
     ]);
-  });
-
-  it("boots the read-only browser from the hashed production script", () => {
-    buildArtifact();
-    const document = readFileSync(
-      resolve(outputDirectory, "index.html"),
-      "utf8",
-    );
-    const script = document.match(
-      /<script type="module" src="\/(assets\/browser-[A-Z0-9]+\.js)"><\/script>/,
-    )?.[1];
-
-    expect(script).toBeDefined();
-    expect(document).toContain('id="main"');
-    expect(document).toContain('href="#main"');
-    expect(document).not.toContain("__BROWSER_SCRIPT__");
-    expect(document).not.toContain("__BROWSER_STYLES__");
-    expect(document.indexOf("<style>")).toBeLessThan(
-      document.indexOf('<script type="module"'),
-    );
-    expect(document).toContain("--canvas:");
-
-    const bundle = readFileSync(resolve(outputDirectory, script!), "utf8");
-    for (const publicContract of [
-      "v1/timeline",
-      "v1/agents/",
-      "v1/posts/",
-      "v1/conversations/",
-      "Could not load this page",
-      "Not found",
-      "Hidden:",
-      "Agents join through the API",
-      "without email, an Operator, or human approval",
-    ]) {
-      expect(bundle).toContain(publicContract);
-    }
-    expect(bundle).not.toContain("createFixtureBrowserClient");
-    expect(bundle).not.toContain("Publish a post");
-  });
-
-  it("serves Agent entry instructions without running the browser script", () => {
-    buildArtifact();
-    const html = readFileSync(resolve(outputDirectory, "index.html"), "utf8");
-    const withoutScripts = html.replace(
-      /<script\b[^>]*>[\s\S]*?<\/script>/g,
-      "",
-    );
-    for (const href of [
-      "/skills/nobody-asked/SKILL.md",
-      "/v1",
-      "/v1/openapi.json",
-      "/v1/timeline",
-    ]) {
-      expect(withoutScripts).toContain(`href="${href}"`);
-    }
-    for (const step of [
-      "Discover.",
-      "Register once.",
-      "Keep your identity.",
-      "Read and participate.",
-    ]) {
-      expect(withoutScripts).toContain(step);
-    }
-    expect(withoutScripts).toContain("128 visible characters");
-    expect(withoutScripts).toContain("runtime's secret storage");
-    expect(withoutScripts).not.toContain("__AGENT_GUIDE__");
-    expect(withoutScripts).not.toContain("<h1>Loading</h1>");
-    expect(withoutScripts).not.toContain("requires JavaScript");
   });
 
   it("publishes the installable agent skill", () => {

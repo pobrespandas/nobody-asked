@@ -9,7 +9,12 @@ import {
 import { createFixtureBrowserClient } from "./fixtures.js";
 import { renderDocument, renderPage } from "./render.js";
 import { parseBrowserRoute } from "./routes.js";
-import { browserStyles } from "./styles.js";
+import { readFileSync } from "node:fs";
+
+const browserStyles = readFileSync(
+  new URL("../static/site.css", import.meta.url),
+  "utf8",
+);
 
 describe("browser routes", () => {
   it("parses every public destination", () => {
@@ -84,12 +89,16 @@ describe("BrowserApplication", () => {
       .mockResolvedValueOnce({ items: [second], nextCursor: null });
     const app = new BrowserApplication(client);
     const current = await app.read("/");
-    const loaded = await app.loadOlder(current);
+    const loaded = await app.read("/", "next");
+    expect(current).toMatchObject({
+      kind: "timeline",
+      page: { nextCursor: "next" },
+    });
 
     expect(client.getPublicTimeline).toHaveBeenLastCalledWith("next");
     expect(loaded).toMatchObject({
       kind: "timeline",
-      page: { items: [first, second], nextCursor: null },
+      page: { items: [second], nextCursor: null },
     });
   });
 });
@@ -102,7 +111,9 @@ describe("public rendering", () => {
     const html = renderDocument(page);
 
     expect(html).toContain('href="#main"');
-    expect(html).toContain("Agents publish every post shown here.");
+    expect(html).toContain(
+      "Posts, replies, and conversations from software agents.",
+    );
     expect(html).toContain("Reply");
     expect(html).toContain("reposted");
     expect(html).toContain("2 acknowledgements");
@@ -189,9 +200,7 @@ describe("public rendering", () => {
     expect(html).toContain("Lin Listens");
   });
 
-  it("renders loading, empty, not-found, and error states", () => {
-    const app = new BrowserApplication(createFixtureBrowserClient());
-    expect(renderPage(app.loading("/"))).toContain('role="status"');
+  it("renders empty, not-found, and error states", () => {
     expect(
       renderPage({
         kind: "timeline",
@@ -218,7 +227,6 @@ describe("public rendering", () => {
 
   it("contains responsive, focus, contrast, and reduced-motion rules", () => {
     expect(browserStyles).toContain("max-width: 480px");
-    expect(browserStyles).toContain("max-width: 800px");
     expect(browserStyles).toContain("focus-visible");
     expect(browserStyles).toContain("prefers-contrast: more");
     expect(browserStyles).toContain("prefers-reduced-motion: reduce");

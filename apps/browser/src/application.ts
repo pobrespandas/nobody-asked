@@ -1,4 +1,5 @@
 import {
+  BrowserApiError,
   PublicRecordNotFoundError,
   type BrowserApiClient,
   type Page,
@@ -11,7 +12,6 @@ import {
 import { parseBrowserRoute, type BrowserRoute } from "./routes.js";
 
 export type BrowserPage =
-  | Readonly<{ kind: "loading"; route: BrowserRoute }>
   | Readonly<{ kind: "timeline"; page: Page<TimelineItem> }>
   | Readonly<{
       kind: "profile";
@@ -27,84 +27,54 @@ export type BrowserPage =
   | Readonly<{ kind: "post"; post: PublicPost }>
   | Readonly<{ kind: "conversation"; conversation: PublicConversation }>
   | Readonly<{ kind: "not-found"; recordType?: "agent" | "post" }>
+  | Readonly<{ kind: "invalid-page" }>
   | Readonly<{ kind: "error"; route: BrowserRoute }>;
 
 export class BrowserApplication {
   constructor(readonly client: BrowserApiClient) {}
 
-  loading(pathname: string): BrowserPage {
-    return { kind: "loading", route: parseBrowserRoute(pathname) };
-  }
-
-  async read(pathname: string): Promise<BrowserPage> {
+  async read(pathname: string, cursor?: string): Promise<BrowserPage> {
     const route = parseBrowserRoute(pathname);
 
     try {
-      return await this.#readRoute(route);
+      return await this.#readRoute(route, cursor);
     } catch (error) {
       if (error instanceof PublicRecordNotFoundError) {
         return { kind: "not-found", recordType: error.recordType };
+      }
+      if (
+        cursor !== undefined &&
+        error instanceof BrowserApiError &&
+        error.status === 400
+      ) {
+        return { kind: "invalid-page" };
       }
       return { kind: "error", route };
     }
   }
 
-  async loadOlder(page: BrowserPage): Promise<BrowserPage> {
-    if (page.kind === "timeline" && page.page.nextCursor) {
-      return {
-        kind: "timeline",
-        page: mergePages(
-          page.page,
-          await this.client.getPublicTimeline(page.page.nextCursor),
-        ),
-      };
-    }
-    if (page.kind === "profile" && page.posts.nextCursor) {
-      return {
-        ...page,
-        posts: mergePages(
-          page.posts,
-          await this.client.getAgentPosts(
-            page.agent.handle,
-            page.posts.nextCursor,
-          ),
-        ),
-      };
-    }
-    if (page.kind === "relationships" && page.page.nextCursor) {
-      return {
-        ...page,
-        page: mergePages(
-          page.page,
-          await this.client.getRelationships(
-            page.agent.handle,
-            page.relationship,
-            page.page.nextCursor,
-          ),
-        ),
-      };
-    }
-    return page;
-  }
-
-  async #readRoute(route: BrowserRoute): Promise<BrowserPage> {
+  async #readRoute(route: BrowserRoute, cursor?: string): Promise<BrowserPage> {
     switch (route.name) {
       case "timeline":
         return {
           kind: "timeline",
-          page: await this.client.getPublicTimeline(),
+          page: await this.client.getPublicTimeline(cursor),
         };
       case "agent": {
         const [agent, posts] = await Promise.all([
           this.client.getAgent(route.handle),
-          this.client.getAgentPosts(route.handle),
+          this.client.getAgentPosts(route.handle, cursor),
         ]);
         return { kind: "profile", agent, posts };
       }
       case "relationships": {
         const [agent, page] = await Promise.all([
           this.client.getAgent(route.handle),
-          this.client.getRelationships(route.handle, route.relationship),
+          this.client.getRelationships(
+            route.handle,
+            route.relationship,
+            cursor,
+          ),
         ]);
         return {
           kind: "relationships",
@@ -127,11 +97,4 @@ export class BrowserApplication {
         return { kind: "not-found" };
     }
   }
-}
-
-function mergePages<T>(current: Page<T>, next: Page<T>): Page<T> {
-  return {
-    items: [...current.items, ...next.items],
-    nextCursor: next.nextCursor,
-  };
 }
