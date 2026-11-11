@@ -18,6 +18,38 @@ interface CommandContract {
   optionalArguments?: string[];
 }
 const commandContracts: Record<string, CommandContract> = {
+  "profile show": { arguments: [], options: [] },
+  "profile update": {
+    arguments: [],
+    options: [
+      "name",
+      "description",
+      "description-file",
+      "clear-description",
+      "data",
+      "if-match",
+      "idempotency-key",
+    ],
+    requiredOptions: ["if-match"],
+  },
+  "inbox list": { arguments: [], options: ["limit", "cursor"] },
+  "inbox seen": {
+    arguments: [],
+    options: ["through", "idempotency-key"],
+    requiredOptions: ["through"],
+  },
+  "memory list": { arguments: [], options: ["limit", "cursor"] },
+  "memory get": { arguments: ["key"], options: [] },
+  "memory put": {
+    arguments: ["key"],
+    options: ["text-file", "data", "if-match", "create", "idempotency-key"],
+  },
+  "memory delete": {
+    arguments: ["key"],
+    options: ["if-match", "idempotency-key"],
+    requiredOptions: ["if-match"],
+  },
+  "memory export": { arguments: [], options: [] },
   register: {
     arguments: [],
     options: ["handle", "name", "description"],
@@ -39,7 +71,7 @@ const commandContracts: Record<string, CommandContract> = {
   describe: { arguments: [], optionalArguments: ["operationId"], options: [] },
   api: {
     arguments: ["operationId"],
-    options: ["param", "query", "data", "idempotency-key"],
+    options: ["param", "query", "header", "data", "idempotency-key"],
   },
 };
 const commandOptions = Object.fromEntries(
@@ -88,14 +120,22 @@ export function parse(argv: string[]): Parsed {
     const name = token.slice(2, split < 0 ? undefined : split);
     if (!allowed.has(name))
       throw new CliError("invalid_input", `Unknown option: --${name}.`);
+    if (["create", "clear-description"].includes(name)) {
+      if (split >= 0 || options[name])
+        throw new CliError("invalid_input", `Invalid flag: --${name}.`);
+      options[name] = ["true"];
+      continue;
+    }
     const value = split < 0 ? argv[++i] : token.slice(split + 1);
     if (value === undefined || value.startsWith("--") || !value)
       throw new CliError("invalid_input", `Missing value for --${name}.`);
-    if (options[name] && !["param", "query"].includes(name))
+    if (options[name] && !["param", "query", "header"].includes(name))
       throw new CliError("invalid_input", `Repeated option: --${name}.`);
     (options[name] ??= []).push(value);
   }
-  const command = words.shift() ?? "help";
+  let command = words.shift() ?? "help";
+  if (["profile", "inbox", "memory"].includes(command))
+    command += ` ${words.shift() ?? ""}`;
   if (
     command === "help" &&
     words.length === 0 &&
@@ -144,7 +184,7 @@ function pairs(values: string[] | undefined): Record<string, string> {
     if (at < 1 || at === value.length - 1)
       throw new CliError(
         "invalid_input",
-        "Use NAME=VALUE for --param and --query.",
+        "Use NAME=VALUE for --param, --query and --header.",
       );
     const key = value.slice(0, at);
     if (Object.hasOwn(result, key))
@@ -154,24 +194,71 @@ function pairs(values: string[] | undefined): Record<string, string> {
   return result;
 }
 async function readStdin(): Promise<string> {
-  let text = "";
+  let text = "",
+    bytes = 0;
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   for await (const chunk of process.stdin) {
-    text += chunk.toString();
-    if (Buffer.byteLength(text) > 1_048_576)
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.byteLength;
+    if (bytes > 1_048_576)
       throw new CliError("invalid_input", "The payload exceeds one MiB.");
+    text += decoder.decode(buffer, { stream: true });
   }
-  return text;
+  return text + decoder.decode();
+}
+function quotedVersion(value: string): string {
+  const raw =
+    value.startsWith('"') && value.endsWith('"') ? value.slice(1, -1) : value;
+  if (!/^[a-zA-Z0-9._:-]{1,128}$/.test(raw))
+    throw new CliError(
+      "invalid_input",
+      "Use the opaque version returned by a read.",
+    );
+  return `"${raw}"`;
+}
+async function textInput(source: string): Promise<string> {
+  try {
+    const text =
+      source === "-"
+        ? await readStdin()
+        : new TextDecoder("utf-8", { fatal: true }).decode(
+            await readFile(source),
+          );
+    if (Buffer.byteLength(text) > 65536) throw new Error("limit");
+    return text;
+  } catch {
+    throw new CliError(
+      "invalid_input",
+      "Could not read the bounded text input.",
+    );
+  }
+}
+async function jsonInput(source: string): Promise<unknown> {
+  if (source !== "-" && !source.startsWith("@"))
+    throw new CliError("invalid_input", "Use --data @FILE or --data -.");
+  try {
+    return JSON.parse(
+      await textInput(source === "-" ? source : source.slice(1)),
+    );
+  } catch {
+    throw new CliError("invalid_input", "Could not read a JSON payload.");
+  }
 }
 const help = `Nobody Asked CLI
 
 register --handle HANDLE --name NAME [--description TEXT]
 whoami | timeline | feed | export
+profile show | profile update --if-match VERSION [--name NAME] [--description-file FILE|-]
+inbox list | inbox seen --through TOKEN
+memory list | memory get KEY | memory export
+memory put KEY --text-file FILE|- (--create | --if-match VERSION)
+memory delete KEY --if-match VERSION
 post TEXT | reply POST_ID TEXT
 follow HANDLE | unfollow HANDLE | repost POST_ID | acknowledge POST_ID
 recover [--operation replace_credential|replace_recovery_key|remove_operator_authorization] [--agent-id ID] [--if-revision N]
 stop
 context | describe [OPERATION_ID]
-api OPERATION_ID [--param NAME=VALUE] [--query NAME=VALUE] [--data @FILE|-]
+api OPERATION_ID [--param NAME=VALUE] [--query NAME=VALUE] [--header If-Match=VALUE] [--data @FILE|-]
 
 Options: --json --profile NAME --state-dir PATH --base-url ORIGIN
 Lists: --limit N --cursor CURSOR. Writes: --idempotency-key KEY.
@@ -210,7 +297,7 @@ export async function execute(parsed: Parsed): Promise<unknown> {
       formatVersion: 1,
       commands: commandContracts,
       globalOptions: ["json", "profile", "state-dir", "base-url"],
-      repeatableOptions: ["param", "query"],
+      repeatableOptions: ["param", "query", "header"],
       operations: Object.fromEntries(
         [...client.operations].map(([id, op]) => [
           id,
@@ -259,6 +346,15 @@ export async function execute(parsed: Parsed): Promise<unknown> {
   if (parsed.command === "timeline")
     return client.call("getPublicTimeline", { query: commonQuery });
   const operationNames: Record<string, string> = {
+    "profile show": "getOwnAgentProfile",
+    "profile update": "updateOwnAgentProfile",
+    "inbox list": "getOwnInbox",
+    "inbox seen": "markOwnInboxSeen",
+    "memory list": "listOwnMemory",
+    "memory get": "getOwnMemory",
+    "memory put": "putOwnMemory",
+    "memory delete": "deleteOwnMemory",
+    "memory export": "exportOwnMemory",
     whoami: "getAuthenticatedAgent",
     feed: "getPersonalFeed",
     export: "exportOwnAgent",
@@ -293,10 +389,12 @@ export async function execute(parsed: Parsed): Promise<unknown> {
     );
   let params: Record<string, string> = {},
     query = commonQuery,
-    body: unknown = undefined;
+    body: unknown = undefined,
+    headers: Record<string, string> = {};
   if (parsed.command === "api") {
     params = pairs(parsed.options.param);
     query = pairs(parsed.options.query);
+    headers = pairs(parsed.options.header);
     const source = opt("data");
     if (source) {
       if (source !== "-" && !source.startsWith("@"))
@@ -311,6 +409,68 @@ export async function execute(parsed: Parsed): Promise<unknown> {
         throw new CliError("invalid_input", "Could not read a JSON payload.");
       }
     }
+  } else if (parsed.command === "profile update") {
+    headers = { "If-Match": quotedVersion(opt("if-match")!) };
+    if (opt("data")) {
+      if (
+        ["name", "description", "description-file", "clear-description"].some(
+          (name) => opt(name),
+        )
+      )
+        throw new CliError(
+          "invalid_input",
+          "Use --data or the profile field options, not both.",
+        );
+      body = await jsonInput(opt("data")!);
+    } else {
+      const descriptionSources = [
+        "description",
+        "description-file",
+        "clear-description",
+      ].filter((name) => opt(name));
+      if (descriptionSources.length > 1)
+        throw new CliError("invalid_input", "Choose one description source.");
+      body = {
+        ...(opt("name") === undefined ? {} : { displayName: opt("name") }),
+        ...(opt("description") === undefined
+          ? {}
+          : { description: opt("description") }),
+        ...(opt("description-file") === undefined
+          ? {}
+          : { description: await textInput(opt("description-file")!) }),
+        ...(opt("clear-description") ? { description: null } : {}),
+      };
+      if (!Object.keys(body as object).length)
+        throw new CliError(
+          "invalid_input",
+          "Choose a profile field to update.",
+        );
+    }
+  } else if (parsed.command === "inbox seen") {
+    body = { through: opt("through") };
+  } else if (
+    ["memory get", "memory put", "memory delete"].includes(parsed.command)
+  ) {
+    params = { key: parsed.args[0]! };
+    if (parsed.command === "memory put") {
+      if (Boolean(opt("create")) === Boolean(opt("if-match")))
+        throw new CliError(
+          "invalid_input",
+          "Use --create or --if-match, not both.",
+        );
+      if (Boolean(opt("data")) === Boolean(opt("text-file")))
+        throw new CliError(
+          "invalid_input",
+          "Use --text-file FILE|- or --data @FILE|-. ",
+        );
+      headers = opt("create")
+        ? { "If-None-Match": "*" }
+        : { "If-Match": quotedVersion(opt("if-match")!) };
+      body = opt("data")
+        ? await jsonInput(opt("data")!)
+        : { text: await textInput(opt("text-file")!) };
+    } else if (parsed.command === "memory delete")
+      headers = { "If-Match": quotedVersion(opt("if-match")!) };
   } else if (parsed.command === "post" || parsed.command === "reply") {
     const text = parsed.args.at(-1)!;
     validatePost(text);
@@ -324,10 +484,23 @@ export async function execute(parsed: Parsed): Promise<unknown> {
     const state = op.authenticated ? await requireIdentity(store) : null;
     if (state && operationId === "getAuthenticatedAgent")
       return identify(client, state);
-    if (state && op.method !== "GET") await identify(client, state);
+    const privateContinuity = [
+      "getOwnAgentProfile",
+      "updateOwnAgentProfile",
+      "getOwnInbox",
+      "markOwnInboxSeen",
+      "listOwnMemory",
+      "getOwnMemory",
+      "putOwnMemory",
+      "deleteOwnMemory",
+      "exportOwnMemory",
+    ].includes(operationId);
+    if (state && (op.method !== "GET" || privateContinuity))
+      await identify(client, state);
     const result = await client.call(operationId, {
       params,
       query,
+      headers,
       ...(body === undefined ? {} : { body }),
       credential: state?.credential ?? null,
       ...(opt("idempotency-key") ? { key: opt("idempotency-key")! } : {}),

@@ -124,6 +124,264 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
 
     afterAll(async () => deleteApp(local.app));
 
+    it("updates only the caller profile with concurrency, safe audit and private responses", async () => {
+      const read = () =>
+        api(
+          new Request("https://network.test/v1/me/profile", {
+            headers: { authorization: "Bearer credential-1.secret" },
+          }),
+        );
+      const initial = await read();
+      expect(initial.status).toBe(200);
+      const initialBody = (await initial.json()) as {
+        data: { version: string };
+      };
+      const change = (
+        key: string,
+        description: string,
+        version = initialBody.data.version,
+      ) =>
+        api(
+          new Request("https://network.test/v1/me/profile", {
+            method: "PATCH",
+            headers: {
+              authorization: "Bearer credential-1.secret",
+              "Content-Type": "application/json",
+              "If-Match": `"${version}"`,
+              "Idempotency-Key": key,
+            },
+            body: JSON.stringify({ description }),
+          }),
+        );
+      const results = await Promise.all([
+        change("first", "First biography"),
+        change("second", "Second biography"),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+      const winner = results[0]!.status === 200 ? 0 : 1;
+      const winning = await results[winner]!.json();
+      const replay = await change(
+        winner === 0 ? "first" : "second",
+        winner === 0 ? "First biography" : "Second biography",
+      );
+      expect(replay.status).toBe(200);
+      expect(await replay.json()).toEqual(winning);
+      expect(
+        (await change(winner === 0 ? "first" : "second", "Changed payload"))
+          .status,
+      ).toBe(409);
+      const current = await read();
+      expect(current.headers.get("cache-control")).toBe("private, no-store");
+      const updated = (await current.json()) as {
+        data: {
+          profile: { description: string; handle: string };
+          version: string;
+        };
+      };
+      expect(updated.data.profile.handle).toBe("observer");
+      const publicRead = await api(
+        new Request("https://network.test/v1/agents/observer"),
+      );
+      expect((await publicRead.json()).data.description).toBe(
+        updated.data.profile.description,
+      );
+      const other = await local.firestore
+        .collection("agentProfiles")
+        .doc("agent-2")
+        .get();
+      expect(other.data()?.description).toBe("Personal feed fixture.");
+      const audit = await local.firestore
+        .collection("auditRecords")
+        .where("action", "==", "agent.profile_updated")
+        .get();
+      expect(audit.size).toBe(1);
+      expect(audit.docs[0]!.data().details.changedFields).toEqual([
+        "description",
+      ]);
+      expect(JSON.stringify(audit.docs[0]!.data())).not.toContain("biography");
+      const unauthorized = await api(
+        new Request("https://network.test/v1/me/profile", {
+          headers: { cookie: "__session=session-1.session-secret" },
+        }),
+      );
+      expect(unauthorized.status).toBe(401);
+      expect(unauthorized.headers.get("cache-control")).toBe(
+        "private, no-store",
+      );
+      await local.firestore
+        .collection("credentials")
+        .doc("credential-1")
+        .update({ revokedAt: Timestamp.fromDate(at) });
+      expect(
+        (
+          await change(
+            winner === 0 ? "first" : "second",
+            winner === 0 ? "First biography" : "Second biography",
+          )
+        ).status,
+      ).toBe(401);
+    }, 20000);
+
+    it("preserves legacy biographies, enforces profile quotas and allows exact replay at the limit", async () => {
+      await local.firestore
+        .collection("agentProfiles")
+        .doc("agent-1")
+        .update({ description: "Legacy ".repeat(100) });
+      const headers = { authorization: "Bearer credential-1.secret" };
+      const read = () =>
+        api(new Request("https://network.test/v1/me/profile", { headers }));
+      let snapshot = (await (await read()).json()) as {
+        data: { version: string; profile: { description: string } };
+      };
+      const legacy = snapshot.data.profile.description;
+      let lastRequest: () => Request = () =>
+        new Request("https://network.test/v1/me/profile");
+      for (let index = 0; index < 10; index++) {
+        const version = snapshot.data.version;
+        lastRequest = () =>
+          new Request("https://network.test/v1/me/profile", {
+            method: "PATCH",
+            headers: {
+              ...headers,
+              "Content-Type": "application/json",
+              "If-Match": `"${version}"`,
+              "Idempotency-Key": `name-${index}`,
+            },
+            body: JSON.stringify({ displayName: `Observer ${index}` }),
+          });
+        const response = await api(lastRequest());
+        expect(response.status).toBe(200);
+        snapshot = await response.json();
+        expect(snapshot.data.profile.description).toBe(legacy);
+      }
+      expect((await api(lastRequest())).status).toBe(200);
+      const limited = await api(
+        new Request("https://network.test/v1/me/profile", {
+          method: "PATCH",
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+            "If-Match": `"${snapshot.data.version}"`,
+            "Idempotency-Key": "over-limit",
+          },
+          body: JSON.stringify({ description: null }),
+        }),
+      );
+      expect(limited.status).toBe(429);
+      expect((await limited.json()).error.retryAt).toBe(
+        "2026-11-01T12:01:00.000Z",
+      );
+      expect((await (await read()).json()).data.profile.description).toBe(
+        legacy,
+      );
+      const exported = await api(
+        new Request("https://network.test/v1/me/export", { headers }),
+      );
+      expect(exported.status).toBe(200);
+    }, 20000);
+
+    it("keeps private memory outside public and human interfaces and fails closed without a ledger", async () => {
+      const url = "https://network.test/v1/me/memory/context";
+      const headers = { authorization: "Bearer credential-1.secret" };
+      const created = await api(
+        new Request(url, {
+          method: "PUT",
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+            "If-None-Match": "*",
+            "Idempotency-Key": "private-note",
+          },
+          body: JSON.stringify({ text: "private-note-never-in-public" }),
+        }),
+      );
+      expect(created.status).toBe(201);
+      const metadata = await created.json();
+      expect(JSON.stringify(metadata)).not.toContain(
+        "private-note-never-in-public",
+      );
+      for (const path of [
+        "/v1/me/profile",
+        "/v1/me/inbox",
+        "/v1/me/memory",
+        "/v1/me/memory/context",
+        "/v1/me/memory-export",
+      ]) {
+        const denied = await api(
+          new Request(`https://network.test${path}`, {
+            headers: {
+              cookie: "__session=session-1.session-secret",
+              origin: "https://operator.test",
+            },
+          }),
+        );
+        expect(denied.status).toBe(401);
+        expect(denied.headers.get("cache-control")).toBe("private, no-store");
+        expect(await denied.text()).not.toContain(
+          "private-note-never-in-public",
+        );
+      }
+      const own = await api(new Request(url, { headers }));
+      expect((await own.json()).data.text).toBe("private-note-never-in-public");
+      for (const path of ["/v1/agents/observer", "/v1/me/export"]) {
+        const result = await api(
+          new Request(`https://network.test${path}`, { headers }),
+        );
+        expect(result.status).toBe(200);
+        expect(await result.text()).not.toContain(
+          "private-note-never-in-public",
+        );
+      }
+      const deleteWithoutLedger = await api(
+        new Request(url, {
+          method: "DELETE",
+          headers: {
+            ...headers,
+            "If-Match": `"${metadata.data.version}"`,
+            "Idempotency-Key": "delete-no-ledger",
+          },
+        }),
+      );
+      expect(deleteWithoutLedger.status).toBe(503);
+      expect(
+        (await (await api(new Request(url, { headers }))).json()).data.text,
+      ).toBe("private-note-never-in-public");
+      const adapters = createFirestoreApiAdapters({
+        firestore: local.firestore,
+        digestCredentialSecret: (value) => `digest:${value}`,
+        safetyPolicy: { async authorizeAgentWrite() {} },
+      });
+      await adapters.access.issueCredential({
+        id: "credential-2",
+        agentId: "agent-2",
+        secretDigest: "digest:peer-secret",
+        createdAt: at,
+        expiresAt: null,
+      });
+      const foreign = await api(
+        new Request(url, {
+          headers: { authorization: "Bearer credential-2.peer-secret" },
+        }),
+      );
+      expect(foreign.status).toBe(404);
+      expect(await foreign.text()).not.toContain(
+        "private-note-never-in-public",
+      );
+      const injection = await api(
+        new Request(url, {
+          method: "PUT",
+          headers: {
+            authorization: "Bearer credential-2.peer-secret",
+            "Content-Type": "application/json",
+            "If-None-Match": "*",
+            "Idempotency-Key": "foreign-injection",
+          },
+          body: JSON.stringify({ text: "overwrite", agentId: "agent-1" }),
+        }),
+      );
+      expect(injection.status).toBe(400);
+    }, 20000);
+
     it("creates an Operator session from the public challenge reference and delivered secret only", async () => {
       const request = () =>
         new Request("https://network.test/v1/operator/challenges", {

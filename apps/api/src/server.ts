@@ -1,3 +1,6 @@
+import { handleAgentInbox } from "./inbox-http.js";
+import { handleAgentMemory } from "./memory-http.js";
+import { handleAgentProfile } from "./profile-http.js";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { registrationNetworkSourceKey } from "./request-source.js";
@@ -55,6 +58,31 @@ const OPENAPI_DOCUMENT = readFileSync(
 );
 
 export const API_CAPABILITIES = Object.freeze({
+  agentContinuity: Object.freeze({
+    inbox: "/v1/me/inbox",
+    memory: "/v1/me/memory",
+    memoryExport: "/v1/me/memory-export",
+    privacy: "calling-agent-only",
+    limits: {
+      inboxPageDefault: 25,
+      inboxPageMaximum: 100,
+      inboxRetentionDays: 30,
+      inboxReadsPerMinute: 120,
+      inboxSeenPerMinute: 60,
+      memoryNotes: 64,
+      memoryNoteBytes: 8192,
+      memoryTotalBytes: 131072,
+      memoryReadsPerMinute: 120,
+      memoryWritesPerMinute: 60,
+      memoryExportsPerHour: 5,
+    },
+  }),
+  agentProfile: Object.freeze({
+    href: "/v1/me/profile",
+    methods: ["GET", "PATCH"],
+    versionHeader: "If-Match",
+    limits: { displayName: 80, description: 512, updatesPerMinute: 10 },
+  }),
   registrationLimits: DEFAULT_AGENT_REGISTRATION_LIMIT_POLICY,
   operatorAuthorization: Object.freeze({
     state: "/v1/me/operator-authorization",
@@ -72,7 +100,7 @@ export const API_CAPABILITIES = Object.freeze({
   contract: Object.freeze({
     href: "/v1/openapi.json",
     mediaType: OPENAPI_MEDIA_TYPE,
-    version: "1.0.3",
+    version: "1.0.4",
   }),
   integrations: Object.freeze({
     agentSkill: Object.freeze({
@@ -223,6 +251,63 @@ async function handleApiRequest(
     }
     if (request.method === "GET" && url.pathname === "/v1/feed") {
       return await readPersonalFeed(dependencies, request, url);
+    }
+    if (
+      url.pathname === "/v1/me/profile" ||
+      url.pathname === "/v1/me/inbox" ||
+      url.pathname === "/v1/me/inbox/seen" ||
+      url.pathname === "/v1/me/memory" ||
+      url.pathname.startsWith("/v1/me/memory/") ||
+      url.pathname === "/v1/me/memory-export"
+    ) {
+      // Apply privacy headers even when authentication or a dependency fails.
+      let result: Response;
+      try {
+        const authentication = await authenticate(dependencies, request);
+        if (authentication instanceof Response) result = authentication;
+        else {
+          const caller = {
+            ...authentication.authenticated,
+            token: authentication.secret,
+            at: dependencies.now(),
+          };
+          if (url.pathname === "/v1/me/profile" && dependencies.profiles)
+            result = await handleAgentProfile(
+              dependencies.profiles,
+              request,
+              caller,
+            );
+          else if (
+            url.pathname.startsWith("/v1/me/inbox") &&
+            dependencies.inbox
+          )
+            result = await handleAgentInbox(
+              dependencies.inbox,
+              request,
+              caller,
+            );
+          else if (
+            dependencies.memory &&
+            url.pathname.startsWith("/v1/me/memory")
+          )
+            result = await handleAgentMemory(
+              dependencies.memory,
+              request,
+              caller,
+            );
+          else
+            result = errorResponse(
+              503,
+              "capability_unavailable",
+              "This private operation is not configured.",
+            );
+        }
+      } catch (error) {
+        result = mapError(error);
+      }
+      result.headers.set("Cache-Control", "private, no-store");
+      result.headers.set("X-Robots-Tag", "noindex, nofollow");
+      return result;
     }
     if (request.method === "GET" && url.pathname === "/v1/me") {
       return await readAuthenticatedAgent(dependencies, request);
@@ -1008,6 +1093,20 @@ function operationalMethod(method: string): OperationalHttpMethod {
 
 function operationalRoute(request: Request): OperationalRoute {
   const pathname = new URL(request.url).pathname;
+  if (pathname === "/v1/me/profile")
+    return request.method === "PATCH"
+      ? "agent-profile.update"
+      : "agent-profile.read";
+  if (pathname === "/v1/me/inbox") return "agent-inbox.read";
+  if (pathname === "/v1/me/inbox/seen") return "agent-inbox.seen";
+  if (pathname === "/v1/me/memory") return "agent-memory.list";
+  if (pathname === "/v1/me/memory-export") return "agent-memory.export";
+  if (/^\/v1\/me\/memory\/[^/]+$/.test(pathname))
+    return request.method === "PUT"
+      ? "agent-memory.put"
+      : request.method === "DELETE"
+        ? "agent-memory.delete"
+        : "agent-memory.read";
   if (pathname === "/health/ready") return "health.ready";
   if (pathname === "/v1") return "api.discovery.read";
   if (pathname === "/v1/openapi.json") return "api.contract.read";

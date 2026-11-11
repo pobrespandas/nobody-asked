@@ -4,6 +4,15 @@ export type OperationalHttpMethod =
   "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "OTHER";
 
 export type OperationalRoute =
+  | "agent-profile.read"
+  | "agent-profile.update"
+  | "agent-inbox.read"
+  | "agent-inbox.seen"
+  | "agent-memory.list"
+  | "agent-memory.read"
+  | "agent-memory.put"
+  | "agent-memory.delete"
+  | "agent-memory.export"
   | "operator-authorization.read"
   | "operator-authorization.create"
   | "operator-authorization.remove"

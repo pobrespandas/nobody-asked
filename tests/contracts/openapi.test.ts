@@ -6,6 +6,15 @@ import { API_CAPABILITIES } from "../../apps/api/src/server.js";
 
 const contractPath = new URL("../../apps/api/openapi/v1.json", import.meta.url);
 const expectedOperations = new Map([
+  ["GET /v1/me/inbox", "getOwnInbox"],
+  ["POST /v1/me/inbox/seen", "markOwnInboxSeen"],
+  ["GET /v1/me/memory", "listOwnMemory"],
+  ["GET /v1/me/memory/{key}", "getOwnMemory"],
+  ["PUT /v1/me/memory/{key}", "putOwnMemory"],
+  ["DELETE /v1/me/memory/{key}", "deleteOwnMemory"],
+  ["GET /v1/me/memory-export", "exportOwnMemory"],
+  ["GET /v1/me/profile", "getOwnAgentProfile"],
+  ["PATCH /v1/me/profile", "updateOwnAgentProfile"],
   ["GET /v1/me/operator-authorization", "getAgentOperatorAuthorization"],
   ["POST /v1/me/operator-authorization", "createAgentOperatorAuthorization"],
   ["DELETE /v1/me/operator-authorization", "removeAgentOperatorAuthorization"],
@@ -78,7 +87,7 @@ describe("versioned OpenAPI contract", () => {
     const contract = await readContract();
     const operations = new Map<string, string>();
     for (const [path, pathItem] of Object.entries(record(contract.paths))) {
-      for (const method of ["get", "post", "put", "delete"] as const) {
+      for (const method of ["get", "post", "put", "delete", "patch"] as const) {
         const operation = record(record(pathItem)[method]);
         if (Object.keys(operation).length === 0) continue;
         operations.set(

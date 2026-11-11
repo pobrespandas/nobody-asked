@@ -1,4 +1,7 @@
-import { FirestorePublicReadRepository } from "@nobody-asked/persistence";
+import {
+  FirestoreAgentMemory,
+  FirestorePublicReadRepository,
+} from "@nobody-asked/persistence";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -517,6 +520,10 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
             .get()
         ).data()?.revokedAt,
       ).toEqual(stamp);
+      const conflict = results.find((result) => result.status === "rejected");
+      expect(
+        conflict?.status === "rejected" ? conflict.reason : null,
+      ).toMatchObject({ code: "record_conflict" });
       await actions.execute(
         principal,
         await command("agents", "agent", "restore"),
@@ -526,7 +533,7 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
           await local.firestore.collection("agentProfiles").doc("agent").get()
         ).data()?.status,
       ).toBe("stopped");
-    });
+    }, 20_000);
     it("checks session revocation inside the action transaction", async () => {
       await seedAgent();
       await local.firestore
@@ -887,6 +894,135 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         ).data()?.status,
       ).toBe("suspended");
     });
+    it("reconciles private note deletions and clears all private Agent state without disclosing text", async () => {
+      await seedAgent();
+      const caller = {
+        agentId: "agent",
+        credentialId: "credential-agent",
+        token: "credential-agent.secret",
+        at,
+      };
+      const memory = new FirestoreAgentMemory(
+        local.firestore,
+        () => "never-disclose",
+        { writeDeletion: (entry) => objects.writeLedger(entry) },
+      );
+      const first = await memory.put(
+        caller,
+        "context",
+        "private-memory-token",
+        { createOnly: true },
+        "create-private",
+      );
+      const original = await local.firestore
+        .collection("agentMemoryNotes")
+        .get();
+      const restoredNote = original.docs[0]!.data(),
+        noteId = original.docs[0]!.id;
+      await memory.delete(
+        caller,
+        "context",
+        first.metadata.version,
+        "delete-private",
+      );
+      const captured = [...entries.values()];
+      expect(captured).toHaveLength(1);
+      expect(captured[0]!.targetType).toBe("memory");
+      expect(JSON.stringify(captured)).not.toContain("private-memory-token");
+      await local.firestore
+        .collection("agentMemoryNotes")
+        .doc(noteId)
+        .set(restoredNote);
+      const reconciled = await reconcileDeletionLedger(
+        local.firestore,
+        objects,
+        () => at,
+      );
+      expect(reconciled.applied).toBe(1);
+      expect(
+        (await local.firestore.collection("agentMemoryNotes").doc(noteId).get())
+          .exists,
+      ).toBe(false);
+      await memory.put(
+        caller,
+        "context",
+        "new-incarnation-token",
+        { createOnly: true },
+        "create-new-private",
+      );
+      await reconcileDeletionLedger(local.firestore, objects, () => at);
+      expect((await memory.get(caller, "context")).text).toBe(
+        "new-incarnation-token",
+      );
+      await local.firestore
+        .collection("agentInboxStates")
+        .doc("agent")
+        .set({ agentId: "agent", signingKey: "private-signing-material" });
+      await local.firestore
+        .collection("agentInboxEvents")
+        .doc("event")
+        .set({ recipientId: "agent", sequence: 1 });
+      await local.firestore
+        .collection("agentInboxCommands")
+        .doc("command")
+        .set({ agentId: "agent" });
+      const preview = await jobs.preview("agents", "agent");
+      await local.firestore
+        .collection("operatorSessions")
+        .doc("session")
+        .update({ adminDeletionIntent: preview.impact });
+      const job = await jobs.createDeletion(
+        { ...principal, deletionIntent: preview.impact },
+        {
+          resource: "agents",
+          id: "agent",
+          action: "delete",
+          version: preview.version,
+          reason: "Remove isolated private data fixture",
+          category: "abuse",
+          key: "private-delete-agent",
+          impact: preview.impact,
+          confirmation: "agent",
+        },
+      );
+      for (let step = 0; step < 100; step++) {
+        await jobs.step(job.id);
+        if (
+          (
+            await local.firestore.collection("adminJobs").doc(job.id).get()
+          ).data()?.status === "completed"
+        )
+          break;
+      }
+      expect(
+        (await local.firestore.collection("adminJobs").doc(job.id).get()).data()
+          ?.status,
+      ).toBe("completed");
+      for (const collection of [
+        "agentMemoryNotes",
+        "agentMemoryStates",
+        "agentMemoryCommands",
+        "agentMemoryTombstones",
+        "agentInboxStates",
+        "agentInboxEvents",
+        "agentInboxCommands",
+      ]) {
+        expect((await local.firestore.collection(collection).get()).empty).toBe(
+          true,
+        );
+      }
+      expect(JSON.stringify([...entries.values()])).not.toContain(
+        "new-incarnation-token",
+      );
+      expect(
+        JSON.stringify(
+          (await local.firestore.collection("auditRecords").get()).docs.map(
+            (doc) => doc.data(),
+          ),
+        ),
+      ).not.toContain("private-memory-token");
+    }, 30000);
+
     it("reconciles restored data and keeps the recovery gate closed on ledger failure", async () => {
       await seedAgent();
       await seedPost("root", "agent");

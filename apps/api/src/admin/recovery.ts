@@ -1,3 +1,4 @@
+import { applyMemoryDeletion } from "@nobody-asked/persistence";
 import { randomUUID } from "node:crypto";
 import {
   FieldValue,
@@ -6,6 +7,17 @@ import {
 } from "firebase-admin/firestore";
 import { digest, requireAdmin } from "./contracts.js";
 import { AdminJobs, type JobObjects, type LedgerEntry } from "./jobs.js";
+
+function ledgerIdentity(entry: LedgerEntry): string {
+  return JSON.stringify([
+    entry.id,
+    entry.targetType,
+    entry.targetId,
+    entry.requestedAt,
+    entry.targetType === "memory" ? entry.agentId : null,
+    entry.targetType === "memory" ? entry.incarnation : null,
+  ]);
+}
 
 /** Run only against an isolated restored database while source writes are paused. */
 export async function reconcileDeletionLedger(
@@ -22,7 +34,12 @@ export async function reconcileDeletionLedger(
     const page = await objects.listLedger(cursor);
     for (const entry of page.items) {
       requireAdmin(
-        ["agents", "content"].includes(entry.targetType) &&
+        ["agents", "content", "memory"].includes(entry.targetType) &&
+          (entry.targetType !== "memory" ||
+            (typeof entry.agentId === "string" &&
+              /^[a-zA-Z0-9_.:@-]{1,180}$/.test(entry.agentId) &&
+              typeof entry.incarnation === "string" &&
+              /^[a-zA-Z0-9_-]{1,128}$/.test(entry.incarnation))) &&
           /^[a-zA-Z0-9_.:@-]{1,180}$/.test(entry.targetId) &&
           Number.isFinite(Date.parse(entry.requestedAt)),
         500,
@@ -33,11 +50,7 @@ export async function reconcileDeletionLedger(
     cursor = page.nextCursor ?? undefined;
   } while (cursor);
   const fingerprint = digest(
-    JSON.stringify(
-      entries
-        .map((entry) => `${entry.id}:${entry.targetType}:${entry.targetId}`)
-        .sort(),
-    ),
+    JSON.stringify(entries.map((entry) => ledgerIdentity(entry)).sort()),
   );
   const readonlyObjects: JobObjects = {
     ...objects,
@@ -62,7 +75,16 @@ export async function reconcileDeletionLedger(
     { async enqueue() {} },
     now,
   );
-  for (const entry of entries) {
+  // Apply note tombstones first so a later full Agent deletion also clears private metadata.
+  for (const entry of [...entries].sort(
+    (left, right) =>
+      Number(right.targetType === "memory") -
+      Number(left.targetType === "memory"),
+  )) {
+    if (entry.targetType === "memory") {
+      await applyMemoryDeletion(firestore, entry, now());
+      continue;
+    }
     const target =
       entry.targetType === "content"
         ? await firestore.collection("publicItems").doc(entry.targetId).get()
@@ -108,11 +130,7 @@ export async function reconcileDeletionLedger(
   cursor = undefined;
   do {
     const page = await objects.listLedger(cursor);
-    after.push(
-      ...page.items.map(
-        (entry) => `${entry.id}:${entry.targetType}:${entry.targetId}`,
-      ),
-    );
+    after.push(...page.items.map((entry) => ledgerIdentity(entry)));
     cursor = page.nextCursor ?? undefined;
   } while (cursor);
   requireAdmin(

@@ -1,3 +1,4 @@
+import type { MemoryDeletionEntry } from "@nobody-asked/persistence";
 import { randomUUID } from "node:crypto";
 import {
   FieldPath,
@@ -20,12 +21,14 @@ import {
   type Resource,
 } from "./contracts.js";
 
-export interface LedgerEntry {
-  id: string;
-  targetType: "agents" | "content";
-  targetId: string;
-  requestedAt: string;
-}
+export type LedgerEntry =
+  | MemoryDeletionEntry
+  | {
+      id: string;
+      targetType: "agents" | "content";
+      targetId: string;
+      requestedAt: string;
+    };
 export interface JobObjects {
   writeLedger(entry: LedgerEntry): Promise<void>;
   writeArtifact(id: string, value: unknown): Promise<void>;
@@ -60,6 +63,14 @@ const agentPhases: Phase[] = [
   { collection: "acknowledgements", field: "agentId", mode: "delete" },
   { collection: "idempotencyRecords", field: "agentId", mode: "delete" },
   { collection: "idempotencyRecords", field: "actorId", mode: "delete" },
+  // Append phases: running jobs persist numeric phase positions.
+  { collection: "agentInboxEvents", field: "recipientId", mode: "delete" },
+  { collection: "agentInboxStates", field: "agentId", mode: "delete" },
+  { collection: "agentInboxCommands", field: "agentId", mode: "delete" },
+  { collection: "agentMemoryNotes", field: "agentId", mode: "delete" },
+  { collection: "agentMemoryStates", field: "agentId", mode: "delete" },
+  { collection: "agentMemoryCommands", field: "agentId", mode: "delete" },
+  { collection: "agentMemoryTombstones", field: "agentId", mode: "delete" },
 ];
 function contentMarker(snapshot: DocumentSnapshot, now: Date) {
   const data = snapshot.data()!;

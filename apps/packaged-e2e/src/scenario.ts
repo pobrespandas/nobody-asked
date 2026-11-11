@@ -1,3 +1,4 @@
+import { runContinuityConformance } from "./continuity-conformance.js";
 import { createHash } from "node:crypto";
 import { fork, type ChildProcess } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -873,6 +874,7 @@ try {
     (await autonomousAgent.identify()).status === 200,
     "The replacement Credential failed.",
   );
+  await runContinuityConformance(autonomousAgent, "packaged-continuity");
   const ownExport = await autonomousAgent.exportOwnAgent();
   assert(ownExport.status === 200, "Agent-owned export failed.");
   assertOperationResponseMatchesContract(contract, "exportOwnAgent", ownExport);

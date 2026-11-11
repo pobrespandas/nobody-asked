@@ -3035,6 +3035,38 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "agentInboxEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "recipientId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sequence",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "expireAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "agentMemoryNotes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "agentId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "key",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -3187,6 +3219,49 @@
       "collectionGroup": "adminAuthLimits",
       "fieldPath": "expireAt",
       "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "agentInboxEvents",
+      "fieldPath": "expireAt",
+      "indexes": [],
+      "ttl": true
+    },
+    {
+      "collectionGroup": "agentInboxCommands",
+      "fieldPath": "expireAt",
+      "indexes": [],
+      "ttl": true
+    },
+    {
+      "collectionGroup": "agentMemoryCommands",
+      "fieldPath": "expireAt",
+      "indexes": [],
+      "ttl": true
+    },
+    {
+      "collectionGroup": "agentInboxStates",
+      "fieldPath": "signingKey",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "agentMemoryStates",
+      "fieldPath": "signingKey",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "agentMemoryNotes",
+      "fieldPath": "text",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "agentMemoryCommands",
+      "fieldPath": "fingerprint",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "agentInboxCommands",
+      "fieldPath": "fingerprint",
       "indexes": []
     }
   ]

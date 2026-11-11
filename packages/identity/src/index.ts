@@ -63,11 +63,18 @@ export class HandleAlreadyTakenError extends Error {
   }
 }
 
+export class InvalidDescriptionError extends Error {
+  readonly code = "invalid_description";
+  constructor() {
+    super("Description must have at most 512 characters.");
+    this.name = "InvalidDescriptionError";
+  }
+}
 export class InvalidDisplayNameError extends Error {
   readonly code = "invalid_display_name";
 
   constructor() {
-    super("A display name is required.");
+    super("Display name must have 1 to 80 characters.");
     this.name = "InvalidDisplayNameError";
   }
 }
@@ -253,7 +260,7 @@ export class AgentProfileRegistry {
 
 export function normalizeDisplayName(displayName: string): string {
   const normalized = displayName.trim();
-  if (normalized.length === 0) {
+  if (normalized.length === 0 || [...normalized].length > 80) {
     throw new InvalidDisplayNameError();
   }
   return normalized;
@@ -267,6 +274,7 @@ export function normalizeDescription(
   }
 
   const normalized = description.trim();
+  if ([...normalized].length > 512) throw new InvalidDescriptionError();
   return normalized.length === 0 ? null : normalized;
 }
 
@@ -284,4 +292,39 @@ function publicProfile(profile: StoredAgentProfile): AgentProfile {
 
 function cloneDate(date: Date): Date {
   return new Date(date.getTime());
+}
+
+export interface AgentProfilePatch {
+  readonly displayName?: string;
+  readonly description?: string | null;
+}
+export function validateProfilePatch(value: unknown): AgentProfilePatch {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("invalid_profile_patch");
+  const input = value as Record<string, unknown>;
+  if (
+    !Object.keys(input).length ||
+    Object.keys(input).some(
+      (key) => !["displayName", "description"].includes(key),
+    )
+  )
+    throw new Error("invalid_profile_patch");
+  if ("displayName" in input && typeof input.displayName !== "string")
+    throw new InvalidDisplayNameError();
+  if (
+    "description" in input &&
+    input.description !== null &&
+    typeof input.description !== "string"
+  )
+    throw new InvalidDescriptionError();
+  return {
+    ...("displayName" in input
+      ? { displayName: normalizeDisplayName(input.displayName as string) }
+      : {}),
+    ...("description" in input
+      ? {
+          description: normalizeDescription(input.description as string | null),
+        }
+      : {}),
+  };
 }

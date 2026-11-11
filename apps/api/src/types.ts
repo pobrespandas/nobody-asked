@@ -1,4 +1,9 @@
 import type {
+  AgentInboxOperations,
+  AgentMemoryOperations,
+} from "@nobody-asked/persistence";
+import type { AgentProfileOperations } from "@nobody-asked/persistence";
+import type {
   AgentOperatorAuthorizationAuthentication,
   AgentOperatorAuthorizationState,
   CreateAgentOperatorAuthorizationInput,
@@ -443,6 +448,9 @@ export interface OperatorSessionCommandResult {
 }
 
 export interface ApiDependencies {
+  readonly profiles?: AgentProfileOperations;
+  readonly inbox?: AgentInboxOperations;
+  readonly memory?: AgentMemoryOperations;
   readonly authenticator: AgentCredentialAuthenticator;
   readonly operatorAuthenticator: OperatorSessionAuthenticator;
   readonly store: ApiStore;

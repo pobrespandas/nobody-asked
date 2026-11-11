@@ -1,4 +1,10 @@
-import { createFirestoreApiAdapters } from "@nobody-asked/persistence";
+import {
+  FirestoreAgentProfiles,
+  FirestoreAgentInbox,
+  FirestoreAgentMemory,
+  type MemoryDeletionLedger,
+  createFirestoreApiAdapters,
+} from "@nobody-asked/persistence";
 import type { Firestore } from "firebase-admin/firestore";
 
 import { createApi } from "./server.js";
@@ -7,6 +13,7 @@ import type { ApiDependencies } from "./types.js";
 type FirestoreAdapterInput = Parameters<typeof createFirestoreApiAdapters>[0];
 
 export interface FirestoreApiDependencies extends FirestoreAdapterInput {
+  readonly memoryLedger?: MemoryDeletionLedger | null;
   readonly nextCorrelationId: ApiDependencies["nextCorrelationId"];
   readonly now: ApiDependencies["now"];
   readonly operationalLogger: ApiDependencies["operationalLogger"];
@@ -30,6 +37,19 @@ export interface FirestoreApiDependencies extends FirestoreAdapterInput {
 export function createFirestoreApi(dependencies: FirestoreApiDependencies) {
   const adapters = createFirestoreApiAdapters(dependencies);
   return createApi({
+    profiles: new FirestoreAgentProfiles(
+      dependencies.firestore,
+      dependencies.digestCredentialSecret,
+    ),
+    inbox: new FirestoreAgentInbox(
+      dependencies.firestore,
+      dependencies.digestCredentialSecret,
+    ),
+    memory: new FirestoreAgentMemory(
+      dependencies.firestore,
+      dependencies.digestCredentialSecret,
+      dependencies.memoryLedger ?? null,
+    ),
     authenticator: adapters.authenticator,
     operatorAuthenticator: adapters.operatorAuthenticator,
     store: adapters.store,
