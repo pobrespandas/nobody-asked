@@ -44,4 +44,4 @@
 ## Workspace operations
 
 - Read [.agents/skills/clone-workspace/SKILL.md](.agents/skills/clone-workspace/SKILL.md) before you read or change Clone workspace records.
-- Use repository-local storage for Nobody Asked: `npx --yes --loglevel=error @andrestobelem/clone@0.3.0 --local`.
+- Use the installed Clone dependency with repository-local storage: `npx --no-install --loglevel=error clone --local`. Run `npm ci` first. See [the package record](tools/clone/README.md) for the pinned version and Node.js requirement.

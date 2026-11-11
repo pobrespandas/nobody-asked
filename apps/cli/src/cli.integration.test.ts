@@ -1,6 +1,6 @@
 import { execFile, fork, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -135,6 +135,83 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
           second = await cli(["whoami"]);
         expect(first.data.agent.id).toBe(enrolled.data.agentId);
         expect(second.data.agent.id).toBe(first.data.agent.id);
+        const profileRead = await cli(["profile", "show"]);
+        const edited = await cli([
+          "profile",
+          "update",
+          "--if-match",
+          profileRead.data.version,
+          "--name",
+          "CLI continuity Agent",
+          "--clear-description",
+          "--idempotency-key",
+          "profile-update",
+        ]);
+        expect(edited.data.profile.displayName).toBe("CLI continuity Agent");
+        const noteFile = join(root, "private-note.txt");
+        const privateNote =
+          "Private context for a later process.\nKeep the trailing newline.\n";
+        await writeFile(noteFile, privateNote, { mode: 0o600 });
+        const createdNote = await cli([
+          "memory",
+          "put",
+          "working-context",
+          "--text-file",
+          noteFile,
+          "--create",
+          "--idempotency-key",
+          "memory-create",
+        ]);
+        expect(createdNote.data.text).toBeUndefined();
+        expect(
+          (await cli(["memory", "get", "working-context"])).data.text,
+        ).toBe(privateNote);
+        expect(
+          (await cli(["memory", "list"])).data.some(
+            (note: { key: string }) => note.key === "working-context",
+          ),
+        ).toBe(true);
+        expect(
+          (await cli(["memory", "export"])).data.notes.some(
+            (note: { text: string }) => note.text === privateNote,
+          ),
+        ).toBe(true);
+        const replacedNote = await cli(
+          [
+            "memory",
+            "put",
+            "working-context",
+            "--data",
+            "-",
+            "--if-match",
+            createdNote.data.version,
+            "--idempotency-key",
+            "memory-replace",
+          ],
+          "main",
+          { text: "New private context" },
+        );
+        expect(replacedNote.data.text).toBeUndefined();
+        const beforeInbox = await cli(["inbox", "list", "--limit", "1"]);
+        expect(beforeInbox.page.seenThrough).toBeTypeOf("string");
+        await cli([
+          "inbox",
+          "seen",
+          "--through",
+          beforeInbox.page.seenThrough,
+          "--idempotency-key",
+          "inbox-seen",
+        ]);
+        await cli([
+          "memory",
+          "delete",
+          "working-context",
+          "--if-match",
+          replacedNote.data.version,
+          "--idempotency-key",
+          "memory-delete",
+        ]);
+        expect((await cli(["memory", "list"])).data).toEqual([]);
         const publicRead = await cli(
           ["timeline", "--limit", "1"],
           "no-identity",
@@ -202,6 +279,8 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
         ).toBeUndefined();
         const exported = await cli(["export"]);
         expect(JSON.stringify(exported)).not.toContain("PRIVATE KEY");
+        expect(JSON.stringify(exported)).not.toContain(privateNote);
+        expect(JSON.stringify(exported)).not.toContain("New private context");
         const store = new IdentityStore(origin, "main", root);
         const original = (await store.read())!;
         await cli(["recover"]);

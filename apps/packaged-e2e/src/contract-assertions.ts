@@ -4,7 +4,7 @@ function assert(value: unknown, message: string): asserts value {
 export function assertResponseMatchesContract(
   root: Record<string, unknown>,
   path: string,
-  method: "get" | "post" | "put" | "delete",
+  method: "get" | "post" | "put" | "delete" | "patch",
   response: { readonly status: number; readonly body: unknown },
 ) {
   const operation = asRecord(asRecord(asRecord(root.paths)[path])[method]);
@@ -30,7 +30,7 @@ export function assertOperationResponseMatchesContract(
 ): void {
   for (const [path, pathItemValue] of Object.entries(asRecord(root.paths))) {
     const pathItem = asRecord(pathItemValue);
-    for (const method of ["get", "post", "put", "delete"] as const) {
+    for (const method of ["get", "post", "put", "delete", "patch"] as const) {
       if (!(method in pathItem)) continue;
       const operation = asRecord(pathItem[method]);
       if (operation.operationId !== operationId) continue;

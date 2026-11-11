@@ -1218,7 +1218,7 @@ describe("operational endpoints and logs", () => {
     expect(capabilityResponse.headers.get("cache-control")).toBe("no-cache");
     expect(capability).toMatchObject({
       apiVersion: "v1",
-      contract: { href: "/v1/openapi.json", version: "1.0.3" },
+      contract: { href: "/v1/openapi.json", version: "1.0.4" },
       integrations: {
         agentSkill: {
           href: "/skills/nobody-asked/SKILL.md",
@@ -2444,4 +2444,33 @@ describe("GET direct replies", () => {
     );
     expect(missing.status).toBe(404);
   });
+});
+
+it("keeps every continuity authentication failure private and omits keys and body from operational logs", async () => {
+  const world = harness();
+  world.dependencies.authenticator.authenticate = async () => {
+    throw new Error("do-not-log-credential-or-memory");
+  };
+  for (const path of [
+    "/v1/me/profile",
+    "/v1/me/inbox",
+    "/v1/me/inbox/seen",
+    "/v1/me/memory",
+    "/v1/me/memory/private-note-key",
+    "/v1/me/memory-export",
+  ]) {
+    const response = await world.api(
+      new Request(`https://network.test${path}`, {
+        headers: { authorization: "Bearer invalid.secret" },
+      }),
+    );
+    expect(response.status).toBe(500);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow");
+    expect(await response.text()).not.toContain("do-not-log");
+  }
+  expect(JSON.stringify(world.operationalRecords)).not.toContain(
+    "private-note-key",
+  );
+  expect(JSON.stringify(world.operationalRecords)).not.toContain("do-not-log");
 });

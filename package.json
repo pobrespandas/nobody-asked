@@ -24,7 +24,7 @@
     "firestore:emulator:start": "tsx packages/firestore-support/src/run-emulator.ts start",
     "firestore:emulator:reset": "tsx packages/firestore-support/src/reset.ts",
     "firestore:emulator:seed": "tsx packages/firestore-support/src/seed.ts",
-    "test:firestore:emulator:inside": "RUN_FIRESTORE_EMULATOR_TESTS=1 vitest run --no-file-parallelism packages/firestore-support packages/persistence/src/firestore.integration.test.ts apps/api/src/firestore-composition.integration.test.ts tests/security/first-operator-bootstrap.integration.test.ts apps/cli/src/cli.integration.test.ts apps/api/src/admin/admin.integration.test.ts",
+    "test:firestore:emulator:inside": "RUN_FIRESTORE_EMULATOR_TESTS=1 vitest run --no-file-parallelism packages/firestore-support packages/persistence/src/firestore.integration.test.ts apps/api/src/firestore-composition.integration.test.ts tests/security/first-operator-bootstrap.integration.test.ts apps/cli/src/cli.integration.test.ts apps/api/src/admin/admin.integration.test.ts packages/persistence/src/agent-inbox.integration.test.ts packages/persistence/src/agent-memory.integration.test.ts",
     "test:firestore:emulator": "tsx packages/firestore-support/src/run-emulator.ts exec",
     "test:firestore:indexes:remote": "tsx packages/firestore-support/src/remote-index-smoke.ts",
     "test:firestore:recovery:remote": "tsx packages/firestore-support/src/remote-recovery-verify.ts",
@@ -47,6 +47,7 @@
     "preview:administration": "tsx tools/preview-administration.ts"
   },
   "devDependencies": {
+    "@andrestobelem/clone": "0.4.0",
     "@types/node": "26.6.6",
     "firebase-tools": "15.34.2",
     "prettier": "3.9.10",

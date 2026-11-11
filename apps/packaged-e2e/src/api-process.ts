@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   createServer,
@@ -17,7 +20,25 @@ import { deleteApp } from "firebase-admin/app";
 const local = createLocalFirestoreAdmin({
   appName: `packaged-api-${process.pid}`,
 });
+const memoryLedgerDirectory = await mkdtemp(
+  join(tmpdir(), "nobody-packaged-private-ledger-"),
+);
 const api = createFirestoreApi({
+  memoryLedger: {
+    async writeDeletion(entry) {
+      const target = join(memoryLedgerDirectory, `${entry.id}.json`);
+      const bytes = JSON.stringify(entry);
+      try {
+        await writeFile(target, bytes, { flag: "wx", mode: 0o600 });
+      } catch (error) {
+        if (
+          (error as NodeJS.ErrnoException).code !== "EEXIST" ||
+          (await readFile(target, "utf8")) !== bytes
+        )
+          throw new Error("Private ledger write failed.");
+      }
+    },
+  },
   firestore: local.firestore,
   digestCredentialSecret: digest,
   safetyPolicy: {
@@ -94,6 +115,7 @@ async function stop(): Promise<void> {
     server.close((error) => (error ? reject(error) : resolve()));
   });
   await deleteApp(local.app);
+  await rm(memoryLedgerDirectory, { recursive: true, force: true });
   process.exit(0);
 }
 

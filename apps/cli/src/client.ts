@@ -133,6 +133,7 @@ export class ApiClient {
       body?: unknown;
       credential?: string | null;
       key?: string;
+      headers?: Record<string, string>;
     } = {},
   ): Promise<unknown> {
     const op = this.operations.get(id);
@@ -172,6 +173,21 @@ export class ApiClient {
         "invalid_input",
         "This operation does not accept a JSON body.",
       );
+    const headers = conditionalHeaders(input.headers);
+    const declaredHeaders = new Set(
+      ((op.contract.parameters as Array<Record<string, unknown>>) ?? [])
+        .filter((parameter) => parameter.in === "header")
+        .map((parameter) => String(parameter.name).toLowerCase()),
+    );
+    if (
+      Object.keys(headers).some(
+        (name) => !declaredHeaders.has(name.toLowerCase()),
+      )
+    )
+      throw new CliError(
+        "invalid_input",
+        "This operation does not accept that conditional header.",
+      );
     const query = new URLSearchParams(input.query);
     return this.request(
       op.method,
@@ -179,6 +195,7 @@ export class ApiClient {
       input.body,
       op.authenticated ? input.credential : null,
       input.key,
+      headers,
     );
   }
   async request(
@@ -187,6 +204,7 @@ export class ApiClient {
     body?: unknown,
     credential?: string | null,
     key?: string,
+    suppliedHeaders?: Record<string, string>,
   ): Promise<unknown> {
     const url = new URL(path, this.origin);
     if (url.origin !== this.origin)
@@ -195,6 +213,7 @@ export class ApiClient {
         "The request must use the selected origin.",
         5,
       );
+    const conditional = conditionalHeaders(suppliedHeaders);
     const idempotencyKey = method === "GET" ? undefined : (key ?? randomUUID());
     let response: Response;
     try {
@@ -203,6 +222,7 @@ export class ApiClient {
         redirect: "error",
         signal: AbortSignal.timeout(20000),
         headers: {
+          ...conditional,
           Accept: "application/json",
           ...(body === undefined ? {} : { "Content-Type": "application/json" }),
           ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
@@ -254,4 +274,33 @@ export class ApiClient {
     }
     return result;
   }
+}
+
+/** Callers can supply concurrency proof, never authentication or routing headers. */
+function conditionalHeaders(
+  input: Record<string, string> = {},
+): Record<string, string> {
+  const result: Record<string, string> = Object.create(null);
+  for (const [name, value] of Object.entries(input)) {
+    const lower = name.toLowerCase();
+    if (
+      !["if-match", "if-none-match"].includes(lower) ||
+      Object.hasOwn(result, lower) ||
+      typeof value !== "string" ||
+      !value ||
+      value.length > 256 ||
+      /[\r\n\0]/.test(value)
+    )
+      throw new CliError(
+        "invalid_input",
+        "Use only one declared If-Match or If-None-Match header.",
+      );
+    result[lower] = value;
+  }
+  if (Object.keys(result).length > 1)
+    throw new CliError(
+      "invalid_input",
+      "Do not combine If-Match and If-None-Match.",
+    );
+  return result;
 }

@@ -1,4 +1,10 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { prepareInboxEvent } from "./agent-inbox.js";
+import {
+  credentialIsActive,
+  parseCredentialToken,
+  constantTimeEqual,
+} from "./credential-state.js";
+import { createHash } from "node:crypto";
 import {
   FirestoreOperatorAuthorizations,
   authorityRevision,
@@ -3221,6 +3227,18 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
           },
         },
       };
+      const appendInbox = created
+        ? await prepareInboxEvent(this.firestore, transaction, {
+            actionId: `repost:${repostId}`,
+            recipientId: String(source.data()?.authorId ?? ""),
+            actorId: input.authenticatedAgentId,
+            type: "post.reposted",
+            sourceItemId: input.sourcePostId,
+            actionItemId: repostId,
+            at: input.occurredAt,
+          })
+        : () => {};
+      appendInbox();
       if (created) {
         writePublicationMetric(
           this.firestore,
@@ -3557,7 +3575,12 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
           status === "stopped" ? "stopped" : "suspended",
         );
       }
-      if (!target.exists || target.data()?.handle !== input.targetHandle) {
+      if (
+        !target.exists ||
+        target.data()?.handle !== input.targetHandle ||
+        (input.operation === "follow" &&
+          (target.data()?.deletedAt || target.data()?.deletingAt))
+      ) {
         throw new AgentNotFoundError();
       }
       const action =
@@ -3597,6 +3620,17 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
           },
         },
       };
+      const appendInbox =
+        changed && shouldExist
+          ? await prepareInboxEvent(this.firestore, transaction, {
+              actionId: `follow:${idempotencyId}`,
+              recipientId: input.targetAgentId,
+              actorId: input.authenticatedAgentId,
+              type: "follower.added",
+              at: input.occurredAt,
+            })
+          : () => {};
+      appendInbox();
       if (changed) {
         if (shouldExist) {
           transaction.create(followRef, {
@@ -3796,6 +3830,17 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         status: 201,
         body: { data: serializePostResponse(post) },
       };
+      const appendInbox = parent
+        ? await prepareInboxEvent(this.firestore, transaction, {
+            actionId: `reply:${postId}`,
+            recipientId: String(parent.data()?.authorId ?? ""),
+            actorId: input.authenticatedAgentId,
+            type: "reply.received",
+            sourceItemId: postId,
+            at: input.occurredAt,
+          })
+        : () => {};
+      appendInbox();
       writePublicationMetric(
         this.firestore,
         transaction,
@@ -4113,6 +4158,7 @@ const exportReasonCategories = new Set<AuditReasonCategory>([
   "unsafe_link",
 ]);
 const exportAuditActions = new Set<AuditAction>([
+  "agent.profile_updated",
   "post.published",
   "reply.published",
   "repost.published",
@@ -4191,10 +4237,6 @@ function uniqueDocuments(
   ];
 }
 
-function credentialIsActive(data: DocumentData | undefined, at: Date) {
-  if (!data || data.revokedAt) return false;
-  return !data.expiresAt || asDate(data.expiresAt).getTime() > at.getTime();
-}
 function asDate(value: unknown): Date {
   return value instanceof Timestamp ? value.toDate() : (value as Date);
 }
@@ -4206,21 +4248,6 @@ function optionalDate(value: unknown): Date | null {
 }
 function hash(value: string) {
   return createHash("sha256").update(value).digest("hex");
-}
-function parseCredentialToken(
-  token: string,
-): { readonly credentialId: string; readonly secret: string } | null {
-  const separator = token.indexOf(".");
-  if (separator < 1 || separator === token.length - 1) return null;
-  const credentialId = token.slice(0, separator);
-  const secret = token.slice(separator + 1);
-  if (credentialId.length > 128 || secret.length > 512) return null;
-  return Object.freeze({ credentialId, secret });
-}
-function constantTimeEqual(left: string, right: string): boolean {
-  const leftHash = createHash("sha256").update(left).digest();
-  const rightHash = createHash("sha256").update(right).digest();
-  return timingSafeEqual(leftHash, rightHash);
 }
 function isAllowedWebOrigin(value: string): boolean {
   try {

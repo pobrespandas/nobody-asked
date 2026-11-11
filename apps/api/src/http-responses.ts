@@ -58,6 +58,12 @@ export function errorResponse(
 }
 
 const agentErrorRecovery = {
+  record_conflict: noAutomaticRecovery("read_then_retry"),
+  precondition_required: noAutomaticRecovery("correct_request"),
+  inbox_history_gap: noAutomaticRecovery("restart_inbox"),
+  inbox_position_expired: noAutomaticRecovery("read_inbox"),
+  memory_deletion_pending: noAutomaticRecovery("retry_same_request"),
+  memory_deletion_unavailable: noAutomaticRecovery("retry_same_request"),
   operator_authorization_unavailable: noAutomaticRecovery("correct_request"),
   operator_authorization_conflict: noAutomaticRecovery(
     "read_operator_authorization",
@@ -100,6 +106,9 @@ const agentErrorRecovery = {
 
 type AgentErrorCode = keyof typeof agentErrorRecovery;
 type AgentRecoveryAction =
+  | "read_then_retry"
+  | "restart_inbox"
+  | "read_inbox"
   | "read_operator_authorization"
   | "choose_existing_resource"
   | "choose_new_handle"

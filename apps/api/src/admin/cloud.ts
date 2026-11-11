@@ -1,3 +1,7 @@
+import {
+  immutableJsonWriter,
+  ImmutableJsonConflictError,
+} from "../cloud-immutable-json.js";
 import { GoogleAuth, OAuth2Client } from "google-auth-library";
 import { AdminError, requireAdmin } from "./contracts.js";
 import type { AdminConfig } from "./config.js";
@@ -28,27 +32,14 @@ export function cloudJobs(config: AdminConfig): {
   const bucket = encodeURIComponent(config.ledgerBucket ?? "");
   const objectUrl = (name: string) =>
     `https://storage.googleapis.com/storage/v1/b/${bucket}/o/${encodeURIComponent(name)}`;
+  const writeObject = immutableJsonWriter(config.ledgerBucket ?? "");
   async function write(name: string, value: unknown) {
     try {
-      await request(
-        `https://storage.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(name)}&ifGenerationMatch=0`,
-        "POST",
-        value,
-      );
+      await writeObject(name, value);
     } catch (error) {
-      if (
-        (error as { response?: { status?: number } }).response?.status !== 412
-      )
-        throw error;
-      const existing = await request<unknown>(
-        `${objectUrl(name)}?alt=media`,
-        "GET",
-      );
-      requireAdmin(
-        JSON.stringify(existing) === JSON.stringify(value),
-        409,
-        "immutable_object_conflict",
-      );
+      if (error instanceof ImmutableJsonConflictError)
+        throw new AdminError(409, "immutable_object_conflict");
+      throw error;
     }
   }
   const objects: JobObjects | null = !config.ledgerBucket

@@ -18,6 +18,7 @@ export type AuditAction =
   | "operator.invitation_created"
   | "operator.enrolled"
   | "agent.registered"
+  | "agent.profile_updated"
   | "moderator.authority_granted"
   | "operator.authenticated"
   | "operator.authentication_failed"
@@ -172,6 +173,7 @@ const auditActions = new Set<AuditAction>([
   "operator.invitation_created",
   "operator.enrolled",
   "agent.registered",
+  "agent.profile_updated",
   "moderator.authority_granted",
   "operator.authenticated",
   "operator.authentication_failed",

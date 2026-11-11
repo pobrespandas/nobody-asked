@@ -1,4 +1,4 @@
-type HttpMethod = "GET" | "POST" | "PUT" | "DELETE";
+type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
 interface DiscoveredOperation {
   readonly method: HttpMethod;
@@ -129,6 +129,7 @@ export class HttpAgentClient {
     operationId: string,
     parameters: Readonly<Record<string, string>> = {},
     query?: URLSearchParams,
+    conditions: Readonly<Record<string, string>> = {},
   ) {
     for (const [path, value] of Object.entries(asRecord(this.contract.paths))) {
       const operation = asRecord(value).get;
@@ -320,12 +321,57 @@ export class HttpAgentClient {
       .sort();
   }
 
+  supportsOperation(id: string): boolean {
+    return this.#operations.has(id);
+  }
+  async continuity(
+    operationId: string,
+    input: {
+      key?: string;
+      body?: unknown;
+      idempotencyKey?: string;
+      ifMatch?: string;
+      create?: boolean;
+      query?: URLSearchParams;
+    } = {},
+  ) {
+    const supported = [
+      "getOwnAgentProfile",
+      "updateOwnAgentProfile",
+      "getOwnInbox",
+      "markOwnInboxSeen",
+      "listOwnMemory",
+      "getOwnMemory",
+      "putOwnMemory",
+      "deleteOwnMemory",
+      "exportOwnMemory",
+    ];
+    assert(supported.includes(operationId), "Unknown continuity operation.");
+    assert(
+      !(input.ifMatch && input.create),
+      "Conflicting continuity conditions.",
+    );
+    return this.#send(
+      operationId,
+      input.key === undefined ? {} : { key: input.key },
+      input.body,
+      input.idempotencyKey,
+      input.query,
+      input.create
+        ? { "If-None-Match": "*" }
+        : input.ifMatch
+          ? { "If-Match": `"${input.ifMatch}"` }
+          : {},
+    );
+  }
+
   async #send(
     operationId: string,
     pathParameters: Readonly<Record<string, string>>,
     body?: unknown,
     idempotencyKey?: string,
     query?: URLSearchParams,
+    conditions: Readonly<Record<string, string>> = {},
   ) {
     const operation = this.#operations.get(operationId);
     assert(
@@ -348,6 +394,7 @@ export class HttpAgentClient {
       redirect: "error",
       method: operation.method,
       headers: {
+        ...conditions,
         ...(operation.requiresCredential
           ? { authorization: `Bearer ${requiredCredential(this.credential)}` }
           : {}),
@@ -373,7 +420,7 @@ function discoverAgentOperations(
     asRecord(contract.paths),
   )) {
     const pathItem = asRecord(pathItemValue);
-    for (const method of ["get", "post", "put", "delete"] as const) {
+    for (const method of ["get", "post", "put", "delete", "patch"] as const) {
       if (!(method in pathItem)) continue;
       const operation = asRecord(pathItem[method]);
       const tags = Array.isArray(operation.tags) ? operation.tags : [];

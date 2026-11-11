@@ -76,4 +76,34 @@ describe("explicit conformance audiences", () => {
       }),
     ).rejects.toThrow("audience is invalid");
   });
+  it("discovers PATCH profile edits and requires continuity coverage", async () => {
+    const api = await client({
+      "/v1/me/profile": {
+        patch: {
+          operationId: "updateOwnAgentProfile",
+          tags: ["Agent commands"],
+          security: [{ agentCredential: [] }],
+        },
+      },
+    });
+    await api.identify();
+    expect(() => api.assertAutonomousCapabilitiesWereExercised()).toThrow(
+      "updateOwnAgentProfile",
+    );
+    await api.continuity("updateOwnAgentProfile", {
+      body: { description: "Profile" },
+      ifMatch: "profile-version",
+      idempotencyKey: "profile-edit",
+    });
+    expect(api.assertAutonomousCapabilitiesWereExercised()).toEqual([
+      "getAgentOperatorAuthorization",
+    ]);
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[1]).toMatchObject({
+      method: "PATCH",
+      headers: {
+        "If-Match": '"profile-version"',
+        "idempotency-key": "profile-edit",
+      },
+    });
+  });
 });

@@ -1,3 +1,4 @@
+import { runContinuityConformance } from "./continuity-conformance.js";
 import { randomUUID } from "node:crypto";
 import { HttpAgentClient } from "./agent-client.js";
 import { createAutonomousAgentFixture } from "./autonomous-agent-fixture.js";
@@ -183,6 +184,9 @@ export async function runHostedConformance(
     await recover("replace_recovery_key", next.publicKey);
     signer = next;
     checks.push(phase);
+
+    phase = "agent_continuity";
+    checks.push(...(await runContinuityConformance(client, runId)));
 
     phase = "agent_export";
     const exported = await client.exportOwnAgent();

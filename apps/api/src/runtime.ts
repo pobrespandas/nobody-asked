@@ -1,3 +1,4 @@
+import { createCloudMemoryLedger } from "./cloud-memory-ledger.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   createServer,
@@ -44,6 +45,7 @@ const recoveryReady =
     : Promise.resolve();
 void recoveryReady.catch(() => {});
 const api = createFirestoreApi({
+  memoryLedger: createCloudMemoryLedger(process.env.ADMIN_LEDGER_BUCKET),
   firestore,
   digestCredentialSecret: (value) =>
     createHash("sha256").update(value).digest("hex"),
