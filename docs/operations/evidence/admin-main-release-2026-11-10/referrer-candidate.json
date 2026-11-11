@@ -1,0 +1,16 @@
+{
+  "checkedAt": "2026-11-10T15:03:15.588Z",
+  "revision": "nobody-asked-api-admin-main-6b77e322",
+  "cases": [
+    {
+      "path": "/health/ready",
+      "status": 200,
+      "referrerPolicy": null
+    },
+    {
+      "path": "/admin/auth/callback",
+      "status": 401,
+      "referrerPolicy": "no-referrer"
+    }
+  ]
+}

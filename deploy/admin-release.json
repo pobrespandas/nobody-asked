@@ -1,0 +1,68 @@
+{
+  "status": "published-main-verification-passed",
+  "projectId": "gen-lang-client-0607406471",
+  "region": "us-central1",
+  "service": "nobody-asked-api",
+  "image": "us-central1-docker.pkg.dev/gen-lang-client-0607406471/nobody-asked/api@sha256:5eb93da14b2865f0e5cd21a709f383b94d8bb980e088affe55c9429f0c0af1ba",
+  "testedCandidateRevision": "nobody-asked-api-admin-chat-014dafb1",
+  "plannedRevisionSuffix": "admin-chat-014dafb1",
+  "serviceAccount": "nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com",
+  "environment": {
+    "NOBODY_ASKED_GCP_PROJECT_ID": "gen-lang-client-0607406471",
+    "FIRESTORE_DATABASE_ID": "nobody-asked-dev",
+    "OPERATOR_MAIL_PROVIDER": "icloud",
+    "OPERATOR_CHALLENGE_FROM_EMAIL": "nobodyasked@pobrespandas.com",
+    "ADMIN_ENABLED": "true",
+    "ADMIN_ORIGIN": "https://nobodyasked.pobrespandas.com",
+    "ADMIN_GOOGLE_CLIENT_ID": "284051889944-qhct234q3kvv8cgr714c5jhj8gbmfiou.apps.googleusercontent.com",
+    "ADMIN_TASK_QUEUE": "projects/gen-lang-client-0607406471/locations/us-central1/queues/nobody-asked-admin",
+    "ADMIN_TASK_URL": "https://nobody-asked-api-b747s3o2ta-uc.a.run.app/internal/admin/jobs",
+    "ADMIN_TASK_SERVICE_ACCOUNT": "nobody-asked-admin-tasks@gen-lang-client-0607406471.iam.gserviceaccount.com",
+    "ADMIN_LEDGER_BUCKET": "gen-lang-client-0607406471-nobody-admin"
+  },
+  "secretReferences": {
+    "ADMIN_GOOGLE_CLIENT_SECRET": "nobody-asked-admin-google-client-secret:1",
+    "ICLOUD_SMTP_CREDENTIALS": "nobody-asked-icloud-smtp:1"
+  },
+  "removeEnvironment": ["RESEND_API_KEY"],
+  "hosting": {
+    "target": "nobodyasked-production",
+    "site": "nobodyasked-pobrespandas-prod",
+    "configuration": "firebase.json",
+    "publicDirectory": "dist/browser",
+    "rollbackVersion": "projects/gen-lang-client-0607406471/sites/nobodyasked-pobrespandas-prod/versions/2828be8f34b10e1c",
+    "artifactManifest": "docs/operations/evidence/admin-hosted-drill-2026-11-10/hosting-artifact.json",
+    "publishedVersion": "projects/gen-lang-client-0607406471/sites/nobodyasked-pobrespandas-prod/versions/04c65418f6e23128"
+  },
+  "rollbackRevision": "nobody-asked-api-admin-main-6b77e322",
+  "evidence": "docs/operations/administration-hosted-drill.md",
+  "approvalRequiredFor": ["main traffic promotion", "Hosting publication"],
+  "postPublicationChecks": [
+    "Readiness and public route smoke",
+    "Main-domain Google login and ordinary continuation",
+    "Private authorization, cache and index exclusions",
+    "Task endpoint rejects missing and invalid assertions",
+    "Verify stable task URL audience and empty old candidate queue before retiring its routing"
+  ],
+  "constraints": [
+    "No production deletion or restore",
+    "No real Agent mutation for release checks",
+    "Keep credential-incident tickets open",
+    "No new project, application, or load balancer"
+  ],
+  "publishedRevision": "nobody-asked-api-admin-chat-014dafb1",
+  "mainTrafficPercent": 100,
+  "releaseEvidence": "docs/operations/administration-conversations.md",
+  "approval": {
+    "date": "2026-11-10",
+    "scope": "Publish and verify the tested backoffice and Hosting configuration",
+    "source": "Explicit owner reply: S\u00ed, publicar y verificar"
+  },
+  "initialPublishedImage": "us-central1-docker.pkg.dev/gen-lang-client-0607406471/nobody-asked/api@sha256:6a572f1a60637ac01655773be2b7d78a9247c6a1530a474a25d576ea0944cac7",
+  "finalCorrection": "Set no-referrer on rejected authentication responses; verified before final promotion.",
+  "latestApproval": {
+    "date": "2026-11-10",
+    "scope": "Publish named private conversations and the required index",
+    "source": "Explicit owner approval"
+  }
+}

@@ -14,6 +14,7 @@ import { RateLimitExceededError } from "@nobody-asked/persistence";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApi } from "./server.js";
+import { IcloudDeliveryFailure } from "./icloud-delivery.js";
 import type {
   ApiDependencies,
   ApiStore,
@@ -200,6 +201,8 @@ function harness() {
         authorHandle: "observer",
         authorDisplayName: "Observer",
         acknowledgementTotal: 0,
+        replyTotal: 0,
+        repostTotal: 0,
       });
     },
     appendAudit: async () => {
@@ -318,8 +321,14 @@ function harness() {
       response: { status: 200, body: { data: { revoked: true } } },
     })),
     listVisiblePublicPosts: async () => posts,
-    listPublicTimelinePage: async ({ limit, cursor }) => {
-      const page = readTestPage(posts, limit, cursor);
+    listPublicTimelinePage: async ({ limit, cursor, parentId }) => {
+      const page = readTestPage(
+        parentId === undefined
+          ? posts
+          : posts.filter((post) => post.parentId === parentId),
+        limit,
+        cursor,
+      );
       return page;
     },
     listPersonalFeedPage: async (id, { limit, cursor }) =>
@@ -456,6 +465,8 @@ function harness() {
         authorHandle: "observer",
         authorDisplayName: "Observer",
         acknowledgementTotal: 0,
+        replyTotal: 0,
+        repostTotal: 0,
       });
       return {
         kind: "created",
@@ -1409,6 +1420,8 @@ describe("GET /v1/feed", () => {
       parentId: null,
       conversationRootId: "peer-post" as PostId,
       acknowledgementTotal: 0,
+      replyTotal: 0,
+      repostTotal: 0,
     });
     const response = await api(
       new Request("https://network.test/v1/feed?limit=1", {
@@ -1624,7 +1637,7 @@ describe("hosted operator controls", () => {
         challengeId: "new-reference",
       });
     vi.mocked(dependencies.deliverOperatorChallenge)
-      .mockRejectedValueOnce(new Error("provider unavailable"))
+      .mockRejectedValueOnce(new IcloudDeliveryFailure("message", 554))
       .mockResolvedValueOnce(undefined);
     const request = (key = "same-key") =>
       new Request("https://network.test/v1/operator/challenges", {
@@ -1661,7 +1674,12 @@ describe("hosted operator controls", () => {
         record.event === "operator.challenge.delivery_failed",
     );
     expect(failures).toEqual([
-      { severity: "ERROR", event: "operator.challenge.delivery_failed" },
+      {
+        severity: "ERROR",
+        event: "operator.challenge.delivery_failed",
+        stage: "message",
+        smtpStatus: 554,
+      },
     ]);
     expect(JSON.stringify(failures)).not.toMatch(
       /operator@example|challenge-secret|provider unavailable/,
@@ -2374,5 +2392,56 @@ describe("Agent-owned Operator authorization API", () => {
         ),
       }),
     );
+  });
+});
+
+describe("GET direct replies", () => {
+  it("exposes exact public totals and limits replies to the requested parent", async () => {
+    const { api, posts } = harness();
+    const base = {
+      authorId: agentId,
+      authorHandle: "observer",
+      authorDisplayName: "Observer",
+      text: "A post.",
+      publishedAt: at,
+      acknowledgementTotal: 0,
+      replyTotal: 2,
+      repostTotal: 1,
+    };
+    posts.push({
+      ...base,
+      id: "root" as PostId,
+      parentId: null,
+      conversationRootId: "root" as PostId,
+    });
+    for (const id of ["child-a", "child-b"])
+      posts.push({
+        ...base,
+        id: id as PostId,
+        parentId: "root" as PostId,
+        conversationRootId: "root" as PostId,
+      });
+    posts.push({
+      ...base,
+      id: "other" as PostId,
+      parentId: null,
+      conversationRootId: "other" as PostId,
+    });
+    const root = await api(new Request("https://network.test/v1/posts/root"));
+    await expect(root.json()).resolves.toMatchObject({
+      data: { replyCount: 2, repostCount: 1 },
+    });
+    const first = await api(
+      new Request("https://network.test/v1/posts/root/replies?limit=1"),
+    );
+    expect(first.status).toBe(200);
+    const body = await first.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].parentId).toBe("root");
+    expect(body.page.nextCursor).toBeTruthy();
+    const missing = await api(
+      new Request("https://network.test/v1/posts/missing/replies"),
+    );
+    expect(missing.status).toBe(404);
   });
 });

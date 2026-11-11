@@ -1,0 +1,41 @@
+{
+  "metadata": {
+    "@type": "type.googleapis.com/google.firestore.admin.v1.RestoreDatabaseMetadata",
+    "backup": "projects/gen-lang-client-0607406471/locations/us-central1/backups/da05f074-8440-4696-8440-b45a15fadde3",
+    "database": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-drill-20261108",
+    "operationState": "PROCESSING",
+    "progressPercentage": {
+      "completedWork": "20",
+      "estimatedWork": "100"
+    },
+    "startTime": "2026-11-09T21:17:31.205341Z"
+  },
+  "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-drill-20261108/operations/NINjsRVEVprIQpwE3f3UuhAqMWxhcnRuZWMtc3ULIgoQIRo",
+  "response": {
+    "@type": "type.googleapis.com/google.firestore.admin.v1.Database",
+    "appEngineIntegrationMode": "DISABLED",
+    "concurrencyMode": "PESSIMISTIC",
+    "createTime": "2026-11-09T21:17:31.205341Z",
+    "databaseEdition": "STANDARD",
+    "deleteProtectionState": "DELETE_PROTECTION_ENABLED",
+    "earliestVersionTime": "2026-11-09T21:17:31.513905Z",
+    "etag": "IJy6levn+5cDMN2lh+vn+5cD",
+    "freeTier": false,
+    "locationId": "us-central1",
+    "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-drill-20261108",
+    "pointInTimeRecoveryEnablement": "POINT_IN_TIME_RECOVERY_DISABLED",
+    "realtimeUpdatesMode": "REALTIME_UPDATES_MODE_ENABLED",
+    "sourceInfo": {
+      "backup": {
+        "backup": "projects/gen-lang-client-0607406471/locations/us-central1/backups/da05f074-8440-4696-8440-b45a15fadde3",
+        "snapshotTime": "2026-11-09T09:58:09.383372Z"
+      },
+      "operation": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-drill-20261108/operations/NINjsRVEVprIQpwE3f3UuhAqMWxhcnRuZWMtc3ULIgoQIRo",
+      "progress": "IN_PROGRESS"
+    },
+    "type": "FIRESTORE_NATIVE",
+    "uid": "bad4fddd-049c-42c8-9a56-4415b1638334",
+    "updateTime": "2026-11-09T21:17:31.205341Z",
+    "versionRetentionPeriod": "3600s"
+  }
+}

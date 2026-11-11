@@ -61,7 +61,10 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
           ],
           { timeout: 15000 },
         );
-        expect(version.stdout.trim()).toBe("0.1.0");
+        expect(version.stdout.trim()).toBe(
+          JSON.parse(await readFile(resolve("apps/cli/package.json"), "utf8"))
+            .version,
+        );
         api = fork(resolve("apps/packaged-e2e/src/api-process.ts"), [], {
           execArgv: ["--import", "tsx"],
           stdio: ["ignore", "ignore", "ignore", "ipc"],
@@ -184,6 +187,11 @@ describe.skipIf(process.env.RUN_FIRESTORE_EMULATOR_TESTS !== "1")(
           "peer",
         );
         expect(ownReport.data.id).toBe(report.data.id);
+        const initialHelp = await cli([]);
+        expect(initialHelp.commands.post.arguments).toEqual(["text"]);
+        const focused = await cli(["describe", "publishPost"]);
+        expect(focused.components.schemas.PublishPostInput).toBeDefined();
+        expect(focused.contract).toBeUndefined();
         const catalog = await cli(["describe"]);
         expect(
           catalog.operations.createAgentOperatorAuthorization,

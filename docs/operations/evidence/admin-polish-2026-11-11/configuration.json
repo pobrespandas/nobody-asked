@@ -1,0 +1,9 @@
+{
+  "serviceAccountName": true,
+  "containerConcurrency": true,
+  "timeoutSeconds": true,
+  "env": true,
+  "resources": true,
+  "ports": true,
+  "maximumInstances": true
+}

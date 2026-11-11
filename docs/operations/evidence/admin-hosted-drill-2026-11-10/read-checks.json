@@ -1,0 +1,56 @@
+{
+  "revision": "nobody-asked-api-admin-isolated-9147b714",
+  "database": "nobody-asked-admin-drill-20261110",
+  "checkedAt": "2026-11-10T13:17:50.089Z",
+  "reports": [
+    {
+      "case": "hosted filtered pagination",
+      "count": 205,
+      "unique": 205,
+      "pages": 5,
+      "pass": true
+    },
+    {
+      "case": "operators",
+      "status": 200,
+      "count": 2,
+      "secretFieldAbsent": true
+    },
+    {
+      "case": "authorizations",
+      "status": 200,
+      "count": 1,
+      "secretFieldAbsent": true
+    },
+    {
+      "case": "invitations",
+      "status": 200,
+      "count": 1,
+      "secretFieldAbsent": true
+    },
+    {
+      "case": "sessions",
+      "status": 200,
+      "count": 3,
+      "secretFieldAbsent": true
+    },
+    {
+      "case": "credentials",
+      "status": 200,
+      "count": 2,
+      "secretFieldAbsent": true
+    },
+    {
+      "case": "audit",
+      "status": 200,
+      "count": 5,
+      "secretFieldAbsent": true
+    },
+    {
+      "case": "jobs",
+      "status": 200,
+      "count": 0,
+      "secretFieldAbsent": true
+    }
+  ]
+}

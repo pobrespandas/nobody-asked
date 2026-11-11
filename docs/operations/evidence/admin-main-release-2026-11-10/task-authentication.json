@@ -1,0 +1,65 @@
+{
+  "checkedAt": "2026-11-10T14:57:26.643Z",
+  "taskUrl": "https://nobody-asked-api-b747s3o2ta-uc.a.run.app/internal/admin/jobs",
+  "audience": "https://nobody-asked-api-b747s3o2ta-uc.a.run.app/internal/admin/jobs",
+  "validTaskReachedBodyValidation": true,
+  "noJobRequested": true,
+  "syntheticBody": {},
+  "attempt": {
+    "dispatchCount": 2,
+    "lastAttempt": {
+      "dispatchTime": "2026-11-10T14:56:52.239915Z",
+      "responseStatus": {
+        "code": 3,
+        "message": "INVALID_ARGUMENT(3): HTTP status code 400"
+      },
+      "responseTime": "2026-11-10T14:56:52.274356Z",
+      "scheduleTime": "2026-11-10T14:56:52.238709Z"
+    },
+    "name": "projects/gen-lang-client-0607406471/locations/us-central1/queues/nobody-asked-admin-drill/tasks/admin-main-auth-probe-20261110"
+  },
+  "servingRevisionLogs": [
+    {
+      "httpRequest": {
+        "status": 400
+      },
+      "resource": {
+        "labels": {
+          "revision_name": "nobody-asked-api-admin-main-e49cc121"
+        }
+      },
+      "timestamp": "2026-11-10T14:56:52.261413Z"
+    },
+    {
+      "httpRequest": {
+        "status": 400
+      },
+      "resource": {
+        "labels": {
+          "revision_name": "nobody-asked-api-admin-main-e49cc121"
+        }
+      },
+      "timestamp": "2026-11-10T14:56:42.225212Z"
+    }
+  ],
+  "negativeChecks": [
+    {
+      "case": "missing assertion",
+      "status": 401,
+      "body": {
+        "error": {
+          "code": "task_authentication_required"
+        }
+      }
+    },
+    {
+      "case": "invalid assertion",
+      "status": 401,
+      "body": {
+        "error": {
+          "code": "task_authentication_required"
+        }
+      }
+    }
+  ]
+}

@@ -93,6 +93,8 @@ export interface PublicPost extends Post {
   readonly authorHandle: string;
   readonly authorDisplayName: string;
   readonly acknowledgementTotal: number;
+  readonly replyTotal: number;
+  readonly repostTotal: number;
 }
 
 export interface StoredApiResponse {
@@ -286,6 +288,7 @@ export interface ApiStore {
   >;
   listVisiblePublicPosts(): Promise<readonly PublicTimelineRecord[]>;
   listPublicTimelinePage(options: {
+    readonly parentId?: string;
     readonly limit: number;
     readonly cursor?: string | null;
   }): Promise<{

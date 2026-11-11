@@ -1,0 +1,642 @@
+[
+  {
+    "collectionGroup": "adminOauthStates",
+    "field": "expiresAt",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminOauthStates/fields/expiresAt",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "expiresAt",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "expiresAt",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "expiresAt"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:35:39.503101Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyA1NjVmNDExNTUzOGQtMjU4Yi1hOTk0LWI4Y2UtZTZiNThhOTYkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminOauthStates",
+    "field": "expiresAt",
+    "operation": "ttl",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminOauthStates/fields/expiresAt",
+        "startTime": "2026-11-07T19:35:41.140465Z",
+        "state": "INITIALIZING",
+        "ttlConfigDelta": {
+          "changeType": "ADD"
+        }
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyA1NmI4YWU0ZjA3OTAtYWVjOS0xNmE0LWUwNTMtMTE1OTYyYjEkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminDeletionPreviews",
+    "field": "expiresAt",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminDeletionPreviews/fields/expiresAt",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "expiresAt",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "expiresAt",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "expiresAt"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:35:42.700857Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyAwMmIyMTUyMmRmOTEtOGUyOS05ZWQ0LTY3ZmEtY2JjYjM0ZjgkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminDeletionPreviews",
+    "field": "expiresAt",
+    "operation": "ttl",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminDeletionPreviews/fields/expiresAt",
+        "startTime": "2026-11-07T19:35:44.352693Z",
+        "state": "INITIALIZING",
+        "ttlConfigDelta": {
+          "changeType": "ADD"
+        }
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyBiNTAxYjFlYWZhZTQtNDQ4YS03ZDA0LTU1NzYtMjU4ZWZmNjYkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminCommands",
+    "field": "expireAt",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminCommands/fields/expireAt",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "expireAt",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "expireAt",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "expireAt"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:35:45.925303Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyA2NmYxMDcwYjc1MWYtM2RkOC1mOTQ0LWU5YjAtMzVlOTdkNWEkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminCommands",
+    "field": "expireAt",
+    "operation": "ttl",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminCommands/fields/expireAt",
+        "startTime": "2026-11-07T19:35:47.502288Z",
+        "state": "INITIALIZING",
+        "ttlConfigDelta": {
+          "changeType": "ADD"
+        }
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyA2MjY1ZTNhNDEwNjEtMzVkYS0wOWU0LTQwNTItMTMzMTc4OGEkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminOauthStates",
+    "field": "nonce",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminOauthStates/fields/nonce",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "nonce",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "nonce",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "nonce"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:35:49.101507Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyAxYWFjNDUxYjgxMDUtMGVjOC1lNWQ0LTJiMWYtMmY4MDVhYmMkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminOauthStates",
+    "field": "verifier",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminOauthStates/fields/verifier",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "verifier",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "verifier",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "verifier"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:35:56.769682Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyA1MGVkN2UzMzI5NmUtMzkyYi05MjU0LTE1NzktZWQ2MTQ4YjQkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminOauthStates",
+    "field": "browserDigest",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminOauthStates/fields/browserDigest",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "browserDigest",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "browserDigest",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "browserDigest"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:35:58.395195Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyAyZTYxY2ZmYTdiZjgtZWY5YS0xMzk0LWJjNDEtZGQxOTQ5NTYkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "operatorSessions",
+    "field": "adminCsrf",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/operatorSessions/fields/adminCsrf",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "adminCsrf",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "adminCsrf",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "adminCsrf"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:36:00.058601Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyA0NzU4NmU1NzE2ZDctZmNlYS00OTg0LTM4ZDMtZTBhYTVhYWUkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminCommands",
+    "field": "fingerprint",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminCommands/fields/fingerprint",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "fingerprint",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "fingerprint",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "fingerprint"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:36:01.784375Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyA4NjU2ZmVkZWY4OWItMTY5Yi03MWE0LWIxZTgtMWNjMjUyNmQkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminCommands",
+    "field": "result",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminCommands/fields/result",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "result",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "result",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "result"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:36:03.383322Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyA2OWE3MWYyMmM1MWItMmFjYS1iNTY0LWJhYmQtNmU0MzJkMTAkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminJobs",
+    "field": "reason",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminJobs/fields/reason",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "reason",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "reason",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "reason"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:36:05.017332Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyAwZjE5ZTU2ZTMwZmMtYjM5Yi1jYjM0LTg1NjUtMDY1NmQzYmIkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminAuthLimits",
+    "field": "expireAt",
+    "operation": "exemption",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminAuthLimits/fields/expireAt",
+        "indexConfigDeltas": [
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "expireAt",
+                  "order": "ASCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "fieldPath": "expireAt",
+                  "order": "DESCENDING"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          },
+          {
+            "changeType": "REMOVE",
+            "index": {
+              "fields": [
+                {
+                  "arrayConfig": "CONTAINS",
+                  "fieldPath": "expireAt"
+                }
+              ],
+              "queryScope": "COLLECTION"
+            }
+          }
+        ],
+        "startTime": "2026-11-07T19:36:13.292596Z",
+        "state": "INITIALIZING"
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyA1Y2U3MzgyNjg0MjUtYjg4YS00NTc0LTkyMDEtZWMxOWU1MWQkGnNlbmlsZXBpcAkKMxI"
+    }
+  },
+  {
+    "collectionGroup": "adminAuthLimits",
+    "field": "expireAt",
+    "operation": "ttl",
+    "result": {
+      "metadata": {
+        "@type": "type.googleapis.com/google.firestore.admin.v1.FieldOperationMetadata",
+        "field": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/adminAuthLimits/fields/expireAt",
+        "startTime": "2026-11-07T19:36:14.884315Z",
+        "state": "INITIALIZING",
+        "ttlConfigDelta": {
+          "changeType": "ADD"
+        }
+      },
+      "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/operations/AyBhYzczZGFhY2U3YzYtMjg0OS03MmQ0LTIyNDEtNjExZjEyMWUkGnNlbmlsZXBpcAkKMxI"
+    }
+  }
+]

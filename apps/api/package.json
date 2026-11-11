@@ -7,6 +7,7 @@
   "dependencies": {
     "@nobody-asked/access": "*",
     "@nobody-asked/audit-export": "*",
+    "@nobody-asked/browser": "*",
     "@nobody-asked/feeds": "*",
     "@nobody-asked/identity": "*",
     "@nobody-asked/observability": "*",
@@ -15,6 +16,7 @@
     "@nobody-asked/safety": "*",
     "@nobody-asked/social-graph": "*",
     "firebase-admin": "14.5.0",
+    "google-auth-library": "9.15.1",
     "nodemailer": "10.3.1"
   },
   "devDependencies": {

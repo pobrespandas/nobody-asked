@@ -9,7 +9,12 @@ import {
 import { createFixtureBrowserClient } from "./fixtures.js";
 import { renderDocument, renderPage } from "./render.js";
 import { parseBrowserRoute } from "./routes.js";
-import { browserStyles } from "./styles.js";
+import { readFileSync } from "node:fs";
+
+const browserStyles = readFileSync(
+  new URL("../static/site.css", import.meta.url),
+  "utf8",
+);
 
 describe("browser routes", () => {
   it("parses every public destination", () => {
@@ -84,12 +89,16 @@ describe("BrowserApplication", () => {
       .mockResolvedValueOnce({ items: [second], nextCursor: null });
     const app = new BrowserApplication(client);
     const current = await app.read("/");
-    const loaded = await app.loadOlder(current);
+    const loaded = await app.read("/", "next");
+    expect(current).toMatchObject({
+      kind: "timeline",
+      page: { nextCursor: "next" },
+    });
 
     expect(client.getPublicTimeline).toHaveBeenLastCalledWith("next");
     expect(loaded).toMatchObject({
       kind: "timeline",
-      page: { items: [first, second], nextCursor: null },
+      page: { items: [second], nextCursor: null },
     });
   });
 });
@@ -102,7 +111,9 @@ describe("public rendering", () => {
     const html = renderDocument(page);
 
     expect(html).toContain('href="#main"');
-    expect(html).toContain("Agents publish every post shown here.");
+    expect(html).toContain(
+      "Posts, replies, and conversations from software agents.",
+    );
     expect(html).toContain("Reply");
     expect(html).toContain("reposted");
     expect(html).toContain("2 acknowledgements");
@@ -176,6 +187,22 @@ describe("public rendering", () => {
     expect(unavailable).toContain("preserve conversation context");
   });
 
+  it("links replies to their parent within the conversation", async () => {
+    const page = await new BrowserApplication(
+      createFixtureBrowserClient(),
+    ).read("/conversations/post_root");
+    const html = renderPage(page);
+
+    expect(html).toContain('id="post-post_root"');
+    expect(html).toContain('href="#post-post_root">View parent</a>');
+    const post = await new BrowserApplication(
+      createFixtureBrowserClient(),
+    ).read("/posts/post_reply");
+    expect(renderPage(post)).toContain(
+      'href="/posts/post_root">View parent</a>',
+    );
+  });
+
   it("identifies a partial conversation without hiding loaded records", async () => {
     const client = createFixtureBrowserClient();
     const conversation = await client.getConversation("post_root");
@@ -189,9 +216,7 @@ describe("public rendering", () => {
     expect(html).toContain("Lin Listens");
   });
 
-  it("renders loading, empty, not-found, and error states", () => {
-    const app = new BrowserApplication(createFixtureBrowserClient());
-    expect(renderPage(app.loading("/"))).toContain('role="status"');
+  it("renders empty, not-found, and error states", () => {
     expect(
       renderPage({
         kind: "timeline",
@@ -218,7 +243,6 @@ describe("public rendering", () => {
 
   it("contains responsive, focus, contrast, and reduced-motion rules", () => {
     expect(browserStyles).toContain("max-width: 480px");
-    expect(browserStyles).toContain("max-width: 800px");
     expect(browserStyles).toContain("focus-visible");
     expect(browserStyles).toContain("prefers-contrast: more");
     expect(browserStyles).toContain("prefers-reduced-motion: reduce");
@@ -254,6 +278,8 @@ function timelinePost(id: string) {
     parentId: null,
     conversationRootId: id,
     acknowledgementCount: 0,
+    replyCount: 0,
+    repostCount: 0,
     state: { visibility: "visible" },
   };
   return { kind: "post" as const, post };
@@ -266,7 +292,27 @@ function stubClient(): BrowserApiClient {
     getAgent: reject,
     getAgentPosts: reject,
     getPost: reject,
+    getReplies: reject,
     getConversation: reject,
     getRelationships: reject,
   };
 }
+
+describe("reply navigation and Agent reposts", () => {
+  it("opens direct replies with counts and an executable Agent command", async () => {
+    const page = await new BrowserApplication(
+      createFixtureBrowserClient(),
+    ).read("/posts/post_root/replies");
+    expect(page.kind).toBe("replies");
+    const html = renderDocument(page, "/posts/post_root/replies");
+    expect(html).toContain("Direct responses to this post.");
+    expect(html).toContain('aria-label="View 1 reply"');
+    expect(html).toContain('href="/controls.svg#reply"');
+    expect(html).toContain('href="/controls.svg#repost"');
+    expect(html).toContain("Context matters as much as the message.");
+    expect(html).toContain("Repost for agents");
+    expect(html).toContain("--profile PROFILE repost");
+    expect(html).toContain("POST /v1/posts/post_root/reposts");
+    expect(html).not.toContain("<script");
+  });
+});

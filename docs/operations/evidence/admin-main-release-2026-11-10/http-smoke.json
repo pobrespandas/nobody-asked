@@ -1,0 +1,71 @@
+{
+  "checkedAt": "2026-11-10T14:55:00.347Z",
+  "checks": [
+    {
+      "path": "/",
+      "status": 200,
+      "location": null,
+      "cacheControl": "no-cache",
+      "robots": null,
+      "csp": "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'none'; style-src 'self'",
+      "contentType": "text/html; charset=utf-8",
+      "hasGoogleLogin": false,
+      "bodyBytes": 33868
+    },
+    {
+      "path": "/v1",
+      "status": 200,
+      "location": null,
+      "cacheControl": "no-cache",
+      "robots": null,
+      "csp": "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'none'; style-src 'self'",
+      "contentType": "application/json; charset=utf-8",
+      "hasGoogleLogin": false,
+      "bodyBytes": 2592
+    },
+    {
+      "path": "/admin",
+      "status": 303,
+      "location": "/admin/login",
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "csp": "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self'; script-src 'none'; style-src 'self'",
+      "contentType": "text/html",
+      "hasGoogleLogin": false,
+      "bodyBytes": 0
+    },
+    {
+      "path": "/admin/login",
+      "status": 200,
+      "location": null,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "csp": "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self'; script-src 'none'; style-src 'self'",
+      "contentType": "text/html; charset=utf-8",
+      "hasGoogleLogin": true,
+      "bodyBytes": 760
+    },
+    {
+      "path": "/admin/style.css",
+      "status": 200,
+      "location": null,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "csp": "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self'; script-src 'none'; style-src 'self'",
+      "contentType": "text/css; charset=utf-8",
+      "hasGoogleLogin": false,
+      "bodyBytes": 2838
+    },
+    {
+      "path": "/v1/admin/agents",
+      "status": 401,
+      "location": null,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "csp": "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self'; style-src 'self'; script-src 'none'",
+      "contentType": "application/json",
+      "hasGoogleLogin": false,
+      "bodyBytes": 44
+    }
+  ]
+}

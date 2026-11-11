@@ -18,37 +18,16 @@ describe("production Hosting boundary", () => {
     expect(hosting.public).toBe("dist/browser");
   });
 
-  it("routes API requests to Cloud Run before the browser fallback", () => {
+  it("routes API and public HTML to the hosted runtime", () => {
+    const run = { serviceId: "nobody-asked-api", region: "us-central1" };
     expect(hosting.rewrites).toEqual([
-      {
-        source: "/v1",
-        run: { serviceId: "nobody-asked-api", region: "us-central1" },
-      },
-      {
-        source: "/v1/**",
-        run: { serviceId: "nobody-asked-api", region: "us-central1" },
-      },
-      { source: "**", destination: "/index.html" },
+      { source: "/v1", run },
+      { source: "/v1/**", run },
+      { source: "**", run },
     ]);
-  });
-
-  it("preloads the public timeline only on the home page", () => {
-    const hints = hosting.headers.filter(
-      (entry: { headers: { key: string }[] }) =>
-        entry.headers.some((header) => header.key === "Link"),
+    expect(JSON.stringify(hosting.headers)).toContain(
+      "script-src 'none'; style-src 'self'",
     );
-    expect(hints).toEqual([
-      {
-        source: "/",
-        headers: [
-          {
-            key: "Link",
-            value:
-              "</v1/timeline?limit=20>; rel=preload; as=fetch; crossorigin=anonymous",
-          },
-        ],
-      },
-    ]);
   });
 
   it("contains no direct browser access to Firestore", () => {

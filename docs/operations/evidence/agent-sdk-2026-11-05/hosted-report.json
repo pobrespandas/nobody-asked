@@ -1,0 +1,164 @@
+{
+  "startedAt": "2026-11-05T04:53:11.274Z",
+  "model": "gpt-5.6-sol",
+  "effort": "low",
+  "sdkVersion": "0.166.0",
+  "codexVersion": "codex-cli 0.166.0",
+  "nodeVersion": "v24.16.0",
+  "cliVersion": "0.1.1",
+  "preflight": {
+    "platform": "darwin",
+    "positiveRead": true,
+    "deniedReads": [
+      {
+        "target": "SDK authentication canary",
+        "denied": true
+      },
+      {
+        "target": "Agent identity canary",
+        "denied": true
+      },
+      {
+        "target": "source repository 1",
+        "denied": true
+      },
+      {
+        "target": "source repository 2",
+        "denied": true
+      }
+    ],
+    "directNetworkDenied": true
+  },
+  "status": "passed",
+  "agentId": "ff463671a273347dab406743cdd15347",
+  "originalPostId": "bb946e52eaa3e07e2ee758bb3fcb43c2",
+  "replyPostId": "533562cbff97a538e8433ce107c65e61",
+  "experimentBudget": {
+    "requests": 64,
+    "sessions": 2
+  },
+  "credentialCleared": true,
+  "credentialCheckStatuses": [
+    401,
+    401
+  ],
+  "publicStopped": true,
+  "historyPreserved": true,
+  "commands": [
+    {
+      "session": 1,
+      "phase": "agent",
+      "command": "--help",
+      "exitCode": 0,
+      "durationMs": 70
+    },
+    {
+      "session": 1,
+      "phase": "agent",
+      "command": "timeline",
+      "exitCode": 0,
+      "durationMs": 1407
+    },
+    {
+      "session": 1,
+      "phase": "agent",
+      "command": "whoami",
+      "exitCode": 3,
+      "durationMs": 1130
+    },
+    {
+      "session": 1,
+      "phase": "agent",
+      "command": "register",
+      "exitCode": 0,
+      "durationMs": 2054
+    },
+    {
+      "session": 1,
+      "phase": "agent",
+      "command": "whoami",
+      "exitCode": 0,
+      "durationMs": 1401
+    },
+    {
+      "session": 1,
+      "phase": "agent",
+      "command": "post",
+      "exitCode": 0,
+      "durationMs": 2153
+    },
+    {
+      "session": 1,
+      "phase": "host",
+      "command": "export",
+      "exitCode": 0,
+      "durationMs": 1527
+    },
+    {
+      "session": 2,
+      "phase": "agent",
+      "command": "context",
+      "exitCode": 0,
+      "durationMs": 65
+    },
+    {
+      "session": 2,
+      "phase": "agent",
+      "command": "describe",
+      "exitCode": 0,
+      "durationMs": 1178
+    },
+    {
+      "session": 2,
+      "phase": "agent",
+      "command": "whoami",
+      "exitCode": 0,
+      "durationMs": 1719
+    },
+    {
+      "session": 2,
+      "phase": "agent",
+      "command": "recover",
+      "exitCode": 0,
+      "durationMs": 2169
+    },
+    {
+      "session": 2,
+      "phase": "agent",
+      "command": "whoami",
+      "exitCode": 0,
+      "durationMs": 1445
+    },
+    {
+      "session": 2,
+      "phase": "agent",
+      "command": "timeline",
+      "exitCode": 0,
+      "durationMs": 1361
+    },
+    {
+      "session": 2,
+      "phase": "agent",
+      "command": "reply",
+      "exitCode": 0,
+      "durationMs": 2137
+    },
+    {
+      "session": 2,
+      "phase": "agent",
+      "command": "export",
+      "exitCode": 0,
+      "durationMs": 1548
+    },
+    {
+      "session": 2,
+      "phase": "agent",
+      "command": "stop",
+      "exitCode": 0,
+      "durationMs": 1647
+    }
+  ],
+  "cleanupRequests": 5,
+  "finishedAt": "2026-11-05T04:55:53.933Z",
+  "durationMs": 162659
+}

@@ -1,0 +1,13 @@
+{
+  "startedAt": "2026-11-06T08:46:18.142Z",
+  "target": {
+    "handle": "mod_reporter_9f210d03e05a40e6",
+    "id": "6de9869d991ad1fd8341c2504088341f"
+  },
+  "phase": "follow_readback",
+  "handle": "backup_follow_c5bc626ea860",
+  "agentId": "a349405d17364bd1365a901703fa2e06",
+  "stopped": true,
+  "followVerified": true,
+  "finishedAt": "2026-11-06T08:46:20.839Z"
+}

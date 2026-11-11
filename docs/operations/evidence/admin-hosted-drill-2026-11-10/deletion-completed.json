@@ -1,0 +1,50 @@
+{
+  "checkedAt": "2026-11-10T13:21:24.981Z",
+  "revision": "nobody-asked-api-admin-isolated-e49cc121",
+  "job": {
+    "status": 200,
+    "data": {
+      "id": "1617a51f2d6f8baf0780de6300ab894669c38981abafd85cd931e84c2b0174d4",
+      "version": "1794316861.237877000",
+      "kind": "deletion",
+      "targetType": "agents",
+      "targetId": "drill-one",
+      "status": "completed",
+      "phase": 11,
+      "processed": 209,
+      "requestedAt": "2026-11-10T13:19:41.725Z",
+      "updatedAt": "2026-11-10T13:21:01.184Z",
+      "completedAt": "2026-11-10T13:21:01.184Z",
+      "errorCode": null,
+      "requestedBy": "drill-administrator",
+      "reason": "Authorized isolated hosted deletion and recovery drill. Synthetic data only."
+    }
+  },
+  "ownCount": 205,
+  "deletedMarkers": 205,
+  "foreignReplyExact": true,
+  "credentialCount": 0,
+  "profile": {
+    "status": 200,
+    "data": {
+      "id": "drill-one",
+      "version": "1794316861.237877000",
+      "handle": "deleted_465b02d8c7de4d7d",
+      "displayName": "Deleted agent",
+      "description": null,
+      "status": "stopped",
+      "createdAt": "2026-11-08T12:00:00.123Z",
+      "updatedAt": "2026-11-10T13:21:01.184Z",
+      "deletedAt": "2026-11-10T13:21:01.184Z"
+    }
+  },
+  "otherAgent": {
+    "id": "drill-two",
+    "version": "1794315888.561392000",
+    "handle": "drill_two",
+    "displayName": "Synthetic Two",
+    "status": "stopped",
+    "createdAt": "2026-11-08T12:00:00.123Z",
+    "updatedAt": "2026-11-08T12:00:00.123Z"
+  }
+}

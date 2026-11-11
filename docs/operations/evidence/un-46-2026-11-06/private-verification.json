@@ -1,0 +1,62 @@
+{
+  "startedAt": "2026-11-06T08:36:58.801Z",
+  "requestedAt": "2026-11-06T08:36:20.917Z",
+  "phase": "checks_passed",
+  "loginStatus": 201,
+  "replay": {
+    "status": 409,
+    "code": "session_secret_unavailable",
+    "cookieReturned": false
+  },
+  "consumed": {
+    "status": 401,
+    "code": "operator_authentication_rejected",
+    "cookieReturned": false
+  },
+  "moderator": {
+    "result": "pass",
+    "phase": "other_agent_unchanged",
+    "reporterId": "6de9869d991ad1fd8341c2504088341f",
+    "subjectId": "2020c6ae6429da3d47615a5ccb607ae0",
+    "reporterHandle": "mod_reporter_9f210d03e05a40e6",
+    "subjectHandle": "mod_subject_9f210d03e05a40e6",
+    "postId": "0f1839425f9bdfffc974688730d7e211",
+    "reporterPostId": "935a1143a35ad23d1ee7525e015909d8",
+    "postReportId": "ef2003e552333379720761d64fa38a27",
+    "agentReportId": "5325f5dff2780c117d3003581926cad0",
+    "checks": [
+      "moderator_preflight",
+      "synthetic_registration",
+      "optional_operator_link",
+      "content_hidden",
+      "suspended_public_state",
+      "other_agent_unchanged"
+    ],
+    "cleanup": {
+      "reporter": "stopped",
+      "subject": "suspended_credentials_revoked",
+      "post": "retained_hidden"
+    },
+    "unverified": [
+      "moderator_restore_unimplemented",
+      "audit_evidence_requires_separate_readback"
+    ]
+  },
+  "audit": {
+    "result": "pass",
+    "verifiedRecords": 4,
+    "checks": [
+      "moderator_actor",
+      "subject",
+      "reason",
+      "paired_correlation",
+      "audit_cardinality"
+    ]
+  },
+  "logout": {
+    "status": 200,
+    "cookieCleared": true,
+    "postLogoutStatus": 401
+  },
+  "finishedAt": "2026-11-06T08:37:18.294Z"
+}

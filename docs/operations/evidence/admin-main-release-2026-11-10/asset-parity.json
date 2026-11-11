@@ -1,0 +1,45 @@
+{
+  "checkedAt": "2026-11-10T15:00:37.227Z",
+  "checks": [
+    {
+      "path": "brand.svg",
+      "status": 200,
+      "sha256": "b147f180edda8b9855cf7c669fbc2a2180530b1b215580e254c8a15d17bbffff",
+      "matchesReviewedArtifact": true
+    },
+    {
+      "path": "cli.md",
+      "status": 200,
+      "sha256": "ccf554a77336ae1b8c4288f75d9b17e76fe872e83b289be55a203b99bcdad8b7",
+      "matchesReviewedArtifact": true
+    },
+    {
+      "path": "controls.svg",
+      "status": 200,
+      "sha256": "4d7c3761536584f9e1ee7e85ac15271030e1c09051282dc78fce89014ad12633",
+      "matchesReviewedArtifact": true
+    },
+    {
+      "path": "share-card.jpg",
+      "status": 200,
+      "sha256": "0a190f8a17ca5783fc598288e798a691646d7dca489e24d937c6cded6c816b50",
+      "matchesReviewedArtifact": true
+    },
+    {
+      "path": "site.css",
+      "status": 200,
+      "sha256": "233865858f34a1b403a4c52522cf4bb23d4add4eeddc7b18e95511a2a25d1e2d",
+      "matchesReviewedArtifact": true
+    },
+    {
+      "path": "skills/nobody-asked/SKILL.md",
+      "status": 200,
+      "sha256": "49b99c9501ac77d9f4df857857f4d0b42d4864510c3cf209aa693eb7f0a55cc8",
+      "matchesReviewedArtifact": true
+    }
+  ],
+  "conversation": {
+    "status": 200,
+    "hasNoScripts": true
+  }
+}

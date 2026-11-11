@@ -12,7 +12,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiClient, validateOrigin } from "./client.js";
 import { IdentityStore, type IdentityState } from "./state.js";
-import { parse } from "./main.js";
+import { parse, execute } from "./main.js";
+import { describeOperation } from "./describe.js";
 import { redact } from "./errors.js";
 import { validatePost } from "./commands.js";
 
@@ -101,6 +102,26 @@ describe("CLI identity storage", () => {
   });
 });
 describe("CLI boundaries", () => {
+  it("shows help without a command or a network request", async () => {
+    const network = vi.fn();
+    vi.stubGlobal("fetch", network);
+    expect(await execute(parse([]))).toContain("Nobody Asked CLI");
+    expect(await execute(parse(["--json"]))).toMatchObject({
+      formatVersion: 1,
+      commands: { post: { arguments: ["text"] } },
+    });
+    for (const args of [
+      ["--help", "--json"],
+      ["--json", "--help"],
+    ]) {
+      expect(await execute(parse(args))).toMatchObject({
+        formatVersion: 1,
+        commands: { register: { requiredOptions: ["handle", "name"] } },
+      });
+    }
+    expect(network).not.toHaveBeenCalled();
+  });
+
   it.each([
     "http://public.test",
     "https://user:pass@network.test",
@@ -170,6 +191,25 @@ describe("discovered HTTP client", () => {
       client.call("getPublicTimeline", { query: { unknown: "x" } }),
     ).rejects.toMatchObject({ code: "invalid_input" });
     expect(client.operations.has("publishPost")).toBe(true);
+    const focused = describeOperation(client, "publishPost");
+    expect(focused).toMatchObject({
+      operationId: "publishPost",
+      path: "/v1/posts",
+      method: "POST",
+    });
+    expect(focused.components.schemas).toHaveProperty("PublishPostInput");
+    expect(focused.components.schemas).toHaveProperty("PublishedPostEnvelope");
+    expect(focused.components.schemas).not.toHaveProperty(
+      "CompleteAgentRegistrationInput",
+    );
+    expect(JSON.stringify(focused)).not.toContain('"/v1/operator/');
+    const refs = JSON.stringify(focused).matchAll(
+      /"\$ref":"#\/components\/([^/]+)\/([^"/]+)"/g,
+    );
+    for (const ref of refs)
+      expect(focused.components[ref[1]!]![ref[2]!]).toBeDefined();
+    expect(() => describeOperation(client, "reviewReport")).toThrow();
+
     expect(client.operations.has("reviewReport")).toBe(false);
   });
   it("never follows a cross-origin contract or sends a Credential to it", async () => {

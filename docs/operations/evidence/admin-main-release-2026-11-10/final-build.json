@@ -1,0 +1,24 @@
+{
+  "build": {
+    "id": "f7225aff-cac4-4054-bf87-354ee1ded482",
+    "results": {
+      "images": [
+        {
+          "artifactRegistryPackage": "projects/gen-lang-client-0607406471/locations/us-central1/repositories/nobody-asked/packages/api/versions/sha256:317622c1bbd6d0a608859754dc8163229601ccd2cd86d49334dbd6307c566ca3",
+          "digest": "sha256:317622c1bbd6d0a608859754dc8163229601ccd2cd86d49334dbd6307c566ca3",
+          "name": "us-central1-docker.pkg.dev/gen-lang-client-0607406471/nobody-asked/api:admin-referrer-6b77e322",
+          "pushTiming": {
+            "endTime": "2026-11-10T15:01:57.699669045Z",
+            "startTime": "2026-11-10T15:01:20.402647861Z"
+          }
+        }
+      ]
+    },
+    "status": "SUCCESS"
+  },
+  "sourceFingerprint": "6b77e32235de5290e93c77a39e9f16b3f84a8693a9b23c7adb6be8a514331d05",
+  "selectedFileCount": 167,
+  "sourceChange": "Only the authentication error response Referrer-Policy changed.",
+  "testsPassed": 545,
+  "environmentTestsSkipped": 96
+}

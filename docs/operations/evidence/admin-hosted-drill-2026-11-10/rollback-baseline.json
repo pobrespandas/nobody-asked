@@ -1,0 +1,47 @@
+{
+  "checkedAt": "2026-11-10",
+  "hostingVersion": "projects/gen-lang-client-0607406471/sites/nobodyasked-pobrespandas-prod/versions/2828be8f34b10e1c",
+  "hostingRelease": "projects/gen-lang-client-0607406471/sites/nobodyasked-pobrespandas-prod/channels/live/releases/1794071125915000",
+  "hostingStatus": "FINALIZED",
+  "hostingConfig": {
+    "headers": [
+      {
+        "headers": {
+          "Content-Security-Policy": "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'none'; style-src 'self'",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff",
+          "Cache-Control": "no-cache"
+        },
+        "glob": "**"
+      }
+    ],
+    "rewrites": [
+      {
+        "glob": "/v1",
+        "run": {
+          "serviceId": "nobody-asked-api",
+          "region": "us-central1"
+        }
+      },
+      {
+        "glob": "/v1/**",
+        "run": {
+          "serviceId": "nobody-asked-api",
+          "region": "us-central1"
+        }
+      },
+      {
+        "glob": "**",
+        "run": {
+          "serviceId": "nobody-asked-api",
+          "region": "us-central1"
+        }
+      }
+    ],
+    "cleanUrls": true,
+    "trailingSlashBehavior": "REMOVE"
+  },
+  "apiRevision": "nobody-asked-api-controls-2f37340",
+  "apiImageDigest": "sha256:de1109b1a789a1425ae5d316f30cca62b354c1a48052867b45f3d0868614b487",
+  "apiReady": true
+}

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { registrationNetworkSourceKey } from "./request-source.js";
+import { IcloudDeliveryFailure } from "./icloud-delivery.js";
 import {
   mapError,
   errorResponse,
@@ -412,6 +413,9 @@ async function handleApiRequest(
       return await readPost(dependencies, postMatch[1]);
     }
     const replyMatch = url.pathname.match(/^\/v1\/posts\/([^/]+)\/replies$/);
+    if (request.method === "GET" && replyMatch?.[1]) {
+      return await readReplies(dependencies, url, replyMatch[1]);
+    }
     if (request.method === "POST" && replyMatch?.[1]) {
       return await createReply(dependencies, request, replyMatch[1]);
     }
@@ -1201,6 +1205,27 @@ async function readPost(dependencies: ApiDependencies, encoded: string) {
     : errorResponse(404, "post_not_found", "The post was not found.");
 }
 
+async function readReplies(
+  dependencies: ApiDependencies,
+  url: URL,
+  encoded: string,
+) {
+  const id = decodeSegment(encoded, "post");
+  if (id instanceof Response) return id;
+  if (!(await dependencies.store.findVisiblePublicPostById(id))) {
+    return errorResponse(404, "post_not_found", "The post was not found.");
+  }
+  const page = await dependencies.store.listPublicTimelinePage({
+    parentId: id,
+    limit: parseLimit(url.searchParams.get("limit")),
+    cursor: url.searchParams.get("cursor"),
+  });
+  return jsonResponse(200, {
+    data: page.items.map(serializeTimelineRecord),
+    page: { nextCursor: page.nextCursor },
+  });
+}
+
 async function readConversation(
   dependencies: ApiDependencies,
   encoded: string,
@@ -1385,11 +1410,19 @@ async function requestOperatorChallenge(
   if (result.accepted && result.created) {
     try {
       await dependencies.deliverOperatorChallenge(identity, challengeSecret);
-    } catch {
+    } catch (error) {
       try {
         dependencies.operationalLogger.write({
           severity: "ERROR",
           event: "operator.challenge.delivery_failed",
+          ...(error instanceof IcloudDeliveryFailure
+            ? {
+                stage: error.stage,
+                ...(error.smtpStatus === undefined
+                  ? {}
+                  : { smtpStatus: error.smtpStatus }),
+              }
+            : {}),
         });
       } catch {
         // Delivery failure must not expose identity through a logger failure.
@@ -2183,6 +2216,8 @@ function serializePost(post: PublicPost) {
     parentId: post.parentId,
     conversationRootId: post.conversationRootId,
     acknowledgementCount: post.acknowledgementTotal,
+    replyCount: post.replyTotal,
+    repostCount: post.repostTotal,
     state: { visibility: "visible" },
   };
 }

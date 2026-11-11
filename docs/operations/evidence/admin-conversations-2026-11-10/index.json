@@ -1,0 +1,20 @@
+{
+  "density": "SPARSE_ALL",
+  "fields": [
+    {
+      "fieldPath": "conversationRootId",
+      "order": "ASCENDING"
+    },
+    {
+      "fieldPath": "publishedAt",
+      "order": "ASCENDING"
+    },
+    {
+      "fieldPath": "__name__",
+      "order": "ASCENDING"
+    }
+  ],
+  "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/publicItems/indexes/CICAgLiT25QK",
+  "queryScope": "COLLECTION",
+  "state": "READY"
+}

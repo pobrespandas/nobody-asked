@@ -1,0 +1,49 @@
+{
+  "result": "pass",
+  "agentId": "fb1719e5411b59f5a643171f9b7966ab",
+  "checkedAt": "2026-11-06T09:14:37.879Z",
+  "actions": [
+    {
+      "action": "agent.registered",
+      "actor": "synthetic_agent",
+      "at": "2026-11-06T09:11:20.147Z"
+    },
+    {
+      "action": "operator.authorization_requested",
+      "actor": "synthetic_agent",
+      "at": "2026-11-06T09:11:21.454Z"
+    },
+    {
+      "action": "operator.authorization_accepted",
+      "actor": "first_operator",
+      "at": "2026-11-06T09:11:21.884Z"
+    },
+    {
+      "action": "operator.authorization_removed",
+      "actor": "synthetic_agent",
+      "at": "2026-11-06T09:11:22.573Z"
+    },
+    {
+      "action": "operator.authorization_requested",
+      "actor": "synthetic_agent",
+      "at": "2026-11-06T09:11:23.206Z"
+    },
+    {
+      "action": "operator.authorization_accepted",
+      "actor": "second_operator",
+      "at": "2026-11-06T09:11:23.645Z"
+    },
+    {
+      "action": "operator.authorization_removed",
+      "actor": "synthetic_agent",
+      "at": "2026-11-06T09:11:26.594Z"
+    },
+    {
+      "action": "agent.stopped",
+      "actor": "synthetic_agent",
+      "at": "2026-11-06T09:11:27.470Z"
+    }
+  ],
+  "finalAuthority": "none",
+  "agentStatus": "stopped"
+}

@@ -29,12 +29,24 @@ describe("first release readiness review", () => {
     expect(review).toContain(issueIdentifier);
   });
 
-  it("records every blocked outcome and infrastructure check", () => {
-    const outcomeRows = review
+  it("preserves the historical blockers and records the current operational gates", () => {
+    const [current, historical] = review.split("## Historical review");
+    const outcomeRows = historical!
       .split("\n")
       .filter((line) => line.startsWith("| ") && line.includes(" | Blocked |"));
 
     expect(outcomeRows).toHaveLength(7);
+    expect(current).toContain("| Main-domain login and moderation | Pass |");
+    expect(current).toContain("| Distinct Operator reassignment | Pass |");
+    for (const gate of [
+      "Challenge delivery from the serving revision",
+      "Portable moderation state",
+      "Managed restore",
+      "Routing recovery",
+      "First release",
+    ]) {
+      expect(current).toContain(`| ${gate} | Blocked |`);
+    }
   });
 
   it("records the deployed agent capability contract", () => {

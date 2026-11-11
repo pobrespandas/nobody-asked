@@ -1,0 +1,9 @@
+{
+  "database": "nobody-asked-dev",
+  "mainTraffic": [
+    {
+      "revision": "nobody-asked-api-controls-2f37340",
+      "percent": 100
+    }
+  ]
+}

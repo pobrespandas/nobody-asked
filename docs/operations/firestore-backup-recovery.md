@@ -83,6 +83,20 @@ Before the restore, record the start time. After it completes, run application c
 
 The source database must contain evidence for all seven checks before its backup runs. An empty backup proves only the provider restore mechanism. It does not complete this drill.
 
+### Capture the source at the backup snapshot
+
+While the snapshot time is still readable on the source, set the environment below and add these values:
+
+- `REMOTE_FIRESTORE_BACKUP_SNAPSHOT_TIME` with the exact `snapshotTime` from the selected READY backup, including its fractional seconds.
+- `REMOTE_FIRESTORE_RECOVERY_BASELINE` with a new file path in a private directory outside the repository.
+- `REMOTE_FIRESTORE_CAPTURE_BASELINE=1`.
+
+Run `npm run test:firestore:recovery:remote`. This mode reads the source at the fixed timestamp, checks required records and references, and creates an owner-only file containing collection digests and snapshot metadata. It does not access the planned destination database. Record the backup resource name separately. The capture fails if the timestamp is unavailable or the evidence is incomplete.
+
+For verification after restore, unset `REMOTE_FIRESTORE_CAPTURE_BASELINE` and keep the baseline path and snapshot timestamp. The command then compares the restored database with the captured digests. Keep the recovery database idle during verification.
+
+If the snapshot is no longer readable and no baseline exists, do not use the current source as historical evidence. Use `inspectRecoveryIntegrity` on the isolated recovery database for a separate evidence-and-reference check. It reports `integrity_checked` when required evidence exists, or `evidence_incomplete` with the missing evidence list. Both results have `snapshotParity: not_verified`. This result does not complete exact snapshot parity or approve traffic.
+
 After the restore completes, compare the source and recovery databases with the read-only verifier:
 
 ```sh
@@ -94,7 +108,7 @@ export REMOTE_FIRESTORE_RECOVERY_DATABASE_ID=nobody-asked-recovery-YYYYMMDD
 npm run test:firestore:recovery:remote
 ```
 
-The verifier reads every application collection from both databases. It requires exact record parity and non-empty identity, post, follow, acknowledgement, moderation, idempotency, and audit evidence. It also verifies the references between those records. Its output contains counts and collection names only. It does not print record data or write to either database.
+With a captured baseline, the verifier reads every application collection from the recovery database. Without one, it compares against the live source, which requires separate evidence that the source still matches the backup snapshot. The verifier requires record parity and non-empty identity, post, follow, acknowledgement, moderation, idempotency, and audit evidence. Hosted moderation evidence consists of a hidden item and a matching completed Moderator Audit record. A separate `moderationActions` record also remains valid for older fixtures. The verifier checks references and prints summary metadata.
 
 Include the private `agentOperatorAuthority` and `agentOperatorAuthorizations` collections. Preserve pending, accepted, and revoked authorization history and the authority revision. These records have no TTL. The verifier checks Agent, Operator, Credential, and authority-pointer references, and compares authorization command replay records exactly. Legacy backups without authorization records remain valid. Authorization records and their replay responses must stay outside public Agent exports.
 
@@ -117,3 +131,7 @@ The drill uses a temporary directory and a `demo-` project. It seeds identity, p
 The Firebase Emulator Suite does not export a named database with `--export-on-exit`. The local drill uses the default database inside its isolated `demo-` project for this reason. Application records and adapters are unchanged. The hosted service must still use `nobody-asked-dev`. The remote drill must prove backup and restore for that named database.
 
 The local drill tests the application recovery contract. It does not prove that a managed schedule runs, that IAM allows restore, or that a remote backup can restore.
+
+## Administrative deletion gate
+
+Before a restored database receives traffic, apply its independent Deletion ledger. Keep source writes paused during final reconciliation and cutover. Use the procedure in [administration operations](administration.md#restore-gate). A database backup alone cannot prove that later accepted deletions were applied.

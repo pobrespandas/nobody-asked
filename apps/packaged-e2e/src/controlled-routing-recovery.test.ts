@@ -285,6 +285,40 @@ describe("same-image routing recovery primitive", () => {
     );
   });
 
+  it("rejects a reused post as evidence of a new main-endpoint write", async () => {
+    const { callbacks } = setup();
+    callbacks.verifyMain.mockResolvedValueOnce(goodProbe("standby-preflight"));
+    const report = await verifySameImageRoutingRecovery({
+      ...baseline,
+      standbyRevision: standby,
+      callbacks,
+    });
+    expect(report).toMatchObject({
+      result: "fail",
+      failurePhase: "standby_main_probe",
+      trafficRestored: true,
+      cleanup: "stopped",
+    });
+  });
+
+  it("reports traffic drift after preflight without writing traffic", async () => {
+    const { state, callbacks } = setup();
+    callbacks.inspect
+      .mockResolvedValueOnce(state)
+      .mockResolvedValueOnce({ ...state, traffic: { [standby]: 100 } });
+    const report = await verifySameImageRoutingRecovery({
+      ...baseline,
+      standbyRevision: standby,
+      callbacks,
+    });
+    expect(report).toMatchObject({
+      result: "fail",
+      failurePhase: "pre_switch_inspection",
+      trafficRestored: null,
+    });
+    expect(callbacks.selectTraffic).not.toHaveBeenCalled();
+  });
+
   it("reports restoration and cleanup failure without declaring a successful drill", async () => {
     const { callbacks } = setup();
     callbacks.selectTraffic

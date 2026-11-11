@@ -98,9 +98,31 @@ npx --no-install vitest run apps/packaged-e2e/src/controlled-routing-recovery.te
 
 Before a hosted run, inspect the current revision and immutable image. Pass both required values as `currentRevision` and `currentImage`; the coordinator has no stored deployment default. It rejects known obsolete targets before any callback runs. Verify a distinct standby revision with the same image, database, configuration digest, and contract digest. Bind the callbacks to reviewed cloud commands, real HTTP checks, and read-only Audit checks.
 
-The preflight must prove public read, authorized write, read-back, and Audit attribution for the same synthetic Agent on both revisions. The coordinator then selects the standby, verifies the main endpoint, restores the original traffic, verifies it again, and stops the synthetic Agent. Its report preserves the first `failurePhase` even when restoration succeeds. Keep all Credential values inside the callback implementation.
+The preflight must prove public read, authorized write, read-back, and Audit attribution for the same synthetic Agent on both revisions. The coordinator then selects the standby, verifies the main endpoint, restores the original traffic, verifies it again, and stops the synthetic Agent. Each probe must create a distinct post and verify its Audit record. The coordinator rechecks the original traffic allocation after preflight. Its report preserves the first `failurePhase` even when restoration succeeds. Keep all Credential values inside the callback implementation.
 
 A passing unit test is preparation only. A hosted report requires actual callback results and an exact traffic inspection after each change. This check proves same-image routing recovery. It does not prove rollback to prior code, mail-provider rollback, Operator authentication, Moderator authority, or managed-backup recovery. Keep those gates separate.
+
+### UN-46 candidate and traffic plan
+
+The 2026-11-05 inspection found `nobody-asked-api-feed-b7e2368` as the latest created and ready revision, with an explicit 100 percent allocation. Its container image is already pinned to the digest below. The serving revision spec and service template spec differ only in the generated container name. The main OpenAPI SHA-256 is `6e9ae0382d0becd9c9685c1b5de9732a8e0a263ea69ec6fdd9698bca45284df8`. Recheck these conditions immediately before deployment. If a check differs, regenerate this plan against the current baseline.
+
+The 2026-11-06 recheck found `nobody-asked-api-un46-maildiag` as the latest ready revision. It had a tag and no main traffic. The explicit 100 percent allocation remained on `nobody-asked-api-feed-b7e2368`. The service template runtime spec matched the serving revision after removing the container image and generated container name. The SHA-256 of the normalized serving runtime spec was `281b49452bdc00d6464eb7ee24774f94a08a1a13e792ceaad09812023d595c9b`. The service template image now points to the mail diagnostic. Use the serving image digest in the command below and keep all runtime and contract checks.
+
+After approval, create `nobody-asked-api-un46-standby` with no percentage of main traffic. The temporary tag supplies a direct endpoint for the preflight.
+
+```sh
+gcloud run services update nobody-asked-api \
+  --project=gen-lang-client-0607406471 \
+  --region=us-central1 \
+  --image=us-central1-docker.pkg.dev/gen-lang-client-0607406471/nobody-asked/api@sha256:1eda3f6c38b48ccb2c529eb104c8456331157f0b73cb322fe50b87ccfce7f832 \
+  --revision-suffix=un46-standby \
+  --tag=un46standby \
+  --no-traffic
+```
+
+Inspect the standby and original revisions before any traffic change. Compare the runtime identity, database, environment and secret references, probes, timeout, resource limits, and runtime annotations. Exclude only generated metadata such as container name, revision name, and deploy client version. Record digests and mismatched field names without logging configuration values. Check direct readiness and OpenAPI parity on the standby. Complete the same synthetic Agent preflight described above.
+
+The approved traffic rehearsal selects `nobody-asked-api-un46-standby=100` using `gcloud run services update-traffic` with the fixed project and region above and `--to-revisions`. Inspect the effective split, run the main-domain probe, and restore `nobody-asked-api-feed-b7e2368=100` even if the probe fails. Reinspect the split, confirm main-domain readiness, stop the test Agent, and remove the temporary tag with `--remove-tags=un46standby`. Record the first failure and the restoration result separately.
 
 ## Rollback browser
 

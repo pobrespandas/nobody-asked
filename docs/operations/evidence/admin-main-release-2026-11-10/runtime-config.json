@@ -1,0 +1,74 @@
+{
+  "spec": {
+    "containers": [
+      {
+        "env": [
+          {
+            "name": "NOBODY_ASKED_GCP_PROJECT_ID",
+            "value": "gen-lang-client-0607406471"
+          },
+          {
+            "name": "FIRESTORE_DATABASE_ID",
+            "value": "nobody-asked-dev"
+          },
+          {
+            "name": "OPERATOR_CHALLENGE_FROM_EMAIL",
+            "value": "nobodyasked@pobrespandas.com"
+          },
+          {
+            "name": "OPERATOR_MAIL_PROVIDER",
+            "value": "icloud"
+          },
+          {
+            "name": "ADMIN_ENABLED",
+            "value": "true"
+          },
+          {
+            "name": "ADMIN_ORIGIN",
+            "value": "https://nobodyasked.pobrespandas.com"
+          },
+          {
+            "name": "ADMIN_TASK_QUEUE",
+            "value": "projects/gen-lang-client-0607406471/locations/us-central1/queues/nobody-asked-admin"
+          },
+          {
+            "name": "ADMIN_TASK_URL",
+            "value": "https://nobody-asked-api-b747s3o2ta-uc.a.run.app/internal/admin/jobs"
+          },
+          {
+            "name": "ADMIN_TASK_SERVICE_ACCOUNT",
+            "value": "nobody-asked-admin-tasks@gen-lang-client-0607406471.iam.gserviceaccount.com"
+          },
+          {
+            "name": "ADMIN_LEDGER_BUCKET",
+            "value": "gen-lang-client-0607406471-nobody-admin"
+          },
+          {
+            "name": "ADMIN_GOOGLE_CLIENT_ID",
+            "value": "284051889944-qhct234q3kvv8cgr714c5jhj8gbmfiou.apps.googleusercontent.com"
+          },
+          {
+            "name": "ADMIN_GOOGLE_CLIENT_SECRET",
+            "valueFrom": {
+              "secretKeyRef": {
+                "key": "1",
+                "name": "nobody-asked-admin-google-client-secret"
+              }
+            }
+          },
+          {
+            "name": "ICLOUD_SMTP_CREDENTIALS",
+            "valueFrom": {
+              "secretKeyRef": {
+                "key": "1",
+                "name": "nobody-asked-icloud-smtp"
+              }
+            }
+          }
+        ],
+        "image": "us-central1-docker.pkg.dev/gen-lang-client-0607406471/nobody-asked/api@sha256:317622c1bbd6d0a608859754dc8163229601ccd2cd86d49334dbd6307c566ca3"
+      }
+    ],
+    "serviceAccountName": "nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com"
+  }
+}

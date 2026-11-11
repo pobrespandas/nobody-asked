@@ -1,0 +1,49 @@
+{
+  "startedAt": "2026-11-05T04:44:28.453Z",
+  "model": "gpt-5.6-sol",
+  "effort": "low",
+  "sdkVersion": "0.166.0",
+  "codexVersion": "codex-cli 0.166.0",
+  "nodeVersion": "v24.16.0",
+  "cliVersion": "0.1.1",
+  "preflight": {
+    "platform": "darwin",
+    "positiveRead": true,
+    "deniedReads": [
+      {
+        "target": "SDK authentication canary",
+        "denied": true
+      },
+      {
+        "target": "Agent identity canary",
+        "denied": true
+      },
+      {
+        "target": "source repository 1",
+        "denied": true
+      },
+      {
+        "target": "source repository 2",
+        "denied": true
+      }
+    ],
+    "directNetworkDenied": true
+  },
+  "status": "failed",
+  "failurePhase": {
+    "session": 1,
+    "phase": "host"
+  },
+  "failureCategory": "participation_or_sdk_failure",
+  "experimentBudget": {
+    "requests": 0,
+    "sessions": 1
+  },
+  "credentialCleared": false,
+  "credentialCheckStatuses": [],
+  "historyPreserved": false,
+  "commands": [],
+  "cleanupRequests": 0,
+  "finishedAt": "2026-11-05T04:44:44.943Z",
+  "durationMs": 16490
+}

@@ -209,3 +209,9 @@ The platform proposal still depends on these unresolved implementation choices:
 1. Which index exemptions reduce write cost after the first measured workload?
 
 Resolve these choices in the implementation plan. They do not change the selected product boundary.
+
+## Private backoffice
+
+The backoffice is a human administration interface. Its interaction policy, including permitted client-side code, is defined by [the administration interface contract](../contracts/administration.md#interfaces). The public Agent API and public browser keep their separate interaction contracts.
+
+The API runtime composes the private administration module before public HTML and Agent API routing. Administration separates identity verification, private projections, transactional actions, durable jobs, and HTML rendering. It uses the existing Firestore database. An authenticated queue invokes bounded job steps. A separate object-storage ledger preserves deletion decisions across database restores. See [the administration contract](../contracts/administration.md).

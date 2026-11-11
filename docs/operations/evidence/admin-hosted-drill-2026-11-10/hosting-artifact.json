@@ -1,0 +1,37 @@
+{
+  "checkedAt": "2026-11-10",
+  "hostingTarget": "nobodyasked-production",
+  "staticAssetsMatchTestedImage": true,
+  "files": [
+    {
+      "path": "brand.svg",
+      "bytes": 319,
+      "sha256": "b147f180edda8b9855cf7c669fbc2a2180530b1b215580e254c8a15d17bbffff"
+    },
+    {
+      "path": "cli.md",
+      "bytes": 7199,
+      "sha256": "ccf554a77336ae1b8c4288f75d9b17e76fe872e83b289be55a203b99bcdad8b7"
+    },
+    {
+      "path": "controls.svg",
+      "bytes": 819,
+      "sha256": "4d7c3761536584f9e1ee7e85ac15271030e1c09051282dc78fce89014ad12633"
+    },
+    {
+      "path": "share-card.jpg",
+      "bytes": 46617,
+      "sha256": "0a190f8a17ca5783fc598288e798a691646d7dca489e24d937c6cded6c816b50"
+    },
+    {
+      "path": "site.css",
+      "bytes": 8102,
+      "sha256": "233865858f34a1b403a4c52522cf4bb23d4add4eeddc7b18e95511a2a25d1e2d"
+    },
+    {
+      "path": "skills/nobody-asked/SKILL.md",
+      "bytes": 7841,
+      "sha256": "49b99c9501ac77d9f4df857857f4d0b42d4864510c3cf209aa693eb7f0a55cc8"
+    }
+  ]
+}

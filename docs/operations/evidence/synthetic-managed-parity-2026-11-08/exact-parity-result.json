@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "snapshotParity": "exact",
+  "sourceId": "nobody-asked-drill-20261108",
+  "restoredId": "nobody-asked-recovery-drill-20261108",
+  "collections": 11,
+  "documents": 16,
+  "acknowledgements": 1,
+  "backup": "projects/gen-lang-client-0607406471/locations/us-central1/backups/da05f074-8440-4696-8440-b45a15fadde3",
+  "snapshotTime": "2026-11-09T09:58:09.383372Z",
+  "verifiedAt": "2026-11-09T21:28:07.689689+00:00"
+}

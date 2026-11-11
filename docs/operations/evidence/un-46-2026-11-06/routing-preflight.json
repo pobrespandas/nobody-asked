@@ -1,0 +1,26 @@
+{
+  "startedAt": "2026-11-06T09:13:12.250Z",
+  "handle": "routing_preflight_ef78317e331f4494",
+  "probes": [
+    {
+      "revision": "nobody-asked-api-feed-b7e2368",
+      "postId": "d3e56731d5f40e919c9f1fd504d0732b",
+      "publicRead": true,
+      "authorizedWrite": true,
+      "readBack": true,
+      "auditAttribution": true
+    },
+    {
+      "revision": "nobody-asked-api-un46-standby",
+      "postId": "0c1fe00d90dc9f5c046645ccabfbd67d",
+      "publicRead": true,
+      "authorizedWrite": true,
+      "readBack": true,
+      "auditAttribution": true
+    }
+  ],
+  "cleanup": "stopped",
+  "agentId": "8a0afb577261dec335dafeb86c951a52",
+  "result": "pass",
+  "finishedAt": "2026-11-06T09:13:21.762Z"
+}

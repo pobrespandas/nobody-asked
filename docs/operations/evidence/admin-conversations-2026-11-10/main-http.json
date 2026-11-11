@@ -1,0 +1,40 @@
+{
+  "checkedAt": "2026-11-10T22:56:41.366Z",
+  "results": [
+    {
+      "path": "/",
+      "status": 200,
+      "cacheControl": "no-cache",
+      "robots": null,
+      "location": null
+    },
+    {
+      "path": "/v1",
+      "status": 200,
+      "cacheControl": "no-cache",
+      "robots": null,
+      "location": null
+    },
+    {
+      "path": "/conversations/641a21ae549838547908dbcdd1219c71",
+      "status": 200,
+      "cacheControl": "no-cache",
+      "robots": null,
+      "location": null
+    },
+    {
+      "path": "/v1/admin/conversations/641a21ae549838547908dbcdd1219c71",
+      "status": 401,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "location": null
+    },
+    {
+      "path": "/admin/conversations/641a21ae549838547908dbcdd1219c71",
+      "status": 303,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "location": "/admin/login"
+    }
+  ]
+}

@@ -90,6 +90,28 @@ describe("iCloud operator challenge delivery", () => {
     expect(transport.close).toHaveBeenCalledOnce();
   });
 
+  it("retains only the SMTP failure stage and a numeric status", async () => {
+    const { transport, deliver } = harness();
+    transport.sendMail.mockRejectedValue(
+      Object.assign(new Error("private proof"), {
+        command: "DATA",
+        responseCode: 554,
+        response: "private provider response",
+      }),
+    );
+    const error: unknown = await deliver(
+      "operator@example.test",
+      "private-proof",
+    ).catch((failure: unknown) => failure);
+    expect(error).toMatchObject({
+      message: "operator_challenge_delivery_failed",
+      stage: "message",
+      smtpStatus: 554,
+    });
+    expect(error).not.toHaveProperty("response");
+    expect(error).not.toHaveProperty("cause");
+  });
+
   it("bounds a stalled send and closes the connection", async () => {
     vi.useFakeTimers();
     const { transport, deliver } = harness();

@@ -162,8 +162,15 @@ export async function runSocialConformance(
     const readPost = asRecord((await read("getPost", { postId })).data);
     assert(
       asRecord(readPost.author).id === peerId &&
-        readPost.acknowledgementCount === 1,
+        readPost.acknowledgementCount === 1 &&
+        readPost.replyCount === 1 &&
+        readPost.repostCount === 1,
       "Post attribution or acknowledgement failed.",
+    );
+    const replies = await read("getPostReplies", { parentPostId: postId });
+    assert(
+      items(replies.data).some((value) => asRecord(value).id === replyId),
+      "Reply absent from the direct reply page.",
     );
     const conversation = asRecord(
       (await read("getConversation", { rootPostId: postId })).data,

@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-11-10T13:20:40.957Z",
+  "status": 200,
+  "data": {
+    "id": "1617a51f2d6f8baf0780de6300ab894669c38981abafd85cd931e84c2b0174d4",
+    "version": "1794316831.864886000",
+    "kind": "deletion",
+    "targetType": "agents",
+    "targetId": "drill-one",
+    "status": "failed",
+    "phase": 0,
+    "processed": 0,
+    "requestedAt": "2026-11-10T13:19:41.725Z",
+    "updatedAt": "2026-11-10T13:20:31.832Z",
+    "errorCode": "job_step_failed",
+    "requestedBy": "drill-administrator",
+    "reason": "Authorized isolated hosted deletion and recovery drill. Synthetic data only."
+  }
+}

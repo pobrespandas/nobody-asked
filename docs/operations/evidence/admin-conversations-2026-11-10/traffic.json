@@ -1,0 +1,42 @@
+{
+  "status": {
+    "traffic": [
+      {
+        "percent": 100,
+        "revisionName": "nobody-asked-api-admin-chat-014dafb1",
+        "tag": "admin-release",
+        "url": "https://admin-release---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-feed-b7e2368",
+        "tag": "feedperf",
+        "url": "https://feedperf---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-operator-0bbc3dd",
+        "tag": "operatorfix",
+        "url": "https://operatorfix---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-recovery-379cca2",
+        "tag": "recoveryfix",
+        "url": "https://recoveryfix---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-un46-invite-fix",
+        "tag": "un46invite",
+        "url": "https://un46invite---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-un46-maildiag",
+        "tag": "un46maildiag",
+        "url": "https://un46maildiag---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-un46-standby",
+        "tag": "un46standby",
+        "url": "https://un46standby---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      }
+    ]
+  }
+}

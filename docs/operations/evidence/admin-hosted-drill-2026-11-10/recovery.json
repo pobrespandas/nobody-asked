@@ -1,0 +1,24 @@
+{
+  "checkedAt": "2026-11-10T13:23:44.147Z",
+  "sourceDatabase": "nobody-asked-admin-drill-20261110",
+  "restoredDatabase": "nobody-asked-recovery-drill-20261108",
+  "ledgerBucket": "gen-lang-client-0607406471-nobody-admin-drill",
+  "readFailureClosedGate": true,
+  "wrongIdRejected": true,
+  "wrongDatabaseRejected": true,
+  "expiredUnactivatedRejected": true,
+  "activatedGateValidAfterOneDay": true,
+  "applied": 1,
+  "fingerprint": "09b347450b021e4f1d675c6c577b2849692b6841d63836b0fa5f32708b628ca9",
+  "recoveryId": "5ba3f5c3-4fb9-4718-ae92-f45f6a810ff7",
+  "ownRestoredPosts": 2,
+  "deletedMarkers": 2,
+  "credentialsRemaining": 0,
+  "foreignReplyExact": true,
+  "otherAgentExact": true,
+  "immutableSourceUnchanged": true,
+  "immutableSource": {
+    "count": 16,
+    "hash": "bb21076a488f62c64d79fcbd553e042fb868723371fd227e6ef405e96ce65665"
+  }
+}

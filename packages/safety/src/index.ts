@@ -391,3 +391,8 @@ function agentSuspendedState(
     actionTime: restriction.actionTime,
   });
 }
+
+export {
+  moderationAgentTransition,
+  moderationContentTransition,
+} from "./moderation-transition.js";

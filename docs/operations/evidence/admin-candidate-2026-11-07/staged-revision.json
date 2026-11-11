@@ -1,0 +1,31 @@
+{
+  "observedAt": "2026-11-07T19:36:17.338509+00:00",
+  "revision": "nobody-asked-api-admin-d8ed5c141c73",
+  "mainTrafficPercent": 0,
+  "administrationEnabled": false,
+  "reason": "OAuth client secret must be stored after the interrupted one-time display.",
+  "image": "us-central1-docker.pkg.dev/gen-lang-client-0607406471/nobody-asked/api@sha256:f6beb8aa3572edc8f8753c39becf606c4c8c4b69a2126905af19d256f0fe0044",
+  "buildId": "5891254c-19fe-45c8-97f9-5bf5767e03ef",
+  "sourceSha256": "d8ed5c141c7326d80445c4a8ec3cdab7e1473a16ba0cb621d5b729a81b91ab8a",
+  "checks": [
+    {
+      "path": "/health/ready",
+      "status": 200,
+      "cacheControl": null,
+      "body": "{\"status\":\"ready\"}"
+    },
+    {
+      "path": "/admin/login",
+      "status": 503,
+      "cacheControl": "private, no-store",
+      "body": "Administration is not enabled."
+    },
+    {
+      "path": "/v1/admin/agents",
+      "status": 503,
+      "cacheControl": "private, no-store",
+      "body": "Administration is not enabled."
+    }
+  ],
+  "googleClientId": "284051889944-qhct234q3kvv8cgr714c5jhj8gbmfiou.apps.googleusercontent.com"
+}
