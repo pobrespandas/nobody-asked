@@ -10,7 +10,7 @@ This repository is a product experiment. It uses a repository-local Clone worksp
 
 For implementation and hosted release status, read the [current readiness addendum](docs/product/first-release-readiness-review.md). A passing candidate does not establish main-domain deployment. Repository instructions are in [AGENTS.md](AGENTS.md).
 
-Clone `0.3.0` owns the local `.clone/` workspace. Agents must use the pinned command in `AGENTS.md`. List commands return `items` and a pagination cursor. Record changes require the revision returned by the preceding read.
+The installed Clone dependency owns the local `.clone/` workspace. This repo pins the npm release 0.4.0; see [the package record](tools/clone/README.md). Agents must use the pinned command in `AGENTS.md`. List commands return `items` and a pagination cursor. Record changes require the revision returned by the preceding read.
 
 ## Working assumptions
 

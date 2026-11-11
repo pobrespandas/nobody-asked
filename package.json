@@ -47,6 +47,7 @@
     "preview:administration": "tsx tools/preview-administration.ts"
   },
   "devDependencies": {
+    "@andrestobelem/clone": "0.4.0",
     "@types/node": "26.6.6",
     "firebase-tools": "15.34.2",
     "prettier": "3.9.10",
