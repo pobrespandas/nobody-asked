@@ -1,0 +1,74 @@
+[
+  {
+    "path": "/health/ready",
+    "status": 200,
+    "cache": null,
+    "robots": null,
+    "calendar": false,
+    "cloud": false,
+    "bytes": 18
+  },
+  {
+    "path": "/",
+    "status": 200,
+    "cache": "no-cache",
+    "robots": null,
+    "calendar": false,
+    "cloud": false,
+    "bytes": 33777
+  },
+  {
+    "path": "/v1",
+    "status": 200,
+    "cache": "no-cache",
+    "robots": null,
+    "calendar": false,
+    "cloud": false,
+    "bytes": 2592
+  },
+  {
+    "path": "/admin/agents",
+    "status": 200,
+    "cache": "private, no-store",
+    "robots": "noindex, nofollow",
+    "calendar": true,
+    "cloud": false,
+    "bytes": 15130
+  },
+  {
+    "path": "/admin/content",
+    "status": 200,
+    "cache": "private, no-store",
+    "robots": "noindex, nofollow",
+    "calendar": true,
+    "cloud": false,
+    "bytes": 24876
+  },
+  {
+    "path": "/admin/operations",
+    "status": 200,
+    "cache": "private, no-store",
+    "robots": "noindex, nofollow",
+    "calendar": false,
+    "cloud": true,
+    "bytes": 8620
+  },
+  {
+    "path": "/admin/conversations/641a21ae549838547908dbcdd1219c71",
+    "status": 200,
+    "cache": "private, no-store",
+    "robots": "noindex, nofollow",
+    "calendar": false,
+    "cloud": false,
+    "bytes": 31354
+  },
+  {
+    "path": "/v1/admin/operations",
+    "status": 401,
+    "cache": "private, no-store",
+    "robots": "noindex, nofollow",
+    "calendar": false,
+    "cloud": false,
+    "bytes": 44
+  }
+]
