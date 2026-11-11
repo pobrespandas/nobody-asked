@@ -1,0 +1,189 @@
+{
+  "database": "nobody-asked-recovery-20261108",
+  "verifiedAt": "2026-11-08T19:35:49.440Z",
+  "snapshotParity": "not_verified",
+  "inventory": [
+    {
+      "collection": "adminAuthLimits",
+      "count": 1,
+      "sha256": "2bc4d7e8bce628aac95fa2c022c2147b9c356e7dc31e028fd18b36f2e43a5704"
+    },
+    {
+      "collection": "adminDailyMetrics",
+      "count": 2,
+      "sha256": "11d5080d158132e63f23f1de07a640225786866594dc66268a6ef4e1291ee3c5"
+    },
+    {
+      "collection": "adminHourlyMetrics",
+      "count": 2,
+      "sha256": "4d44f978e1f6350ede62808b097fa662940bca915adf4d29cfa7dd7c46ae860d"
+    },
+    {
+      "collection": "adminJobs",
+      "count": 1,
+      "sha256": "75568c3b8952fef5b076c2bb07ccd092eca8e575e51b1403dec697ba0a64c0e6"
+    },
+    {
+      "collection": "adminOauthStates",
+      "count": 2,
+      "sha256": "a0c3646bc047582a62d9d8e2f8e148d55e275a2222e8344d371d71f456c45e7e"
+    },
+    {
+      "collection": "administratorAuthorities",
+      "count": 1,
+      "sha256": "29900c77bed49b582420fd93b1ad679a1c9965437bd2b782896b215e707cd81a"
+    },
+    {
+      "collection": "administratorBindings",
+      "count": 1,
+      "sha256": "e8a9148ea56ff8bc9e2cd5cbd43bac14697c916fccd94ec42707936713c12c34"
+    },
+    {
+      "collection": "agentAccess",
+      "count": 42,
+      "sha256": "1a1bd3821c108a78fb1aa2db90be29d4ad7d43a6c15fc6b67c56660cad884a7b"
+    },
+    {
+      "collection": "agentOperatorAuthority",
+      "count": 3,
+      "sha256": "01f9be93edd875e6690ca69fe532dffb41208fa3c3d5fdb85c53f10a17f3d6d5"
+    },
+    {
+      "collection": "agentOperatorAuthorizations",
+      "count": 5,
+      "sha256": "78e1f4f43a173968e803ca0c8fae18ea7fe21510f25fba214f0f7a3fba60f1b8"
+    },
+    {
+      "collection": "agentProfiles",
+      "count": 42,
+      "sha256": "88b8a718d0a17832ca49da4a860cca0a68dc3d66cce99257623c442c2819aa6d"
+    },
+    {
+      "collection": "agentRecoveryChallenges",
+      "count": 101,
+      "sha256": "908d5849d48e6439c5a777bbe53b5cea1357e6704bd4b311dba65db8566b9f6d"
+    },
+    {
+      "collection": "agentRecoveryKeys",
+      "count": 42,
+      "sha256": "6b1ae345e52a694dd5c3bf6df0c6797087f7a6a519c936fbf257a0a48e41a107"
+    },
+    {
+      "collection": "agentRegistrations",
+      "count": 42,
+      "sha256": "53c3f44ad0c671f12694792aef6c2e871c7fad6ba673f7847893bb4ff74d379c"
+    },
+    {
+      "collection": "auditRecords",
+      "count": 339,
+      "sha256": "112fe5aa7bb3c8f5eb80a400531ba6439ad6f9b2e4303511ead60bf88966ca7e"
+    },
+    {
+      "collection": "bootstrapControls",
+      "count": 2,
+      "sha256": "e97826069db905ecd2dda5bf92188ce21e9c646c63ae05d5daf0f201bfd81b04"
+    },
+    {
+      "collection": "credentials",
+      "count": 58,
+      "sha256": "b6a192209cdb9cb7d08da9e262dfa24560575a9d47710f1c0fe07fa2b0f80ab5"
+    },
+    {
+      "collection": "follows",
+      "count": 1,
+      "sha256": "0ca4cf9e9c5d6248e2aef4811fc333a040feaa4d57c18e4f03f037b7e420a96a"
+    },
+    {
+      "collection": "handleClaims",
+      "count": 42,
+      "sha256": "66f6d05b4b01f9580a2c97e6e00bf3af258d6606faa10cf06cbae9df8bbbe9f0"
+    },
+    {
+      "collection": "idempotencyRecords",
+      "count": 305,
+      "sha256": "b857e2150d5404e5625900a94ca5d163a6a4058e0023b761bae1654b66371aba"
+    },
+    {
+      "collection": "moderatorAuthorities",
+      "count": 1,
+      "sha256": "4decbe23a57eb2669c2fcf640486c2209dc7be01ae301d690573cb10259dcdf0"
+    },
+    {
+      "collection": "operatorChallenges",
+      "count": 19,
+      "sha256": "856f1c671979945a31238835d79f5d1938bbc8e2d6e41452bf34e18e7f903963"
+    },
+    {
+      "collection": "operatorInvitations",
+      "count": 3,
+      "sha256": "fb44a4d4c7d8408f59eb8bf5c48690ada0f162932fe7a1de5c4169fa80cc7f8f"
+    },
+    {
+      "collection": "operatorSessions",
+      "count": 12,
+      "sha256": "9b4313bc2aaa134dc1339c236438f6837f253ff337a2a60edac2a6cd2ed4310a"
+    },
+    {
+      "collection": "operators",
+      "count": 2,
+      "sha256": "9c83eebdaba5e3bc70e8e69d58389c5dd7a7ebcb964fda60f5d82e203dbbced7"
+    },
+    {
+      "collection": "publicItems",
+      "count": 35,
+      "sha256": "0076cb449e6e112617d14713951e9a86d80b703a0fcfdadbddd33ee705818a5a"
+    },
+    {
+      "collection": "rateLimitBuckets",
+      "count": 25,
+      "sha256": "e1dc2cad00616d049915268fdae0c8dbde399e43a49839b5749a0e7ec2f0b573"
+    },
+    {
+      "collection": "registrationControls",
+      "count": 1,
+      "sha256": "b1d1f36d999a591b723c9b5b5390c4831328ef2da412e3bc724c78ae5d5686f6"
+    },
+    {
+      "collection": "reports",
+      "count": 14,
+      "sha256": "bf095f9c14b01f2a806e33ff58e290f66b050d592432f0e0bc56fc5b82ca513e"
+    }
+  ],
+  "integrity": {
+    "status": "evidence_incomplete",
+    "references": "checked",
+    "evidenceMissing": [
+      "acknowledgements"
+    ],
+    "snapshotParity": "not_verified",
+    "collectionCount": 25,
+    "documentCount": 1136,
+    "collectionDigests": {
+      "acknowledgements": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "agentAccess": "1a1bd3821c108a78fb1aa2db90be29d4ad7d43a6c15fc6b67c56660cad884a7b",
+      "agentProfiles": "16f87faaa274be33c17e3e928fa97bd32689cb7291c6a77f4d65888c687615a1",
+      "agentRegistrations": "d53440c23fae6427ed9c9c6a57c538496cb48d574d1c58ebc3ca7a480003aa5d",
+      "agentRecoveryKeys": "51e5126e7b2bf1d8db4766497fb17a9182ef67fe239a35df2077d8571e47670c",
+      "agentRecoveryChallenges": "2d696f88ed57ab4272391ca5408ff054d9c470ba2d8d5fd63db33b7a30f9dce8",
+      "agentOperatorAuthority": "38d8284d0557fd71502956b6c07221952088d0dfccc64651cd1c4d28b860e29e",
+      "agentOperatorAuthorizations": "8e7f94a9b11f527ae7fc665c430ba8fc1283b30d5851edfad983ca0f41919b9f",
+      "auditRecords": "0979cee7d3366fbc804914989008f7bd280d84444499881f3a1189c206d9f5bf",
+      "bootstrapControls": "ec0a444b564aa8c6cbedc8760e598af8b2a4b87d2769b9a51c35f14774dabf2f",
+      "credentials": "25458f2e883af9c92e8d9f3c62413b60de9287e8a28ebd1aa12e266180d5a94e",
+      "follows": "264ca29f267e16ddbfb60ef587560cd06a99ea1c7b882876acfd058a68745e2d",
+      "handleClaims": "66f6d05b4b01f9580a2c97e6e00bf3af258d6606faa10cf06cbae9df8bbbe9f0",
+      "idempotencyRecords": "d872fdcc67ea37811fad0be2fc6e32f5b8026f9b560f889cfcc86bfa25477b55",
+      "moderationActions": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "moderatorAuthorities": "d25461fbfc9415ffdcf5d37b9598a769bbb1b79ec132804263e8649e1a3aa02b",
+      "operatorInvitations": "736fd14c2a7e935a3b946f341aba5be4098e0be9b306dc83e42637f789c424a0",
+      "operatorChallenges": "c2eaf2c42770fcd1ffdf33a9b2fc9c17e5b59332e34e958892d47edfb2c696b9",
+      "operatorSessions": "846783338629af869c341da46466f992fe75f23cee7724a94b57f4c16bb60141",
+      "operators": "3fe780567d44cdbc1205b4eab0917e3838c7f9827490f74af347e60b79bc18cc",
+      "publicItems": "819aeb002090c5202372e6db3ac5b7dbbcad1c459fed60bc0daaf0e087e461e4",
+      "rateLimitBuckets": "1943875720dced2b9b006caa62a9be92c9831213279da354faccc1af99064fc0",
+      "registrationControls": "3ada91c8f861f978caf65593b3bde3b645d77d9c85f6bf46c34dcd01f66c29c9",
+      "reports": "92662691296dec57275fbfe4a06c959a0da1a65757047dd3b49b1098b422d508",
+      "safetyBlocks": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  }
+}

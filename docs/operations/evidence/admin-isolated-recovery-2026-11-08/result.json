@@ -1,0 +1,22 @@
+{
+  "date": "2026-11-08",
+  "environment": "local-firestore-emulator",
+  "projectId": "demo-nobody-admin-isolated-drill",
+  "productionAccessed": false,
+  "managedBackupRestore": false,
+  "sourcePosts": 205,
+  "foreignRepliesPreserved": 1,
+  "interruptedAfterProcessed": 100,
+  "ledger": "independent temporary JSON files",
+  "check": {
+    "passed": 536,
+    "skipped": 94
+  },
+  "emulator": {
+    "passed": 153,
+    "filesPassed": 11,
+    "adminTests": 19
+  },
+  "result": "pass",
+  "hostedGate": "open"
+}

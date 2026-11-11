@@ -1,0 +1,43 @@
+{
+  "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-drill-20261108/operations/NINjsRVEVprIQpwE3f3UuhAqMWxhcnRuZWMtc3ULIgoQIRo",
+  "metadata": {
+    "@type": "type.googleapis.com/google.firestore.admin.v1.RestoreDatabaseMetadata",
+    "startTime": "2026-11-09T21:17:31.205341Z",
+    "endTime": "2026-11-09T21:26:01.080049Z",
+    "operationState": "SUCCESSFUL",
+    "database": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-drill-20261108",
+    "backup": "projects/gen-lang-client-0607406471/locations/us-central1/backups/da05f074-8440-4696-8440-b45a15fadde3",
+    "progressPercentage": {
+      "estimatedWork": "100",
+      "completedWork": "100"
+    }
+  },
+  "done": true,
+  "response": {
+    "@type": "type.googleapis.com/google.firestore.admin.v1.Database",
+    "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-drill-20261108",
+    "uid": "bad4fddd-049c-42c8-9a56-4415b1638334",
+    "createTime": "2026-11-09T21:17:31.205341Z",
+    "updateTime": "2026-11-09T21:17:31.205341Z",
+    "locationId": "us-central1",
+    "type": "FIRESTORE_NATIVE",
+    "concurrencyMode": "PESSIMISTIC",
+    "versionRetentionPeriod": "3600s",
+    "earliestVersionTime": "2026-11-09T21:26:01.080049Z",
+    "appEngineIntegrationMode": "DISABLED",
+    "pointInTimeRecoveryEnablement": "POINT_IN_TIME_RECOVERY_DISABLED",
+    "deleteProtectionState": "DELETE_PROTECTION_ENABLED",
+    "sourceInfo": {
+      "backup": {
+        "backup": "projects/gen-lang-client-0607406471/locations/us-central1/backups/da05f074-8440-4696-8440-b45a15fadde3",
+        "snapshotTime": "2026-11-09T09:58:09.383372Z"
+      },
+      "operation": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-drill-20261108/operations/NINjsRVEVprIQpwE3f3UuhAqMWxhcnRuZWMtc3ULIgoQIRo",
+      "progress": "COMPLETED"
+    },
+    "databaseEdition": "STANDARD",
+    "freeTier": false,
+    "realtimeUpdatesMode": "REALTIME_UPDATES_MODE_ENABLED",
+    "etag": "ILLAzenp+5cDMIjem97p+5cD"
+  }
+}

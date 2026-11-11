@@ -1,0 +1,20 @@
+{
+  "destinationAccess": [
+    {
+      "identity": "anonymous",
+      "status": 403
+    },
+    {
+      "identity": "runtime",
+      "tokenAvailable": false
+    }
+  ],
+  "runtimeDatabase": "nobody-asked-dev",
+  "mainTraffic": [
+    {
+      "percent": 100,
+      "revisionName": "nobody-asked-api-controls-2f37340"
+    }
+  ],
+  "candidateRevision": "nobody-asked-api-admin-link-d2f0b745"
+}

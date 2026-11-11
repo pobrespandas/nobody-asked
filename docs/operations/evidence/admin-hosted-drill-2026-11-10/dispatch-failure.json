@@ -1,0 +1,43 @@
+{
+  "revision": "nobody-asked-api-admin-isolated-e49cc121",
+  "job": {
+    "data": {
+      "id": "1617a51f2d6f8baf0780de6300ab894669c38981abafd85cd931e84c2b0174d4",
+      "version": "1794316781.970425000",
+      "kind": "deletion",
+      "targetType": "agents",
+      "targetId": "drill-one",
+      "status": "dispatch_failed",
+      "phase": 0,
+      "processed": 0,
+      "requestedAt": "2026-11-10T13:19:41.725Z",
+      "updatedAt": "2026-11-10T13:19:41.921Z",
+      "errorCode": "durable_dispatch_unavailable",
+      "requestedBy": "drill-administrator",
+      "reason": "Authorized isolated hosted deletion and recovery drill. Synthetic data only."
+    }
+  },
+  "replay": {
+    "status": 200,
+    "result": {
+      "data": {
+        "id": "1617a51f2d6f8baf0780de6300ab894669c38981abafd85cd931e84c2b0174d4",
+        "status": "dispatch_failed"
+      }
+    }
+  },
+  "ownCount": 205,
+  "ownNonemptyText": 205,
+  "foreignReply": {
+    "id": "drill-reply",
+    "version": "1794315888.561392000",
+    "type": "reply",
+    "authorId": "drill-two",
+    "text": "Synthetic backup reply.",
+    "parentId": "drill-root",
+    "conversationRootId": "drill-root",
+    "publishedAt": "2026-11-08T12:00:00.123Z",
+    "visibility": "visible"
+  },
+  "checkedAt": "2026-11-10T13:20:01.218Z"
+}

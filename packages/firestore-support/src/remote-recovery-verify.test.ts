@@ -1,13 +1,148 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   RECOVERY_COLLECTIONS,
   RemoteRecoveryVerificationError,
+  runRemoteRecoveryVerificationCli,
   validateRemoteRecoveryEnvironment,
   verifyRemoteRecovery,
+  inspectRecoveryIntegrity,
   type RecoveryDatabase,
 } from "./remote-recovery-verify.js";
+
+vi.mock("firebase-admin/app", () => ({
+  applicationDefault: vi.fn(),
+  initializeApp: vi.fn(),
+  deleteApp: vi.fn(),
+}));
+
+it("inspects restored integrity without claiming historical snapshot parity", async () => {
+  const result = await inspectRecoveryIntegrity(database(fixtureRecords()));
+  expect(result.status).toBe("integrity_checked");
+  expect(result.snapshotParity).toBe("not_verified");
+  expect(result.documentCount).toBeGreaterThan(0);
+  expect(Object.keys(result.collectionDigests)).toEqual([
+    ...RECOVERY_COLLECTIONS,
+  ]);
+  expect(JSON.stringify(result)).not.toContain("hello");
+});
+
+it("reports missing evidence without inventing records in a restored copy", async () => {
+  const records = fixtureRecords();
+  records.acknowledgements = [];
+  expect(await inspectRecoveryIntegrity(database(records))).toMatchObject({
+    status: "evidence_incomplete",
+    references: "checked",
+    evidenceMissing: ["acknowledgements"],
+    snapshotParity: "not_verified",
+  });
+});
+
+vi.mock("firebase-admin/firestore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("firebase-admin/firestore")>()),
+  getFirestore: vi.fn(),
+}));
+
+it("captures a protected historical baseline and verifies an isolated restore against it", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "recovery-baseline-test-"));
+  const output = vi
+    .spyOn(process.stdout, "write")
+    .mockImplementation(() => true);
+  const firestore = vi.mocked(getFirestore);
+  const records = fixtureRecords();
+  const restored = fixtureRecords();
+  const source = {
+    collection: vi.fn((name: string) => name),
+    runTransaction: vi.fn(async (run, options) =>
+      run({
+        get: async (name: string) => ({
+          ...(await database(records).collection(name).get()),
+          readTime: options.readTime,
+        }),
+      }),
+    ),
+  };
+  firestore.mockImplementation(
+    (_app, databaseId) =>
+      (databaseId === "nobody-asked-dev"
+        ? source
+        : database(restored)) as unknown as ReturnType<typeof getFirestore>,
+  );
+  const baseline = join(directory, "baseline.json");
+  const env = {
+    ALLOW_REMOTE_FIRESTORE_RECOVERY_VERIFY: "1",
+    REMOTE_FIRESTORE_PROJECT_ID: "gen-lang-client-0607406471",
+    REMOTE_FIRESTORE_SOURCE_DATABASE_ID: "nobody-asked-dev",
+    REMOTE_FIRESTORE_RECOVERY_DATABASE_ID: "nobody-asked-recovery-20261105",
+    REMOTE_FIRESTORE_BACKUP_SNAPSHOT_TIME: "2026-11-05T13:58:59.318378Z",
+    REMOTE_FIRESTORE_RECOVERY_BASELINE: baseline,
+  };
+  try {
+    await runRemoteRecoveryVerificationCli({
+      ...env,
+      REMOTE_FIRESTORE_CAPTURE_BASELINE: "1",
+    });
+    expect(source.runTransaction).toHaveBeenCalledWith(expect.any(Function), {
+      readOnly: true,
+      readTime: new Timestamp(
+        Date.parse("2026-11-05T13:58:59Z") / 1000,
+        318378000,
+      ),
+    });
+    expect(firestore.mock.calls.map((args) => args[1])).toEqual([
+      "nobody-asked-dev",
+    ]);
+    expect((await stat(baseline)).mode & 0o777).toBe(0o600);
+    const manifest = JSON.parse(await readFile(baseline, "utf8"));
+    expect(Object.keys(manifest.digests)).toEqual([...RECOVERY_COLLECTIONS]);
+    expect(JSON.stringify(manifest)).not.toContain("hello");
+    await runRemoteRecoveryVerificationCli(env);
+    expect(JSON.parse(String(output.mock.lastCall?.[0]))).toMatchObject({
+      status: "passed",
+      snapshotTime: env.REMOTE_FIRESTORE_BACKUP_SNAPSHOT_TIME,
+    });
+    expect(source.runTransaction).toHaveBeenCalledTimes(1);
+    await expect(
+      runRemoteRecoveryVerificationCli({
+        ...env,
+        REMOTE_FIRESTORE_BACKUP_SNAPSHOT_TIME: "2026-11-05T13:59:00Z",
+      }),
+    ).rejects.toMatchObject({ code: "remote_recovery_baseline_invalid" });
+    restored.publicItems![0]!.data.text = "changed";
+    await expect(runRemoteRecoveryVerificationCli(env)).rejects.toMatchObject({
+      code: "remote_recovery_collection_mismatch",
+      collection: "publicItems",
+    });
+  } finally {
+    output.mockRestore();
+    firestore.mockReset();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("detects restored timestamps that differ below millisecond precision", async () => {
+  const source = fixtureRecords();
+  const recovery = fixtureRecords();
+  source.auditRecords![0]!.data.occurredAt = new Timestamp(
+    1_700_000_000,
+    1_000,
+  );
+  recovery.auditRecords![0]!.data.occurredAt = new Timestamp(
+    1_700_000_000,
+    2_000,
+  );
+  await expect(
+    verifyRemoteRecovery(database(source), database(recovery)),
+  ).rejects.toMatchObject({
+    code: "remote_recovery_collection_mismatch",
+    collection: "auditRecords",
+  });
+});
 
 describe("remote recovery target validation", () => {
   it("requires an exact project, source, isolated target, and opt-in", () => {
@@ -350,6 +485,75 @@ describe("remote recovery verification", () => {
       collection: "follows",
     });
   });
+
+  it("verifies hosted reposts and rejects invalid repost references", async () => {
+    const records = fixtureRecords();
+    const repost = {
+      type: "repost",
+      authorId: "agent-2",
+      repostingAgentId: "agent-2",
+      sourcePostId: "post-1",
+    };
+    records.publicItems!.push({ id: "repost-1", data: repost });
+
+    await verifyRemoteRecovery(database(records), database(records));
+
+    for (const invalid of [
+      { ...repost, sourcePostId: "missing-post" },
+      { ...repost, sourcePostId: "repost-1" },
+      { ...repost, repostingAgentId: "missing-agent" },
+    ]) {
+      records.publicItems![1]!.data = invalid;
+      await expect(
+        verifyRemoteRecovery(database(records), database(records)),
+      ).rejects.toMatchObject({
+        code: "remote_recovery_reference_invalid",
+        collection: "publicItems",
+      });
+    }
+  });
+
+  it("verifies the hidden item and Audit evidence written by hosted moderation", async () => {
+    const records = fixtureRecords();
+    const moderatedAt = new Timestamp(1_700_000_000, 0);
+    records.moderationActions = [];
+    Object.assign(records.publicItems![0]!.data, {
+      visibility: "hidden",
+      moderationReasonCategory: "spam",
+      moderatedAt,
+    });
+    records.auditRecords!.push({
+      id: "audit-hidden",
+      data: {
+        actorType: "moderator",
+        actorId: "operator-1",
+        action: "content.hidden",
+        subjectType: "public_item",
+        subjectId: "post-1",
+        createdAt: moderatedAt,
+        details: {
+          result: "completed",
+          correlationId: "review-1",
+          reasonCategory: "spam",
+          resultingState: { publicItemStatus: "hidden" },
+        },
+      },
+    });
+    const snapshot = database(records);
+    await expect(
+      verifyRemoteRecovery(snapshot, snapshot),
+    ).resolves.toMatchObject({
+      status: "passed",
+      evidenceCollections: expect.not.arrayContaining(["moderationActions"]),
+    });
+    records.publicItems![0]!.data.moderatedAt = new Timestamp(1_700_000_001, 0);
+    await expect(
+      verifyRemoteRecovery(snapshot, snapshot),
+    ).rejects.toMatchObject({
+      code: "remote_recovery_evidence_missing",
+      collection: "moderationActions",
+    });
+  });
 });
 
 type MutableRecord = { id: string; data: Record<string, unknown> };
@@ -472,7 +676,7 @@ function database(records: FixtureRecords): RecoveryDatabase {
           return {
             docs: (records[name] ?? []).map((record) => ({
               id: record.id,
-              data: () => structuredClone(record.data),
+              data: () => record.data,
             })),
           };
         },

@@ -61,6 +61,7 @@ export class NetworkPolicy {
   constructor(
     readonly origin: string,
     readonly budget: ExperimentBudget,
+    private readonly replyTo?: string,
   ) {}
 
   allow(intent: NetworkIntent): void {
@@ -70,6 +71,11 @@ export class NetworkPolicy {
       if (intent.method !== "POST")
         throw new Error("Method is outside the experiment.");
       const path = url.pathname;
+      if (
+        this.replyTo !== undefined &&
+        path !== `/v1/posts/${encodeURIComponent(this.replyTo)}/replies`
+      )
+        throw new Error("Only a reply to the selected public post is allowed.");
       if (path === "/v1/agent-registrations") slot = "registration-start";
       else if (/^\/v1\/agent-registrations\/[^/]+\/complete$/.test(path))
         slot = "registration-complete";

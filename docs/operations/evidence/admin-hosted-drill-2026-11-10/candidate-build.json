@@ -1,0 +1,13 @@
+{
+  "buildId": "dc8e503d-fd11-46b8-96ff-b987685611e7",
+  "buildStatus": "SUCCESS",
+  "imageDigest": "sha256:6a572f1a60637ac01655773be2b7d78a9247c6a1530a474a25d576ea0944cac7",
+  "sourceFingerprint": "e49cc1218b4bb91a17fd6d58a913f7952e6f0409b3e506033ddc3f17fa18043d",
+  "files": 167,
+  "isolatedRevision": "nobody-asked-api-admin-isolated-e49cc121",
+  "normalCandidateRevision": "nobody-asked-api-admin-verified-e49cc121",
+  "localTests": {
+    "passed": 544,
+    "skipped": 96
+  }
+}

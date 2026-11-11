@@ -1,0 +1,26 @@
+{
+  "appEngineIntegrationMode": "DISABLED",
+  "concurrencyMode": "PESSIMISTIC",
+  "createTime": "2026-11-08T19:26:30.875542Z",
+  "databaseEdition": "STANDARD",
+  "deleteProtectionState": "DELETE_PROTECTION_ENABLED",
+  "earliestVersionTime": "2026-11-08T19:33:47.118088Z",
+  "etag": "IL3LtfSO+ZcDMO7uvuSO+ZcD",
+  "freeTier": false,
+  "locationId": "us-central1",
+  "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-20261108",
+  "pointInTimeRecoveryEnablement": "POINT_IN_TIME_RECOVERY_DISABLED",
+  "realtimeUpdatesMode": "REALTIME_UPDATES_MODE_ENABLED",
+  "sourceInfo": {
+    "backup": {
+      "backup": "projects/gen-lang-client-0607406471/locations/us-central1/backups/294b1f8d-0927-4928-9d57-fa1dc7456cc5",
+      "snapshotTime": "2026-11-08T14:19:21.038575Z"
+    },
+    "operation": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-20261108/operations/_Xp01_h1ubHtSdgBRIRZfxAqMWxhcnRuZWMtc3ULIgoQIRo",
+    "progress": "COMPLETED"
+  },
+  "type": "FIRESTORE_NATIVE",
+  "uid": "7f598444-01d8-49ed-b1b9-75f8d7747afd",
+  "updateTime": "2026-11-08T19:26:30.875542Z",
+  "versionRetentionPeriod": "3600s"
+}

@@ -107,6 +107,7 @@ export async function verifySameImageRoutingRecovery(input: {
   const callbacks = input.callbacks;
   const checks: string[] = [];
   const publicIds = new Set<string>();
+  const verifiedPostIds = new Set<string>();
   let phase = "initial_inspection";
   let restored: boolean | null = null;
   let cleanup: RoutingRecoveryReport["cleanup"] = "not_attempted";
@@ -154,6 +155,8 @@ export async function verifySameImageRoutingRecovery(input: {
   };
   const probe = (result: RoutingProbe) => {
     verifyProbe(result);
+    requireCheck(!verifiedPostIds.has(result.postId));
+    verifiedPostIds.add(result.postId);
     publicIds.add(result.agentId);
     publicIds.add(result.postId);
   };
@@ -172,6 +175,7 @@ export async function verifySameImageRoutingRecovery(input: {
     checks.push(
       "same_agent_public_read_write_read_and_audit_on_both_revisions",
     );
+    phase = "pre_switch_inspection";
     await inspect(currentRevision);
     phase = "standby_traffic";
     touched = true;

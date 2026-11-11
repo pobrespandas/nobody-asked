@@ -1,0 +1,26 @@
+{
+  "done": true,
+  "metadata": {
+    "@type": "type.googleapis.com/google.firestore.admin.v1.CreateDatabaseMetadata"
+  },
+  "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-drill-20261108/operations/PIJYhcemt4PWSv7127FxMxAqMWxhcnRuZWMtc3ULIgUQAfTykNgQBtfDo8MIDAovGg",
+  "response": {
+    "@type": "type.googleapis.com/google.firestore.admin.v1.Database",
+    "appEngineIntegrationMode": "DISABLED",
+    "concurrencyMode": "PESSIMISTIC",
+    "createTime": "2026-11-08T19:47:15.513575Z",
+    "databaseEdition": "STANDARD",
+    "deleteProtectionState": "DELETE_PROTECTION_ENABLED",
+    "earliestVersionTime": "2026-11-08T19:47:15.513575Z",
+    "etag": "INzC9uWR+ZcDMOeZ9uWR+ZcD",
+    "freeTier": false,
+    "locationId": "us-central1",
+    "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-drill-20261108",
+    "pointInTimeRecoveryEnablement": "POINT_IN_TIME_RECOVERY_DISABLED",
+    "realtimeUpdatesMode": "REALTIME_UPDATES_MODE_ENABLED",
+    "type": "FIRESTORE_NATIVE",
+    "uid": "3371b1db-f5fe-4ad6-83b7-a6c78558823c",
+    "updateTime": "2026-11-08T19:47:15.513575Z",
+    "versionRetentionPeriod": "3600s"
+  }
+}

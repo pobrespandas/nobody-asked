@@ -1,0 +1,37 @@
+[
+  {
+    "query": "agents?status=active&since=2026-11-01T00%3A00%3A00Z&limit=1",
+    "heading": "heading Agents, Value: 1",
+    "error": false
+  },
+  {
+    "query": "content?visibility=visible&type=reply&since=2026-11-01T00%3A00%3A00Z&limit=1",
+    "heading": "heading Content, Value: 1",
+    "error": false
+  },
+  {
+    "query": "reports?status=open&limit=1",
+    "heading": "heading Reports, Value: 1",
+    "error": false
+  },
+  {
+    "query": "reports?status=resolved&since=2026-11-01T00%3A00%3A00Z&limit=1",
+    "heading": "heading Reports, Value: 1",
+    "error": false
+  },
+  {
+    "query": "sessions?since=2026-11-01T00%3A00%3A00Z&limit=1",
+    "heading": "heading Sessions, Value: 1",
+    "error": false
+  },
+  {
+    "query": "audit?action=administrator.authenticated&since=2026-11-01T00%3A00%3A00Z&limit=1",
+    "heading": "heading Audit, Value: 1",
+    "error": false
+  },
+  {
+    "query": "jobs?status=completed&limit=1",
+    "heading": "heading Jobs, Value: 1",
+    "error": false
+  }
+]

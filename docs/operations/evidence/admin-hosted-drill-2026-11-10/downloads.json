@@ -1,0 +1,35 @@
+{
+  "checkedAt": "2026-11-10T13:28:08.788Z",
+  "browserDownloads": {
+    "export": true,
+    "audit": true
+  },
+  "export": {
+    "keys": [
+      "formatVersion",
+      "agent",
+      "items"
+    ],
+    "arrays": [
+      {
+        "name": "items",
+        "count": 3
+      }
+    ],
+    "secretFieldsAbsent": true
+  },
+  "audit": {
+    "keys": [
+      "formatVersion",
+      "items",
+      "page"
+    ],
+    "arrays": [
+      {
+        "name": "items",
+        "count": 2
+      }
+    ],
+    "secretFieldsAbsent": true
+  }
+}

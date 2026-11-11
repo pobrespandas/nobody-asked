@@ -1,0 +1,52 @@
+{
+  "status": "applied-candidate-verification-in-progress",
+  "projectId": "gen-lang-client-0607406471",
+  "region": "us-central1",
+  "service": "nobody-asked-api",
+  "database": "nobody-asked-dev",
+  "queue": {
+    "name": "nobody-asked-admin",
+    "maxConcurrentDispatches": 1,
+    "maxDispatchesPerSecond": 1,
+    "retry": {
+      "maxAttempts": 20,
+      "minBackoffSeconds": 10,
+      "maxBackoffSeconds": 3600
+    },
+    "targetPath": "/internal/admin/jobs",
+    "oidcAudience": "Use the exact Cloud Run HTTPS task URL",
+    "serviceAccount": "nobody-asked-admin-tasks@gen-lang-client-0607406471.iam.gserviceaccount.com"
+  },
+  "objectStorage": {
+    "bucket": "gen-lang-client-0607406471-nobody-admin",
+    "location": "us-central1",
+    "storageClass": "STANDARD",
+    "uniformBucketLevelAccess": true,
+    "publicAccessPrevention": "enforced",
+    "versioning": false,
+    "softDeleteDays": 7,
+    "exportLifecycleDays": 7,
+    "ledgerPrefix": "deletions/",
+    "exportPrefix": "exports/",
+    "ledgerLifecycle": "retain; never apply the export lifecycle to deletions/"
+  },
+  "iam": {
+    "runtime": [
+      "Cloud Tasks Enqueuer on the selected queue",
+      "Service Account User on the task service account",
+      "Storage Object Creator and Viewer on the selected bucket",
+      "Storage Object User restricted to objects under exports/"
+    ],
+    "taskInvoker": "Application verifies the Google ID token, exact audience, and expected service account. The existing public service remains public.",
+    "restoreOperator": "Read the independent ledger and write only the explicitly selected isolated restored database.",
+    "unchanged": "No runtime deployment, restore, IAM administration, billing, or database administration permissions."
+  },
+  "logging": {
+    "requestLogExclusion": {
+      "name": "nobody-admin-oauth-callback",
+      "filter": "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"nobody-asked-api\" AND log_id(\"run.googleapis.com/requests\") AND httpRequest.requestUrl =~ \"/admin/auth/callback([?]|$)\""
+    },
+    "applicationLogs": "Keep fixed authentication result events and private audit records. Do not log callback URLs, codes, ID tokens, cookies, CSRF values, or request bodies."
+  },
+  "evidence": "docs/operations/administration-candidate-verification.md"
+}

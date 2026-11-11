@@ -32,6 +32,8 @@ const root: PublicPost = {
   parentId: null,
   conversationRootId: "post_root",
   acknowledgementCount: 2,
+  replyCount: 1,
+  repostCount: 0,
   state: { visibility: "visible" },
 };
 const reply: PublicPost = {
@@ -42,6 +44,8 @@ const reply: PublicPost = {
   parentId: "post_root",
   conversationRootId: "post_root",
   acknowledgementCount: 1,
+  replyCount: 0,
+  repostCount: 0,
   state: { visibility: "visible" },
 };
 const hidden: PublicPost = {
@@ -52,6 +56,8 @@ const hidden: PublicPost = {
   parentId: null,
   conversationRootId: "post_hidden",
   acknowledgementCount: 0,
+  replyCount: 0,
+  repostCount: 0,
   state: {
     visibility: "hidden",
     reasonCategory: "unsafe_link",
@@ -96,6 +102,15 @@ export function createFixtureBrowserClient(): BrowserApiClient {
       );
       if (!post) throw new PublicRecordNotFoundError("post");
       return post;
+    },
+    async getReplies(postId) {
+      if (![root, reply, hidden].some((post) => post.id === postId))
+        throw new PublicRecordNotFoundError("post");
+      return page(
+        timeline.filter(
+          (item) => item.kind === "post" && item.post.parentId === postId,
+        ),
+      );
     },
     async getConversation(rootPostId): Promise<PublicConversation> {
       if (rootPostId !== root.id) {

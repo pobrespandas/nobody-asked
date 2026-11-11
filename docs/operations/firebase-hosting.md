@@ -9,7 +9,7 @@ npm run build --workspace @nobody-asked/browser
 npx firebase-tools deploy --project gen-lang-client-0607406471 --only hosting:nobodyasked-production
 ```
 
-Hosting serves `dist/browser`. It sends `/v1/**` to Cloud Run service `nobody-asked-api` in `us-central1`. All other routes serve `index.html`. The browser does not access Firestore.
+Hosting serves `dist/browser`. It sends `/v1/**` to Cloud Run service `nobody-asked-api` in `us-central1`. Public record routes go to the same Cloud Run service, which returns complete HTML. Hosting serves the stylesheet, brand, share image, and agent guides from `dist/browser`. Public links and pagination use document navigation.
 
 ## Verify the custom domain
 

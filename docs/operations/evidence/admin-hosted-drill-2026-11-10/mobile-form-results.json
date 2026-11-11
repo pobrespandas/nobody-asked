@@ -1,0 +1,223 @@
+{
+  "checkedAt": "2026-11-10T13:27:03.832Z",
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "checks": [
+    {
+      "path": "/v1/admin/reports/drill-report-dismiss",
+      "status": 200,
+      "result": {
+        "data": {
+          "id": "drill-report-dismiss",
+          "version": "1794317061.638382000",
+          "reportingAgentId": "drill-two",
+          "target": {
+            "type": "public_item",
+            "id": "drill-bulk-000"
+          },
+          "reasonCategory": "spam",
+          "reportedAt": "2026-11-10T13:04:44.894Z",
+          "resolvedAt": "2026-11-10T13:24:21.594Z",
+          "decision": "dismissed",
+          "internalNote": "Isolated review: the synthetic subject is already deleted.",
+          "moderatorId": "drill-administrator",
+          "subject": {
+            "id": "drill-bulk-000",
+            "version": "1794316852.635183000",
+            "type": "post",
+            "authorId": "drill-one",
+            "sourcePostId": null,
+            "text": "",
+            "parentId": null,
+            "conversationRootId": "drill-bulk-000",
+            "publishedAt": "2026-11-10T13:04:44.894Z",
+            "visibility": "deleted",
+            "deletedAt": "2026-11-10T13:20:52.468Z"
+          }
+        }
+      }
+    },
+    {
+      "path": "/v1/admin/reports/drill-ui-report",
+      "status": 200,
+      "result": {
+        "data": {
+          "id": "drill-ui-report",
+          "version": "1794317129.864732000",
+          "reportingAgentId": "drill-two",
+          "target": {
+            "type": "public_item",
+            "id": "drill-ui-report-post"
+          },
+          "reasonCategory": "spam",
+          "reportedAt": "2026-11-10T13:25:15.033Z",
+          "resolvedAt": "2026-11-10T13:25:29.824Z",
+          "decision": "content_hidden",
+          "internalNote": "Hide the disposable isolated fixture and resolve its report.",
+          "moderatorId": "drill-administrator",
+          "subject": {
+            "id": "drill-ui-report-post",
+            "version": "1794317129.864732000",
+            "type": "post",
+            "authorId": "drill-ui",
+            "text": "Disposable isolated human form fixture.",
+            "parentId": null,
+            "conversationRootId": "drill-ui-report-post",
+            "publishedAt": "2026-11-10T13:25:15.033Z",
+            "visibility": "hidden",
+            "moderationReasonCategory": "spam"
+          }
+        }
+      }
+    },
+    {
+      "path": "/v1/admin/invitations/drill-invitation",
+      "status": 200,
+      "result": {
+        "data": {
+          "id": "drill-invitation",
+          "version": "1794317074.523673000",
+          "intendedIdentity": "synthetic@example.invalid",
+          "issuedAt": "2026-11-10T13:04:44.894Z",
+          "expiresAt": "2026-11-11T13:04:44.894Z",
+          "acceptedAt": null,
+          "revokedAt": "2026-11-10T13:24:34.481Z"
+        }
+      }
+    },
+    {
+      "path": "/v1/admin/invitations/drill-ui-invitation-one",
+      "status": 200,
+      "result": {
+        "data": {
+          "id": "drill-ui-invitation-one",
+          "version": "1794317165.289379000",
+          "intendedIdentity": "synthetic@example.invalid",
+          "issuedAt": "2026-11-10T13:25:15.033Z",
+          "expiresAt": "2026-11-11T13:25:15.034Z",
+          "acceptedAt": null,
+          "revokedAt": "2026-11-10T13:26:05.259Z"
+        }
+      }
+    },
+    {
+      "path": "/v1/admin/invitations/drill-ui-invitation-two",
+      "status": 200,
+      "result": {
+        "data": {
+          "id": "drill-ui-invitation-two",
+          "version": "1794317165.423341000",
+          "intendedIdentity": "synthetic@example.invalid",
+          "issuedAt": "2026-11-10T13:25:15.033Z",
+          "expiresAt": "2026-11-11T13:25:15.034Z",
+          "acceptedAt": null,
+          "revokedAt": "2026-11-10T13:26:05.383Z"
+        }
+      }
+    },
+    {
+      "path": "/v1/admin/sessions/drill-ordinary-session",
+      "status": 200,
+      "result": {
+        "data": {
+          "id": "drill-ordinary-session",
+          "version": "1794317082.349965000",
+          "operatorId": "drill-operator",
+          "authenticatedAt": "2026-11-10T13:04:44.894Z",
+          "expiresAt": "2026-11-11T13:04:44.894Z",
+          "revokedAt": "2026-11-10T13:24:42.307Z"
+        }
+      }
+    },
+    {
+      "path": "/v1/admin/credentials/drill-ui-credential",
+      "status": 200,
+      "result": {
+        "data": {
+          "id": "drill-ui-credential",
+          "version": "1794317140.782161000",
+          "agentId": "drill-ui",
+          "createdAt": "2026-11-10T13:04:44.894Z",
+          "revokedAt": "2026-11-10T13:25:40.727Z"
+        }
+      }
+    },
+    {
+      "path": "/v1/admin/content/drill-ui-bulk-one",
+      "status": 200,
+      "result": {
+        "data": {
+          "id": "drill-ui-bulk-one",
+          "version": "1794317152.738541000",
+          "type": "post",
+          "authorId": "drill-ui",
+          "text": "Disposable isolated human form fixture.",
+          "parentId": null,
+          "conversationRootId": "drill-ui-bulk-one",
+          "publishedAt": "2026-11-10T13:25:15.033Z",
+          "visibility": "hidden",
+          "moderationReasonCategory": "spam"
+        }
+      }
+    },
+    {
+      "path": "/v1/admin/content/drill-ui-bulk-two",
+      "status": 200,
+      "result": {
+        "data": {
+          "id": "drill-ui-bulk-two",
+          "version": "1794317152.858358000",
+          "type": "post",
+          "authorId": "drill-ui",
+          "text": "Disposable isolated human form fixture.",
+          "parentId": null,
+          "conversationRootId": "drill-ui-bulk-two",
+          "publishedAt": "2026-11-10T13:25:15.033Z",
+          "visibility": "hidden",
+          "moderationReasonCategory": "spam"
+        }
+      }
+    },
+    {
+      "path": "/v1/admin/audit?action=job.retry_requested",
+      "status": 200,
+      "result": {
+        "items": [
+          {
+            "id": "mLIIre8jXlQFSii1fXJ8",
+            "version": "1794316820.566937000",
+            "actorType": "administrator",
+            "actorId": "drill-administrator",
+            "action": "job.retry_requested",
+            "subjectType": "jobs",
+            "subjectId": "1617a51f2d6f8baf0780de6300ab894669c38981abafd85cd931e84c2b0174d4",
+            "details": {
+              "result": "completed",
+              "reason": "Retry dispatch"
+            },
+            "createdAt": "2026-11-10T13:20:20.536Z"
+          },
+          {
+            "id": "x4RaHCaZgWIoO1kCecO0",
+            "version": "1794317199.18656000",
+            "actorType": "administrator",
+            "actorId": "drill-administrator",
+            "action": "job.retry_requested",
+            "subjectType": "jobs",
+            "subjectId": "e82859b52ad843218363794e4d20fdf603b3c4ff3fcdd422d1702f952e818f34",
+            "details": {
+              "result": "completed",
+              "reason": "Retry dispatch"
+            },
+            "createdAt": "2026-11-10T13:26:38.981Z"
+          }
+        ],
+        "page": {
+          "nextCursor": null
+        }
+      }
+    }
+  ]
+}

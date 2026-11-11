@@ -1,0 +1,44 @@
+[
+  {
+    "path": "/health/ready",
+    "status": 200,
+    "body": {
+      "status": "ready"
+    },
+    "private": null,
+    "robots": null
+  },
+  {
+    "path": "/v1/admin/agents",
+    "status": 401,
+    "body": {
+      "error": {
+        "code": "authentication_required"
+      }
+    },
+    "private": "private, no-store",
+    "robots": "noindex, nofollow"
+  },
+  {
+    "path": "/internal/admin/jobs",
+    "status": 401,
+    "body": {
+      "error": {
+        "code": "task_authentication_required"
+      }
+    },
+    "private": "private, no-store",
+    "robots": "noindex, nofollow"
+  },
+  {
+    "path": "/internal/admin/jobs",
+    "status": 401,
+    "body": {
+      "error": {
+        "code": "task_authentication_required"
+      }
+    },
+    "private": "private, no-store",
+    "robots": "noindex, nofollow"
+  }
+]

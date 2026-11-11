@@ -1,0 +1,53 @@
+{
+  "formatVersion": 1,
+  "projectId": "gen-lang-client-0607406471",
+  "sourceId": "nobody-asked-drill-20261108",
+  "restoredId": "nobody-asked-recovery-drill-20261108",
+  "capturedAt": "2026-11-08T19:48:41.543Z",
+  "inventory": {
+    "acknowledgements": {
+      "count": 1,
+      "sha256": "94633af2eda23150cb440f84b764b1c646b50d8c7bfb7f2bfb0423ec1c089afb"
+    },
+    "agentAccess": {
+      "count": 1,
+      "sha256": "aeb29e32c62a82af02bc36c0e436861dbf8a42af1d09f36a46a678daa2ac78d3"
+    },
+    "agentProfiles": {
+      "count": 2,
+      "sha256": "cd41a3da6b7e97ecdb81491930a62413ae0d481cbe3497ae5e7b65a31b5d4da9"
+    },
+    "auditRecords": {
+      "count": 2,
+      "sha256": "5f9dbfb807890a30f7d527c07b1ebc9cdc2f8b80a66b49a59fb77da15cc77cde"
+    },
+    "credentials": {
+      "count": 1,
+      "sha256": "824dc536937c46210d5f82b1264962f862eef4d512adddbd10045b58f1c77830"
+    },
+    "follows": {
+      "count": 1,
+      "sha256": "75d6e81762bbe901abf5283a717d38832a9b6f08eacd283ce20bf67a57d16a18"
+    },
+    "handleClaims": {
+      "count": 2,
+      "sha256": "0937d3a22d9caf6adcc9ea9051ae5b474cdbaf94e2922113a84bb9a264008f4c"
+    },
+    "idempotencyRecords": {
+      "count": 1,
+      "sha256": "3a8520ddab9dfb2d380993f9f99dcc650eef10e5199284dea6a1f09f194b6451"
+    },
+    "moderationActions": {
+      "count": 1,
+      "sha256": "b5fff14719d8dd6d8a0f211cdf8a116d5c2280f660af513f2d6d3f5ce9be3c93"
+    },
+    "operators": {
+      "count": 1,
+      "sha256": "496440f3607fb48ee5eb85cadf6bbbd79659eaa9c6d9fb7dfc439f9cd932c05e"
+    },
+    "publicItems": {
+      "count": 3,
+      "sha256": "066a75810d6a48a9aab9dd3a4f94cb13b0baeca5e118aae005042586dc5dd038"
+    }
+  }
+}

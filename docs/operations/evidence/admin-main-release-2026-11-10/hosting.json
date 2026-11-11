@@ -1,0 +1,69 @@
+{
+  "version": "projects/gen-lang-client-0607406471/sites/nobodyasked-pobrespandas-prod/versions/04c65418f6e23128",
+  "status": "FINALIZED",
+  "release": "projects/gen-lang-client-0607406471/sites/nobodyasked-pobrespandas-prod/channels/live/releases/1794322470230000",
+  "releaseTime": "2026-11-10T14:54:30.230Z",
+  "fileCount": "8",
+  "config": {
+    "headers": [
+      {
+        "headers": {
+          "Cache-Control": "no-cache",
+          "Content-Security-Policy": "default-src 'self'; base-uri 'none'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'none'; style-src 'self'",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff"
+        },
+        "glob": "**"
+      },
+      {
+        "headers": {
+          "X-Robots-Tag": "noindex, nofollow",
+          "Cache-Control": "private, no-store",
+          "Content-Security-Policy": "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self'; script-src 'none'; style-src 'self'",
+          "Referrer-Policy": "same-origin"
+        },
+        "glob": "/admin{,/**}"
+      },
+      {
+        "headers": {
+          "Cache-Control": "private, no-store",
+          "Content-Security-Policy": "default-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; img-src 'self'; script-src 'none'; style-src 'self'",
+          "Referrer-Policy": "same-origin",
+          "X-Robots-Tag": "noindex, nofollow"
+        },
+        "glob": "/v1/admin{,/**}"
+      },
+      {
+        "headers": {
+          "Referrer-Policy": "no-referrer"
+        },
+        "glob": "/admin/auth/**"
+      }
+    ],
+    "rewrites": [
+      {
+        "glob": "/v1",
+        "run": {
+          "serviceId": "nobody-asked-api",
+          "region": "us-central1"
+        }
+      },
+      {
+        "glob": "/v1/**",
+        "run": {
+          "serviceId": "nobody-asked-api",
+          "region": "us-central1"
+        }
+      },
+      {
+        "glob": "**",
+        "run": {
+          "serviceId": "nobody-asked-api",
+          "region": "us-central1"
+        }
+      }
+    ],
+    "cleanUrls": true,
+    "trailingSlashBehavior": "REMOVE"
+  }
+}

@@ -72,6 +72,8 @@ import { SelfFollowError } from "@nobody-asked/social-graph";
 import {
   isModerationReasonCategory,
   isReportReviewDecision,
+  moderationAgentTransition,
+  moderationContentTransition,
 } from "@nobody-asked/safety";
 
 import type {
@@ -497,9 +499,10 @@ export class FirestorePublicReadRepository {
       .doc(id)
       .get();
     return snapshot.exists &&
-      snapshot.data()?.visibility === "visible" &&
+      (snapshot.data()?.visibility === "visible" ||
+        !!snapshot.data()?.deletedAt) &&
       snapshot.data()?.type !== "repost"
-      ? mapPost(snapshot)
+      ? await this.readPostWithCounts(snapshot)
       : null;
   }
 
@@ -509,12 +512,21 @@ export class FirestorePublicReadRepository {
     const snapshot = await this.firestore
       .collection(collections.items)
       .where("conversationRootId", "==", rootId)
-      .where("visibility", "==", "visible")
+      .where("visibility", "in", ["visible", "deleted"])
       .orderBy("publishedAt", "asc")
       .orderBy("id", "asc")
       .limit(100)
       .get();
-    return Object.freeze(snapshot.docs.map(mapPost));
+    return Object.freeze(
+      await Promise.all(
+        snapshot.docs
+          .filter(
+            (doc) =>
+              doc.data().visibility === "visible" || doc.data().deletedAt,
+          )
+          .map((doc) => this.readPostWithCounts(doc)),
+      ),
+    );
   }
 
   async listVisiblePublicPostsByAgent(
@@ -544,6 +556,7 @@ export class FirestorePublicReadRepository {
   }
 
   async listPublicTimelinePage(options: {
+    readonly parentId?: string;
     readonly limit: number;
     readonly cursor?: string | null;
   }): Promise<PublicTimelinePage> {
@@ -554,6 +567,8 @@ export class FirestorePublicReadRepository {
     )
       throw new InvalidFeedLimitError();
     let query = this.baseItemsQuery();
+    if (options.parentId !== undefined)
+      query = query.where("parentId", "==", options.parentId);
     if (options.cursor) {
       const cursor = decodeCursor(options.cursor);
       query = query.startAfter(
@@ -650,6 +665,15 @@ export class FirestorePublicReadRepository {
   private async mapTimelineRecords(
     snapshots: readonly QueryDocumentSnapshot[],
   ): Promise<PublicTimelineRecord[]> {
+    const publicPosts = new Map<string, Promise<PublicPostRecord>>();
+    const readPost = (snapshot: FirebaseFirestore.DocumentSnapshot) => {
+      let post = publicPosts.get(snapshot.id);
+      if (!post) {
+        post = this.readPostWithCounts(snapshot);
+        publicPosts.set(snapshot.id, post);
+      }
+      return post;
+    };
     const sourceIds = [
       ...new Set(
         snapshots
@@ -664,28 +688,52 @@ export class FirestorePublicReadRepository {
           this.firestore.collection(collections.items).doc(id),
         ),
       );
-      for (const document of documents) {
-        const data = document.data();
-        if (
-          document.exists &&
-          data?.visibility === "visible" &&
-          data.type !== "repost"
-        ) {
-          sources.set(document.id, mapPost(document));
+      await Promise.all(
+        documents.map(async (document) => {
+          const data = document.data();
+          if (
+            document.exists &&
+            data?.visibility === "visible" &&
+            data.type !== "repost"
+          ) {
+            sources.set(document.id, await readPost(document));
+          }
+        }),
+      );
+    }
+    const records = await Promise.all(
+      snapshots.map(async (snapshot): Promise<PublicTimelineRecord | null> => {
+        const data = snapshot.data();
+        if (data.type !== "repost") {
+          return readPost(snapshot);
+        } else {
+          const source = sources.get(String(data.sourcePostId));
+          return source ? mapRepost(snapshot, source) : null;
         }
-      }
-    }
-    const records: PublicTimelineRecord[] = [];
-    for (const snapshot of snapshots) {
-      const data = snapshot.data();
-      if (data.type !== "repost") {
-        records.push(mapPost(snapshot));
-      } else {
-        const source = sources.get(String(data.sourcePostId));
-        if (source) records.push(mapRepost(snapshot, source));
-      }
-    }
-    return records;
+      }),
+    );
+    return records.filter(
+      (record): record is PublicTimelineRecord => record !== null,
+    );
+  }
+
+  private async readPostWithCounts(
+    snapshot: FirebaseFirestore.DocumentSnapshot,
+  ): Promise<PublicPostRecord> {
+    const items = this.firestore.collection(collections.items);
+    const [replies, reposts] = await Promise.all([
+      items
+        .where("parentId", "==", snapshot.id)
+        .where("visibility", "==", "visible")
+        .count()
+        .get(),
+      items
+        .where("sourcePostId", "==", snapshot.id)
+        .where("visibility", "==", "visible")
+        .count()
+        .get(),
+    ]);
+    return mapPost(snapshot, replies.data().count, reposts.data().count);
   }
 
   private async relationships(
@@ -1784,8 +1832,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
     return this.firestore.runTransaction(async (transaction) => {
       const invitationQuery = this.firestore
         .collection(collections.operatorInvitations)
-        .where("intendedIdentity", "==", input.normalizedIdentity)
-        .limit(1);
+        .where("intendedIdentity", "==", input.normalizedIdentity);
       const operatorQuery = this.firestore
         .collection(collections.operators)
         .where("normalizedIdentity", "==", input.normalizedIdentity)
@@ -1818,14 +1865,16 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
           challengeId,
         });
       }
-      const invitation = invitations.docs[0];
       const accepted =
-        (!!invitation &&
-          !invitation.data().acceptedAt &&
-          !invitation.data().revokedAt &&
-          asDate(invitation.data().expiresAt).getTime() >
-            input.occurredAt.getTime()) ||
-        !operators.empty;
+        !operators.empty ||
+        invitations.docs.some((invitation) => {
+          const { acceptedAt, revokedAt, expiresAt } = invitation.data();
+          return (
+            !acceptedAt &&
+            !revokedAt &&
+            asDate(expiresAt).getTime() > input.occurredAt.getTime()
+          );
+        });
       if (accepted) {
         const expiresAt = new Date(
           input.occurredAt.getTime() + 10 * 60 * 1_000,
@@ -2881,7 +2930,11 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
             credentialIsActive(candidate.data(), input.occurredAt),
           );
           transaction.update(subjectRef, {
-            status: "suspended",
+            status: moderationAgentTransition(current, "suspend").status,
+            statusBeforeSuspension: moderationAgentTransition(
+              current,
+              "suspend",
+            ).statusBeforeSuspension,
             moderationReasonCategory: input.reasonCategory,
             moderatedAt: Timestamp.fromDate(input.occurredAt),
             updatedAt: Timestamp.fromDate(input.occurredAt),
@@ -2921,7 +2974,7 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         const current = subject.data()?.visibility as "visible" | "hidden";
         if (input.decision === "content_hidden" && current !== "hidden") {
           transaction.update(subjectRef, {
-            visibility: "hidden",
+            visibility: moderationContentTransition(current, "hide").visibility,
             moderationReasonCategory: input.reasonCategory,
             moderatedAt: Timestamp.fromDate(input.occurredAt),
           });
@@ -3169,6 +3222,12 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         },
       };
       if (created) {
+        writePublicationMetric(
+          this.firestore,
+          transaction,
+          "reposts",
+          input.occurredAt,
+        );
         transaction.create(repostRef, {
           id: repostId,
           type: "repost",
@@ -3737,6 +3796,12 @@ export class FirestoreApiStore extends FirestorePublicReadRepository {
         status: 201,
         body: { data: serializePostResponse(post) },
       };
+      writePublicationMetric(
+        this.firestore,
+        transaction,
+        parentPostId === null ? "posts" : "replies",
+        input.occurredAt,
+      );
       transaction.create(postRef, {
         id: post.id,
         type: parentPostId === null ? "post" : "reply",
@@ -3978,18 +4043,22 @@ function mapReport(snapshot: FirebaseFirestore.DocumentSnapshot): ReportRecord {
 }
 function mapPost(
   snapshot: QueryDocumentSnapshot | FirebaseFirestore.DocumentSnapshot,
+  replyTotal: number,
+  repostTotal: number,
 ): PublicPostRecord {
   const data = snapshot.data()!;
   return Object.freeze({
     id: snapshot.id as PostId,
     authorId: data.authorId as AgentId,
-    text: data.text as string,
+    text: data.deletedAt ? "[Deleted post]" : (data.text as string),
     publishedAt: asDate(data.publishedAt),
     parentId: (data.parentId as PostId | null) ?? null,
     conversationRootId: data.conversationRootId as PostId,
     authorHandle: data.authorHandle as string,
     authorDisplayName: data.authorDisplayName as string,
     acknowledgementTotal: Number(data.acknowledgementTotal ?? 0),
+    replyTotal,
+    repostTotal,
   });
 }
 function mapRepost(
@@ -4433,7 +4502,7 @@ function serializeAudit(id: string, audit: AuditRecordInput) {
 export const FIRESTORE_PUBLISH_OPERATION_BUDGET = Object.freeze({
   readsBeforeSafety: 4,
   readsAfterSafety: 1,
-  writes: 5,
+  writes: 7,
 });
 
 function assertPublishRateLimit(policy: PublishRateLimitPolicy): void {
@@ -4485,4 +4554,23 @@ async function readRateLimitBucket(
     expireAt,
     count: snapshot.exists ? Number(data?.count ?? 0) : 0,
   });
+}
+
+function writePublicationMetric(
+  firestore: Firestore,
+  transaction: Transaction,
+  kind: "posts" | "replies" | "reposts",
+  at: Date,
+) {
+  const instant = at.toISOString();
+  for (const [collection, key] of [
+    ["networkDailyMetrics", instant.slice(0, 10)],
+    ["networkHourlyMetrics", instant.slice(0, 13)],
+  ]) {
+    transaction.set(
+      firestore.collection(collection!).doc(key!),
+      { [kind]: FieldValue.increment(1), observedAt: Timestamp.fromDate(at) },
+      { merge: true },
+    );
+  }
 }

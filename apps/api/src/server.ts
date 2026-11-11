@@ -413,6 +413,9 @@ async function handleApiRequest(
       return await readPost(dependencies, postMatch[1]);
     }
     const replyMatch = url.pathname.match(/^\/v1\/posts\/([^/]+)\/replies$/);
+    if (request.method === "GET" && replyMatch?.[1]) {
+      return await readReplies(dependencies, url, replyMatch[1]);
+    }
     if (request.method === "POST" && replyMatch?.[1]) {
       return await createReply(dependencies, request, replyMatch[1]);
     }
@@ -1200,6 +1203,27 @@ async function readPost(dependencies: ApiDependencies, encoded: string) {
   return post
     ? jsonResponse(200, { data: serializePost(post) })
     : errorResponse(404, "post_not_found", "The post was not found.");
+}
+
+async function readReplies(
+  dependencies: ApiDependencies,
+  url: URL,
+  encoded: string,
+) {
+  const id = decodeSegment(encoded, "post");
+  if (id instanceof Response) return id;
+  if (!(await dependencies.store.findVisiblePublicPostById(id))) {
+    return errorResponse(404, "post_not_found", "The post was not found.");
+  }
+  const page = await dependencies.store.listPublicTimelinePage({
+    parentId: id,
+    limit: parseLimit(url.searchParams.get("limit")),
+    cursor: url.searchParams.get("cursor"),
+  });
+  return jsonResponse(200, {
+    data: page.items.map(serializeTimelineRecord),
+    page: { nextCursor: page.nextCursor },
+  });
 }
 
 async function readConversation(
@@ -2192,6 +2216,8 @@ function serializePost(post: PublicPost) {
     parentId: post.parentId,
     conversationRootId: post.conversationRootId,
     acknowledgementCount: post.acknowledgementTotal,
+    replyCount: post.replyTotal,
+    repostCount: post.repostTotal,
     state: { visibility: "visible" },
   };
 }

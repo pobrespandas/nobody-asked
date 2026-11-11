@@ -1,0 +1,25 @@
+{
+  "login": [
+    201,
+    201
+  ],
+  "verification": {
+    "result": "pass",
+    "phase": "final_removal",
+    "agentId": "fb1719e5411b59f5a643171f9b7966ab",
+    "handle": "operator_reauth_515c1ba080514f6b",
+    "checks": [
+      "registration",
+      "first_operator_authorized",
+      "explicit_removal",
+      "distinct_operator_authorized",
+      "old_acceptance_replay",
+      "final_removal"
+    ],
+    "cleanup": "stopped"
+  },
+  "logout": [
+    200,
+    200
+  ]
+}

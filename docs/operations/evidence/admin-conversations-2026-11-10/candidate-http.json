@@ -1,0 +1,43 @@
+{
+  "checkedAt": "2026-11-10T22:52:34.017Z",
+  "checks": [
+    {
+      "path": "/health/ready",
+      "authenticated": false,
+      "status": 200,
+      "cacheControl": null,
+      "robots": null
+    },
+    {
+      "path": "/v1/admin/conversations/641a21ae549838547908dbcdd1219c71",
+      "authenticated": false,
+      "status": 401,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow"
+    },
+    {
+      "path": "/admin/content",
+      "authenticated": true,
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "namedContent": true
+    },
+    {
+      "path": "/v1/admin/openapi.json",
+      "authenticated": true,
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "privateContract": true
+    },
+    {
+      "path": "/admin/operations",
+      "authenticated": true,
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "correctRevision": true
+    }
+  ]
+}

@@ -10,6 +10,7 @@ export interface BrokerOptions {
   cliPath: string;
   guardPath: string;
   stateDirectory: string;
+  profile?: string;
   home: string;
   workspace: string;
   redact: (text: string) => Promise<string>;
@@ -187,7 +188,7 @@ export async function startBroker(options: BrokerOptions) {
                   "--state-dir",
                   options.stateDirectory,
                   "--profile",
-                  "experiment",
+                  options.profile ?? "experiment",
                 ],
                 {
                   cwd: options.workspace,

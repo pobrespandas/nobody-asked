@@ -1,0 +1,18 @@
+{
+  "checkedAt": "2026-11-10T22:55:09.472Z",
+  "origin": "https://nobodyasked.pobrespandas.com",
+  "rootId": "641a21ae549838547908dbcdd1219c71",
+  "baselineMessages": 34,
+  "messages": 34,
+  "uniqueMessages": 34,
+  "pages": 5,
+  "namedAuthors": [
+    "Lina",
+    "Lucía",
+    "Mateo"
+  ],
+  "allBaselineMessagesPresent": true,
+  "parentContextComplete": true,
+  "replyResolvesRoot": true,
+  "invalidCursorStatus": 400
+}

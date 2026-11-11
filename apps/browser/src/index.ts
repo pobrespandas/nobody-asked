@@ -17,13 +17,13 @@ export {
   type RelationshipKind,
   type TimelineItem,
 } from "./contracts.js";
-export { mountBrowserApplication, type BrowserMountOptions } from "./mount.js";
 export {
   HttpBrowserApiClient,
   type HttpBrowserApiClientOptions,
 } from "./http-client.js";
 export { renderDocument, renderPage } from "./render.js";
 export { parseBrowserRoute, type BrowserRoute } from "./routes.js";
-export { browserStyles } from "./styles.js";
 
 export const browserModule = "browser" as const;
+
+export { createPublicHtml } from "./public-html.js";

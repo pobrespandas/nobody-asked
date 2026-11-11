@@ -1,0 +1,32 @@
+{
+  "approvalDate": "2026-11-10",
+  "approvedScope": "Publish named conversations and the required index in the existing database",
+  "rollbackRevision": "nobody-asked-api-admin-main-6b77e322",
+  "projectId": "gen-lang-client-0607406471",
+  "databaseId": "nobody-asked-dev",
+  "source": {
+    "fingerprint": "014dafb12bc1b794bb3c2febeb6b5e4a39082a9289a588b2366cd273fb413946",
+    "files": 170,
+    "changedFiles": [
+      "apps/api/src/admin/admin.integration.test.ts",
+      "apps/api/src/admin/admin.test.ts",
+      "apps/api/src/admin/api-contract.ts",
+      "apps/api/src/admin/http.ts",
+      "apps/api/src/admin/render.ts",
+      "apps/api/src/admin/agent-names.ts",
+      "apps/api/src/admin/conversation-view.ts",
+      "apps/api/src/admin/conversations.ts"
+    ]
+  },
+  "buildId": "e8384a26-996a-4cd0-8edf-02b18e016b51",
+  "indexName": "projects/gen-lang-client-0607406471/databases/nobody-asked-dev/collectionGroups/publicItems/indexes/CICAgLiT25QK",
+  "status": "published-and-verified",
+  "revision": "nobody-asked-api-admin-chat-014dafb1",
+  "imageDigest": "sha256:5eb93da14b2865f0e5cd21a709f383b94d8bb980e088affe55c9429f0c0af1ba",
+  "mainTrafficPercent": 100,
+  "hostingChanged": false,
+  "tests": {
+    "generalPassed": 548,
+    "emulatorPassed": 158
+  }
+}

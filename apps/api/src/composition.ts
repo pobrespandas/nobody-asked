@@ -71,6 +71,12 @@ export function createFirestoreReadiness(firestore: Firestore) {
   return Object.freeze({
     async check(): Promise<void> {
       await firestore.collection("_operations").doc("readiness").get();
+      const recovery = await firestore
+        .collection("_operations")
+        .doc("deletionRecovery")
+        .get();
+      if (recovery.exists && recovery.data()?.ready !== true)
+        throw new Error("Deletion recovery is incomplete.");
     },
   });
 }

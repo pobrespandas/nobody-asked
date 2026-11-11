@@ -1,0 +1,50 @@
+[
+  {
+    "path": "/health/ready",
+    "case": "anonymous",
+    "status": 200,
+    "body": {
+      "status": "ready"
+    }
+  },
+  {
+    "path": "/v1/admin/agents",
+    "case": "anonymous",
+    "status": 401,
+    "body": {
+      "error": {
+        "code": "authentication_required"
+      }
+    }
+  },
+  {
+    "path": "/v1/admin/agents",
+    "case": "isolated session on normal database",
+    "status": 401,
+    "body": {
+      "error": {
+        "code": "authentication_required"
+      }
+    }
+  },
+  {
+    "path": "/internal/admin/jobs",
+    "case": "anonymous",
+    "status": 401,
+    "body": {
+      "error": {
+        "code": "task_authentication_required"
+      }
+    }
+  },
+  {
+    "path": "/internal/admin/jobs",
+    "case": "invalid task assertion",
+    "status": 401,
+    "body": {
+      "error": {
+        "code": "task_authentication_required"
+      }
+    }
+  }
+]

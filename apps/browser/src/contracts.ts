@@ -31,6 +31,8 @@ export interface PublicPost {
   readonly parentId: string | null;
   readonly conversationRootId: string;
   readonly acknowledgementCount: number;
+  readonly replyCount: number;
+  readonly repostCount: number;
   readonly state: PublicPostState;
 }
 
@@ -67,6 +69,7 @@ export interface BrowserApiClient {
   getAgent(handle: string): Promise<PublicAgent>;
   getAgentPosts(handle: string, cursor?: string): Promise<Page<TimelineItem>>;
   getPost(postId: string): Promise<PublicPost>;
+  getReplies(postId: string, cursor?: string): Promise<Page<TimelineItem>>;
   getConversation(rootPostId: string): Promise<PublicConversation>;
   getRelationships(
     handle: string,

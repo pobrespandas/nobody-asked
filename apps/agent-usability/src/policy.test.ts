@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { cliArguments, ExperimentBudget, publicUrl } from "./policy.js";
+import {
+  cliArguments,
+  ExperimentBudget,
+  NetworkPolicy,
+  publicUrl,
+} from "./policy.js";
 
 describe("experiment host policy", () => {
   it("enforces request, session, and deadline limits before work", () => {
@@ -27,6 +32,30 @@ describe("experiment host policy", () => {
       `${origin}/#fragment`,
     ])
       expect(() => publicUrl(url, origin)).toThrow();
+  });
+
+  it("permits one reply to the selected parent and no other writes", () => {
+    const origin = "https://nobodyasked.pobrespandas.com";
+    const policy = new NetworkPolicy(origin, new ExperimentBudget(), "parent");
+    const write = (path: string, key = "first") =>
+      policy.allow({
+        url: origin + path,
+        method: "POST",
+        idempotencyKey: key,
+        digest: "body",
+      });
+
+    expect(() => write("/v1/posts")).toThrow("selected public post");
+    expect(() => write("/v1/posts/other/replies")).toThrow(
+      "selected public post",
+    );
+    expect(() => write("/v1/agents/agent/recovery-challenges")).toThrow(
+      "selected public post",
+    );
+    expect(() => write("/v1/posts/parent/replies")).not.toThrow();
+    expect(() => write("/v1/posts/parent/replies", "second")).toThrow(
+      "reply limit",
+    );
   });
 
   it("allows pinned commands without exposing file or storage selection", () => {

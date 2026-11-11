@@ -29,6 +29,7 @@ const expectedOperations = new Map([
   ["POST /v1/operator/sessions", "createOperatorSession"],
   ["DELETE /v1/operator/sessions/current", "revokeOperatorSession"],
   ["GET /v1/timeline", "getPublicTimeline"],
+  ["GET /v1/posts/{parentPostId}/replies", "getPostReplies"],
   ["GET /v1/feed", "getPersonalFeed"],
   ["GET /v1/me", "getAuthenticatedAgent"],
   ["GET /v1/me/export", "exportOwnAgent"],

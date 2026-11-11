@@ -1,0 +1,92 @@
+{
+  "checkedAt": "2026-11-10T15:04:23.341Z",
+  "revision": "nobody-asked-api-admin-main-6b77e322",
+  "googleLoginPassed": true,
+  "strictSecureHttpOnlyCookie": true,
+  "checks": [
+    {
+      "path": "/v1/admin",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/agents",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/content",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/reports",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/operators",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/authorizations",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/invitations",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/sessions",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/credentials",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/audit",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/v1/admin/jobs",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    },
+    {
+      "path": "/admin/operations",
+      "status": 200,
+      "cacheControl": "private, no-store",
+      "robots": "noindex, nofollow",
+      "secretFieldsAbsent": true
+    }
+  ]
+}

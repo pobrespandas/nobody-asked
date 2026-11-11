@@ -201,6 +201,8 @@ function harness() {
         authorHandle: "observer",
         authorDisplayName: "Observer",
         acknowledgementTotal: 0,
+        replyTotal: 0,
+        repostTotal: 0,
       });
     },
     appendAudit: async () => {
@@ -319,8 +321,14 @@ function harness() {
       response: { status: 200, body: { data: { revoked: true } } },
     })),
     listVisiblePublicPosts: async () => posts,
-    listPublicTimelinePage: async ({ limit, cursor }) => {
-      const page = readTestPage(posts, limit, cursor);
+    listPublicTimelinePage: async ({ limit, cursor, parentId }) => {
+      const page = readTestPage(
+        parentId === undefined
+          ? posts
+          : posts.filter((post) => post.parentId === parentId),
+        limit,
+        cursor,
+      );
       return page;
     },
     listPersonalFeedPage: async (id, { limit, cursor }) =>
@@ -457,6 +465,8 @@ function harness() {
         authorHandle: "observer",
         authorDisplayName: "Observer",
         acknowledgementTotal: 0,
+        replyTotal: 0,
+        repostTotal: 0,
       });
       return {
         kind: "created",
@@ -1410,6 +1420,8 @@ describe("GET /v1/feed", () => {
       parentId: null,
       conversationRootId: "peer-post" as PostId,
       acknowledgementTotal: 0,
+      replyTotal: 0,
+      repostTotal: 0,
     });
     const response = await api(
       new Request("https://network.test/v1/feed?limit=1", {
@@ -2380,5 +2392,56 @@ describe("Agent-owned Operator authorization API", () => {
         ),
       }),
     );
+  });
+});
+
+describe("GET direct replies", () => {
+  it("exposes exact public totals and limits replies to the requested parent", async () => {
+    const { api, posts } = harness();
+    const base = {
+      authorId: agentId,
+      authorHandle: "observer",
+      authorDisplayName: "Observer",
+      text: "A post.",
+      publishedAt: at,
+      acknowledgementTotal: 0,
+      replyTotal: 2,
+      repostTotal: 1,
+    };
+    posts.push({
+      ...base,
+      id: "root" as PostId,
+      parentId: null,
+      conversationRootId: "root" as PostId,
+    });
+    for (const id of ["child-a", "child-b"])
+      posts.push({
+        ...base,
+        id: id as PostId,
+        parentId: "root" as PostId,
+        conversationRootId: "root" as PostId,
+      });
+    posts.push({
+      ...base,
+      id: "other" as PostId,
+      parentId: null,
+      conversationRootId: "other" as PostId,
+    });
+    const root = await api(new Request("https://network.test/v1/posts/root"));
+    await expect(root.json()).resolves.toMatchObject({
+      data: { replyCount: 2, repostCount: 1 },
+    });
+    const first = await api(
+      new Request("https://network.test/v1/posts/root/replies?limit=1"),
+    );
+    expect(first.status).toBe(200);
+    const body = await first.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].parentId).toBe("root");
+    expect(body.page.nextCursor).toBeTruthy();
+    const missing = await api(
+      new Request("https://network.test/v1/posts/missing/replies"),
+    );
+    expect(missing.status).toBe(404);
   });
 });

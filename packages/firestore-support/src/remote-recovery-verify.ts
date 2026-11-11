@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -6,7 +7,7 @@ import {
   deleteApp,
   initializeApp,
 } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 
 export const REMOTE_RECOVERY_PROJECT_ID = "gen-lang-client-0607406471";
 export const REMOTE_RECOVERY_SOURCE_DATABASE_ID = "nobody-asked-dev";
@@ -83,6 +84,7 @@ export class RemoteRecoveryVerificationError extends Error {
       | "remote_recovery_source_forbidden"
       | "remote_recovery_target_forbidden"
       | "remote_recovery_collection_mismatch"
+      | "remote_recovery_baseline_invalid"
       | "remote_recovery_evidence_missing"
       | "remote_recovery_reference_invalid",
     readonly collection: string | null = null,
@@ -153,9 +155,53 @@ export async function verifyRemoteRecovery(
     readRecoveryRecords(source),
     readRecoveryRecords(recovery),
   ]);
+  return verifyRecoveredRecords(
+    collectionDigests(sourceRecords),
+    recoveryRecords,
+  );
+}
+
+/** Inspect a restored copy without claiming parity with an unavailable source snapshot. */
+export async function inspectRecoveryIntegrity(recovery: RecoveryDatabase) {
+  const records = await readRecoveryRecords(recovery);
+  const evidenceMissing = REQUIRED_RECOVERY_EVIDENCE.filter(
+    (name) =>
+      (records.get(name)?.length ?? 0) === 0 &&
+      !(name === "moderationActions" && hasHostedModerationEvidence(records)),
+  );
+  validateReferences(records);
+  return {
+    status: evidenceMissing.length
+      ? "evidence_incomplete"
+      : "integrity_checked",
+    references: "checked" as const,
+    evidenceMissing,
+    snapshotParity: "not_verified" as const,
+    collectionCount: records.size,
+    documentCount: [...records.values()].reduce(
+      (total, collection) => total + collection.length,
+      0,
+    ),
+    collectionDigests: collectionDigests(records),
+  };
+}
+
+function collectionDigests(records: Map<string, readonly StoredRecord[]>) {
+  return Object.fromEntries(
+    RECOVERY_COLLECTIONS.map((name) => [
+      name,
+      digestRecords(records.get(name) ?? []),
+    ]),
+  );
+}
+
+function verifyRecoveredRecords(
+  sourceDigests: Record<string, string>,
+  recoveryRecords: Map<string, readonly StoredRecord[]>,
+): RemoteRecoverySummary {
   for (const collection of RECOVERY_COLLECTIONS) {
     if (
-      digestRecords(sourceRecords.get(collection) ?? []) !==
+      sourceDigests[collection] !==
       digestRecords(recoveryRecords.get(collection) ?? [])
     ) {
       throw new RemoteRecoveryVerificationError(
@@ -164,15 +210,7 @@ export async function verifyRemoteRecovery(
       );
     }
   }
-  for (const collection of REQUIRED_RECOVERY_EVIDENCE) {
-    if ((recoveryRecords.get(collection) ?? []).length === 0) {
-      throw new RemoteRecoveryVerificationError(
-        "remote_recovery_evidence_missing",
-        collection,
-      );
-    }
-  }
-  validateReferences(recoveryRecords);
+  validateEvidence(recoveryRecords);
   return Object.freeze({
     status: "passed",
     collectionCount: RECOVERY_COLLECTIONS.length,
@@ -180,7 +218,62 @@ export async function verifyRemoteRecovery(
       (total, records) => total + records.length,
       0,
     ),
-    evidenceCollections: REQUIRED_RECOVERY_EVIDENCE,
+    evidenceCollections: REQUIRED_RECOVERY_EVIDENCE.filter(
+      (name) => (recoveryRecords.get(name)?.length ?? 0) > 0,
+    ),
+  });
+}
+
+function validateEvidence(records: Map<string, readonly StoredRecord[]>) {
+  for (const collection of REQUIRED_RECOVERY_EVIDENCE) {
+    if ((records.get(collection) ?? []).length === 0) {
+      if (
+        collection === "moderationActions" &&
+        hasHostedModerationEvidence(records)
+      )
+        continue;
+      throw new RemoteRecoveryVerificationError(
+        "remote_recovery_evidence_missing",
+        collection,
+      );
+    }
+  }
+  validateReferences(records);
+}
+
+// The hosted review transaction writes the hidden item and its Audit record.
+// Older recovery fixtures can also have a separate moderationActions record.
+function hasHostedModerationEvidence(
+  records: Map<string, readonly StoredRecord[]>,
+): boolean {
+  const hiddenItems = new Map(
+    (records.get("publicItems") ?? [])
+      .filter(({ data }) => data.visibility === "hidden")
+      .map(({ id, data }) => [id, data]),
+  );
+  return (records.get("auditRecords") ?? []).some(({ data }) => {
+    if (
+      data.action !== "content.hidden" ||
+      data.actorType !== "moderator" ||
+      data.subjectType !== "public_item" ||
+      typeof data.subjectId !== "string"
+    )
+      return false;
+    const item = hiddenItems.get(data.subjectId);
+    if (!item || !data.details) return false;
+    const details = asRecord(data.details);
+    return (
+      details.result === "completed" &&
+      typeof details.correlationId === "string" &&
+      details.correlationId.length > 0 &&
+      typeof details.reasonCategory === "string" &&
+      details.reasonCategory === item.moderationReasonCategory &&
+      details.resultingState != null &&
+      asRecord(details.resultingState).publicItemStatus === "hidden" &&
+      item.moderatedAt instanceof Timestamp &&
+      data.createdAt instanceof Timestamp &&
+      item.moderatedAt.isEqual(data.createdAt)
+    );
   });
 }
 
@@ -209,7 +302,13 @@ async function readRecoveryRecords(
 
 function validateReferences(records: Map<string, readonly StoredRecord[]>) {
   const profileIds = ids(records, "agentProfiles");
+  const publicItems = records.get("publicItems") ?? [];
   const itemIds = ids(records, "publicItems");
+  const postIds = new Set(
+    publicItems
+      .filter((item) => item.data.type !== "repost")
+      .map((item) => item.id),
+  );
   const credentialIds = ids(records, "credentials");
   const recoveryKeyIds = ids(records, "agentRecoveryKeys");
   const registrationIds = ids(records, "agentRegistrations");
@@ -338,8 +437,13 @@ function validateReferences(records: Map<string, readonly StoredRecord[]>) {
         "registrationControls",
       );
   }
-  for (const item of records.get("publicItems") ?? []) {
+  for (const item of publicItems) {
     requireReference(item.data.authorId, profileIds, "publicItems");
+    if (item.data.type === "repost") {
+      requireReference(item.data.repostingAgentId, profileIds, "publicItems");
+      requireReference(item.data.sourcePostId, postIds, "publicItems");
+      continue;
+    }
     if (item.data.parentId !== null && item.data.parentId !== undefined) {
       requireReference(item.data.parentId, itemIds, "publicItems");
     }
@@ -502,6 +606,9 @@ function canonicalize(value: unknown): unknown {
   ) {
     return value;
   }
+  if (value instanceof Timestamp) {
+    return { timestamp: [value.seconds, value.nanoseconds] };
+  }
   if (value instanceof Date) return { date: value.toISOString() };
   if (value instanceof Uint8Array) {
     return { bytes: Buffer.from(value).toString("base64") };
@@ -548,18 +655,95 @@ export async function runRemoteRecoveryVerificationCli(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
   const config = validateRemoteRecoveryEnvironment(environment);
+  const baselineFile = environment.REMOTE_FIRESTORE_RECOVERY_BASELINE;
+  const snapshotTime = environment.REMOTE_FIRESTORE_BACKUP_SNAPSHOT_TIME;
+  const capture = environment.REMOTE_FIRESTORE_CAPTURE_BASELINE;
+  const timestampParts = snapshotTime?.match(
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?Z$/,
+  );
+  const seconds = Date.parse(`${timestampParts?.[1]}Z`) / 1000;
+  if (
+    (capture !== undefined && capture !== "1") ||
+    ((baselineFile !== undefined || snapshotTime !== undefined || capture) &&
+      (!baselineFile || !timestampParts || !Number.isFinite(seconds)))
+  ) {
+    throw new RemoteRecoveryVerificationError(
+      "remote_recovery_baseline_invalid",
+    );
+  }
   const app = initializeApp({
     credential: applicationDefault(),
     projectId: config.projectId,
   });
   try {
-    const summary = await verifyRemoteRecovery(
-      getFirestore(app, config.sourceDatabaseId) as unknown as RecoveryDatabase,
-      getFirestore(
-        app,
-        config.recoveryDatabaseId,
-      ) as unknown as RecoveryDatabase,
-    );
+    const source = getFirestore(app, config.sourceDatabaseId);
+    const metadata = {
+      formatVersion: 1,
+      projectId: config.projectId,
+      sourceDatabaseId: config.sourceDatabaseId,
+      snapshotTime,
+    };
+    if (capture && baselineFile && timestampParts) {
+      const readTime = new Timestamp(
+        seconds,
+        Number((timestampParts[2] ?? "").padEnd(9, "0")),
+      );
+      const records = await source.runTransaction(
+        (transaction) =>
+          readRecoveryRecords({
+            collection: (name) => ({
+              get: async () => {
+                const snapshot = await transaction.get(source.collection(name));
+                if (!snapshot.readTime.isEqual(readTime))
+                  throw new RemoteRecoveryVerificationError(
+                    "remote_recovery_baseline_invalid",
+                  );
+                return snapshot;
+              },
+            }),
+          }),
+        { readOnly: true, readTime },
+      );
+      validateEvidence(records);
+      await writeFile(
+        baselineFile,
+        `${JSON.stringify({ ...metadata, digests: collectionDigests(records) })}\n`,
+        { flag: "wx", mode: 0o600 },
+      );
+      process.stdout.write(
+        `${JSON.stringify({ status: "baseline_captured", ...metadata })}\n`,
+      );
+      return;
+    }
+    const recovery = getFirestore(app, config.recoveryDatabaseId);
+    if (baselineFile) {
+      const baseline = asRecord(
+        JSON.parse(await readFile(baselineFile, "utf8")),
+      );
+      const digests = asRecord(baseline.digests);
+      if (
+        Object.entries(metadata).some(
+          ([key, value]) => baseline[key] !== value,
+        ) ||
+        Object.keys(digests).length !== RECOVERY_COLLECTIONS.length ||
+        RECOVERY_COLLECTIONS.some(
+          (name) =>
+            typeof digests[name] !== "string" ||
+            !/^[0-9a-f]{64}$/.test(digests[name]),
+        )
+      ) {
+        throw new RemoteRecoveryVerificationError(
+          "remote_recovery_baseline_invalid",
+        );
+      }
+      const summary = verifyRecoveredRecords(
+        digests as Record<string, string>,
+        await readRecoveryRecords(recovery),
+      );
+      process.stdout.write(`${JSON.stringify({ ...summary, snapshotTime })}\n`);
+      return;
+    }
+    const summary = await verifyRemoteRecovery(source, recovery);
     process.stdout.write(`${JSON.stringify(summary)}\n`);
   } finally {
     await deleteApp(app);

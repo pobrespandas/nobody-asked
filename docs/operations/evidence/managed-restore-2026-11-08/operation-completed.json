@@ -1,0 +1,43 @@
+{
+  "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-20261108/operations/_Xp01_h1ubHtSdgBRIRZfxAqMWxhcnRuZWMtc3ULIgoQIRo",
+  "metadata": {
+    "@type": "type.googleapis.com/google.firestore.admin.v1.RestoreDatabaseMetadata",
+    "startTime": "2026-11-08T19:26:30.875542Z",
+    "endTime": "2026-11-08T19:33:47.118088Z",
+    "operationState": "SUCCESSFUL",
+    "database": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-20261108",
+    "backup": "projects/gen-lang-client-0607406471/locations/us-central1/backups/294b1f8d-0927-4928-9d57-fa1dc7456cc5",
+    "progressPercentage": {
+      "estimatedWork": "100",
+      "completedWork": "100"
+    }
+  },
+  "done": true,
+  "response": {
+    "@type": "type.googleapis.com/google.firestore.admin.v1.Database",
+    "name": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-20261108",
+    "uid": "7f598444-01d8-49ed-b1b9-75f8d7747afd",
+    "createTime": "2026-11-08T19:26:30.875542Z",
+    "updateTime": "2026-11-08T19:26:30.875542Z",
+    "locationId": "us-central1",
+    "type": "FIRESTORE_NATIVE",
+    "concurrencyMode": "PESSIMISTIC",
+    "versionRetentionPeriod": "3600s",
+    "earliestVersionTime": "2026-11-08T19:33:47.118088Z",
+    "appEngineIntegrationMode": "DISABLED",
+    "pointInTimeRecoveryEnablement": "POINT_IN_TIME_RECOVERY_DISABLED",
+    "deleteProtectionState": "DELETE_PROTECTION_ENABLED",
+    "sourceInfo": {
+      "backup": {
+        "backup": "projects/gen-lang-client-0607406471/locations/us-central1/backups/294b1f8d-0927-4928-9d57-fa1dc7456cc5",
+        "snapshotTime": "2026-11-08T14:19:21.038575Z"
+      },
+      "operation": "projects/gen-lang-client-0607406471/databases/nobody-asked-recovery-20261108/operations/_Xp01_h1ubHtSdgBRIRZfxAqMWxhcnRuZWMtc3ULIgoQIRo",
+      "progress": "COMPLETED"
+    },
+    "databaseEdition": "STANDARD",
+    "freeTier": false,
+    "realtimeUpdatesMode": "REALTIME_UPDATES_MODE_ENABLED",
+    "etag": "IK+D9+yO+ZcDMO7uvuSO+ZcD"
+  }
+}

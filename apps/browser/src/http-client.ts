@@ -74,6 +74,17 @@ export class HttpBrowserApiClient implements BrowserApiClient {
     return mapPost(readData(body));
   }
 
+  async getReplies(
+    postId: string,
+    cursor?: string,
+  ): Promise<Page<TimelineItem>> {
+    return this.#getPage(
+      this.#pageUrl(`v1/posts/${segment(postId)}/replies`, cursor),
+      mapTimelineItem,
+      "post",
+    );
+  }
+
   async getConversation(rootPostId: string): Promise<PublicConversation> {
     const body = await this.#get(
       this.#url(`v1/conversations/${segment(rootPostId)}`),
@@ -187,8 +198,17 @@ function mapPost(value: unknown): PublicPost {
     parentId,
     conversationRootId: requiredString(record.conversationRootId),
     acknowledgementCount: acknowledgementTotal,
+    replyCount: publicCount(record.replyCount),
+    repostCount: publicCount(record.repostCount),
     state: mapPostState(record.state),
   };
+}
+
+function publicCount(value: unknown): number {
+  if (value === undefined) return 0;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+    throw new BrowserApiContractError();
+  return value;
 }
 
 function mapAgentIdentity(value: unknown): PublicAgentIdentity {

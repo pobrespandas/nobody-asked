@@ -1,0 +1,120 @@
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "env": [
+              {
+                "name": "NOBODY_ASKED_GCP_PROJECT_ID",
+                "value": "gen-lang-client-0607406471"
+              },
+              {
+                "name": "FIRESTORE_DATABASE_ID",
+                "value": "nobody-asked-dev"
+              },
+              {
+                "name": "OPERATOR_CHALLENGE_FROM_EMAIL",
+                "value": "nobodyasked@pobrespandas.com"
+              },
+              {
+                "name": "OPERATOR_MAIL_PROVIDER",
+                "value": "icloud"
+              },
+              {
+                "name": "ADMIN_ENABLED",
+                "value": "true"
+              },
+              {
+                "name": "ADMIN_ORIGIN",
+                "value": "https://admin-preview---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+              },
+              {
+                "name": "ADMIN_TASK_QUEUE",
+                "value": "projects/gen-lang-client-0607406471/locations/us-central1/queues/nobody-asked-admin"
+              },
+              {
+                "name": "ADMIN_TASK_URL",
+                "value": "https://admin-preview---nobody-asked-api-b747s3o2ta-uc.a.run.app/internal/admin/jobs"
+              },
+              {
+                "name": "ADMIN_TASK_SERVICE_ACCOUNT",
+                "value": "nobody-asked-admin-tasks@gen-lang-client-0607406471.iam.gserviceaccount.com"
+              },
+              {
+                "name": "ADMIN_LEDGER_BUCKET",
+                "value": "gen-lang-client-0607406471-nobody-admin"
+              },
+              {
+                "name": "ADMIN_GOOGLE_CLIENT_ID",
+                "value": "284051889944-qhct234q3kvv8cgr714c5jhj8gbmfiou.apps.googleusercontent.com"
+              },
+              {
+                "name": "ADMIN_GOOGLE_CLIENT_SECRET",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "1",
+                    "name": "nobody-asked-admin-google-client-secret"
+                  }
+                }
+              },
+              {
+                "name": "ICLOUD_SMTP_CREDENTIALS",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "key": "1",
+                    "name": "nobody-asked-icloud-smtp"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "serviceAccountName": "nobody-asked-api-runtime@gen-lang-client-0607406471.iam.gserviceaccount.com"
+      }
+    }
+  },
+  "status": {
+    "traffic": [
+      {
+        "revisionName": "nobody-asked-api-admin-verified-e49cc121",
+        "tag": "admin-preview",
+        "url": "https://admin-preview---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "percent": 100,
+        "revisionName": "nobody-asked-api-controls-2f37340"
+      },
+      {
+        "revisionName": "nobody-asked-api-feed-b7e2368",
+        "tag": "feedperf",
+        "url": "https://feedperf---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-operator-0bbc3dd",
+        "tag": "operatorfix",
+        "url": "https://operatorfix---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-recovery-379cca2",
+        "tag": "recoveryfix",
+        "url": "https://recoveryfix---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-un46-invite-fix",
+        "tag": "un46invite",
+        "url": "https://un46invite---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-un46-maildiag",
+        "tag": "un46maildiag",
+        "url": "https://un46maildiag---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      },
+      {
+        "revisionName": "nobody-asked-api-un46-standby",
+        "tag": "un46standby",
+        "url": "https://un46standby---nobody-asked-api-b747s3o2ta-uc.a.run.app"
+      }
+    ]
+  }
+}
